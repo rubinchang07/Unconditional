@@ -64,7 +64,7 @@ struct MiniOrb: View {
             let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let radius = min(size.width, size.height) / 2 * 0.86
+                let radius = (min(size.width, size.height) - Self.bleed * 2) / 2 * 0.86
                 ctx.drawLayer { layer in
                     layer.addFilter(.blur(radius: radius * 0.2))
                     layer.fill(OrbView.blob(center: center, radius: radius, time: t * 0.6, seed: seed, wobble: 0.8),
@@ -75,9 +75,14 @@ struct MiniOrb: View {
                                                center: CGPoint(x: center.x - radius * 0.3, y: center.y - radius * 0.35),
                                                startRadius: 0, endRadius: radius * 1.3))
             }
+            // Like the big orb: the canvas spills past its frame so the soft glow
+            // isn't clipped into a square.
+            .padding(-Self.bleed)
         }
         .accessibilityHidden(true)
     }
+
+    private static let bleed: CGFloat = 30
 }
 
 // MARK: - The orb divides into your values
