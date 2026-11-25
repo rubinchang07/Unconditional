@@ -126,3 +126,30 @@ struct LoopRingTests {
         #expect(ring(count: 0, previous: 9).gap < Double.pi)
     }
 }
+
+/// Values on the map spread out so their labels don't overlap.
+@MainActor
+struct MapLayoutTests {
+    @Test("Values never overlap, however many there are")
+    func noOverlap() {
+        let values = (1...9).map { PersonalValue(name: "Value \($0)") }
+        let center = CGPoint(x: 180, y: 180)
+        let points = MapLayout.spread(values: values, loops: [], links: [], center: center, outer: 134)
+        #expect(points.count == values.count)
+        for i in points.indices {
+            for j in points.indices where j > i {
+                let apartX = abs(points[i].x - points[j].x) >= MapLayout.labelWidth - 1
+                let apartY = abs(points[i].y - points[j].y) >= MapLayout.labelHeight - 1
+                #expect(apartX || apartY, "Value \(i + 1) and \(j + 1) overlap")
+            }
+        }
+    }
+
+    @Test("A value dragged outside the map is kept inside it")
+    func clamp() {
+        let center = CGPoint(x: 100, y: 100)
+        let spot = MapLayout.clamp(CGPoint(x: 400, y: 100), center: center, limit: 80)
+        #expect(spot == CGPoint(x: 180, y: 100))
+        #expect(MapLayout.clamp(CGPoint(x: 120, y: 100), center: center, limit: 80) == CGPoint(x: 120, y: 100))
+    }
+}

@@ -40,6 +40,8 @@ struct TodayView: View {
     @State private var showValues = false
     @State private var saveFailed = false
     @State private var showDrawingTools = false
+    /// True while a finger is on the drawing, so the page holds still.
+    @State private var touchingCanvas = false
     /// The opening: 0 nothing, 1 the orb swells in, 2 the greeting, 3 everything else.
     @State private var introStage = Intro.played ? 3 : 0
     @Environment(\.accessibilityReduceMotion) private var introReduceMotion
@@ -287,18 +289,16 @@ struct TodayView: View {
 
     // MARK: - Step 2: capture
 
-    @ViewBuilder
     private var captureStep: some View {
-        if kind == .draw {
+        // Everything scrolls, so the keyboard never hides your words and the
+        // save button is always reachable. While a finger is on the drawing,
+        // scrolling pauses so strokes don't move the page.
+        ScrollView {
             captureContent
-        } else {
-            // Writing and speaking scroll, so the keyboard never hides what you're typing.
-            ScrollView {
-                captureContent
-            }
-            .scrollIndicators(.hidden)
-            .scrollDismissesKeyboard(.interactively)
         }
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .scrollDisabled(touchingCanvas)
     }
 
     private var captureContent: some View {
@@ -346,8 +346,12 @@ struct TodayView: View {
                 }
                 .paperCard(padding: 12)
                 DrawingCanvas(drawing: $drawing, tool: tool, background: canvasBackground)
-                    .frame(minHeight: 340, maxHeight: .infinity)
-                    .layoutPriority(1)
+                    .frame(height: 440)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { _ in if !touchingCanvas { touchingCanvas = true } }
+                            .onEnded { _ in touchingCanvas = false }
+                    )
                     .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
                 if !drawing.strokes.isEmpty {
@@ -359,7 +363,7 @@ struct TodayView: View {
 
             // Optional: which loop this belongs to, or that it was good after all.
             // Never required, so it never stands between you and saving.
-            LoopChips(loop: $loop, good: $good, compact: kind == .draw)
+            LoopChips(loop: $loop, good: $good)
 
             Button(good ? "Keep it" : "Save entry", action: save)
             .buttonStyle(.paper)
