@@ -17,6 +17,11 @@ struct HistoryView: View {
                     } label: {
                         Label("Patterns over time", systemImage: "chart.line.uptrend.xyaxis")
                     }
+                    NavigationLink {
+                        MapView()
+                    } label: {
+                        Label("Your map", systemImage: "point.3.connected.trianglepath.dotted")
+                    }
                 }
 
                 Section {

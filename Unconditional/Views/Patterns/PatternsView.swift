@@ -59,9 +59,7 @@ struct PatternsView: View {
     // MARK: - Loops by week
 
     /// Soft colors for the loops, in their order. "Not sure yet" is grey.
-    private static let loopColors: [Color] = [
-        Color(hex: 0xE9785E), Color(hex: 0x9B86C4), Color(hex: 0x6FA3CC), Color(hex: 0xE8B07E), Color(hex: 0x7FA383),
-    ]
+    private static let loopColors: [Color] = Loop.palette.map { Color(hex: $0) }
     private static let unsure = "Not sure yet"
 
     private struct LoopWeek: Identifiable {
