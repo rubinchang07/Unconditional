@@ -39,6 +39,7 @@ struct EntryDetailView: View {
         }
         .navigationTitle("Entry")
         .themedBackground()
+        .paperList()
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $editingReframe) {
             NavigationStack {

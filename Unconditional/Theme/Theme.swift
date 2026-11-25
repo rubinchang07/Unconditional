@@ -68,6 +68,15 @@ extension UIColor {
     }
 }
 
+/// The current theme's background, filling the whole screen.
+struct ThemeBackground: View {
+    @AppStorage(Theme.storageKey) private var theme: Theme = .sage
+
+    var body: some View {
+        theme.background.ignoresSafeArea()
+    }
+}
+
 /// Replaces the default grey List/Form background with the theme's background.
 struct ThemedBackground: ViewModifier {
     @AppStorage(Theme.storageKey) private var theme: Theme = .sage

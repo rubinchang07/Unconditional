@@ -62,6 +62,7 @@ struct ReframeView: View {
         }
         .navigationTitle("Reframe")
         .themedBackground()
+        .paperList()
         .scrollDismissesKeyboard(.interactively)
         .keyboardDoneButton()
         .navigationBarTitleDisplayMode(.inline)

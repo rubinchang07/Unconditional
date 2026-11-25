@@ -13,6 +13,10 @@ struct UnconditionalApp: App {
         }
     }()
 
+    init() {
+        Paper.applySerifNavigationTitles()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
