@@ -8,7 +8,7 @@ struct UnconditionalApp: App {
     let container: ModelContainer = {
         do {
             return try ModelContainer(for: Loop.self, Entry.self, Reframe.self, Win.self, PersonalValue.self,
-                                      ResetThought.self, SavedReminder.self, ParkedThought.self, TinyStep.self)
+                                      ResetThought.self, SavedReminder.self, ParkedThought.self, TinyStep.self, CareerReflection.self)
         } catch {
             fatalError("Could not create the SwiftData container: \(error)")
         }
