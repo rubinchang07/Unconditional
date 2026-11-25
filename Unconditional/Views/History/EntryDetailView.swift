@@ -13,7 +13,8 @@ struct EntryDetailView: View {
                 if entry.kind.isText {
                     Text(entry.text)
                 } else {
-                    DrawingThumbnail(data: entry.drawingData)
+                    DrawingThumbnail(data: entry.drawingData,
+                                 background: CanvasBackground(rawValue: entry.drawingBackground) ?? .paper)
                         .frame(maxHeight: 320)
                 }
             } header: {

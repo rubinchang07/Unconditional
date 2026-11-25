@@ -22,6 +22,29 @@ enum InkChoice: String, CaseIterable, Identifiable {
     var name: String { rawValue.capitalized }
 }
 
+/// The paper you draw on. Every option has a light and a dark version,
+/// so the default ink (black in light mode, white in dark) always shows up.
+enum CanvasBackground: String, CaseIterable, Identifiable {
+    case paper, cream, sage, lavender, sky, blush
+
+    var id: String { rawValue }
+    var name: String { rawValue.capitalized }
+
+    var uiColor: UIColor {
+        let (light, dark): (UInt32, UInt32) = switch self {
+        case .paper: (0xFFFDF9, 0x262626)
+        case .cream: (0xF6EEDC, 0x2E2A22)
+        case .sage: (0xE4EDE0, 0x222B23)
+        case .lavender: (0xECE6F5, 0x29243A)
+        case .sky: (0xE3EEF7, 0x1E2833)
+        case .blush: (0xF7E6E4, 0x33252A)
+        }
+        return UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) }
+    }
+
+    var color: Color { Color(uiColor: uiColor) }
+}
+
 /// The brush shapes PencilKit offers. Each has its own feel and size range.
 enum Brush: String, CaseIterable, Identifiable {
     case pen, pencil, marker, fountain, watercolor, crayon, monoline
@@ -89,6 +112,7 @@ struct DrawingTool: Equatable {
 struct DrawingCanvas: UIViewRepresentable {
     @Binding var drawing: PKDrawing
     var tool = DrawingTool()
+    var background: CanvasBackground = .paper
     var isEditable = true
 
     func makeUIView(context: Context) -> PKCanvasView {
@@ -96,7 +120,7 @@ struct DrawingCanvas: UIViewRepresentable {
         canvas.drawing = drawing
         canvas.drawingPolicy = .anyInput // finger works too, not only Apple Pencil
         canvas.tool = tool.pkTool
-        canvas.backgroundColor = Paper.cardUIColor
+        canvas.backgroundColor = background.uiColor
         canvas.isUserInteractionEnabled = isEditable
         canvas.delegate = context.coordinator
         return canvas
@@ -106,6 +130,7 @@ struct DrawingCanvas: UIViewRepresentable {
         // Only push changes in from SwiftUI (e.g. "Clear"), to avoid a feedback loop.
         if canvas.drawing != drawing { canvas.drawing = drawing }
         canvas.tool = tool.pkTool
+        canvas.backgroundColor = background.uiColor
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(drawing: $drawing) }
@@ -195,15 +220,49 @@ struct BrushBar: View {
     }
 }
 
+/// A row of paper swatches.
+struct BackgroundPicker: View {
+    @Binding var selection: CanvasBackground
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Paper")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(CanvasBackground.allCases) { option in
+                Button {
+                    selection = option
+                } label: {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(option.color)
+                        .frame(width: 30, height: 30)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .strokeBorder(selection == option ? Color.primary.opacity(0.6) : Color.secondary.opacity(0.25),
+                                              lineWidth: selection == option ? 2 : 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(option.name) paper")
+                .accessibilityAddTraits(selection == option ? .isSelected : [])
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 /// Renders saved drawing data as a static image (for History).
 struct DrawingThumbnail: View {
     let data: Data?
+    var background: CanvasBackground = .paper
 
     var body: some View {
         if let data, let drawing = try? PKDrawing(data: data), !drawing.bounds.isEmpty {
             Image(uiImage: drawing.image(from: drawing.bounds.insetBy(dx: -12, dy: -12), scale: 2))
                 .resizable()
                 .scaledToFit()
+                .padding(4)
+                .background(background.color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         } else {
             Image(systemName: "scribble")
                 .foregroundStyle(.secondary)
