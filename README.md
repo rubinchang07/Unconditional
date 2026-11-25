@@ -14,6 +14,7 @@ A private iOS journal for working through self-doubt one day at a time. Write or
 - **Anchors**: Wins (each placed on an effort-to-outcome spectrum), Values (what matters regardless of outcomes), and Reminders (your own encouragement library).
 - **Values first**: after a reframe, the app leads with something you care about rather than a past success. Worth isn't earned by wins, so the win is optional.
 - **Support tools**: a one-minute breathing exercise, a self-compassion break, before/after distress and belief sliders on every reframe, and a support page with crisis lines.
+- **Patterns over time** (History): loops by week compared with the weeks before, distress before and after reframing, when check-ins tend to happen, tiny steps tried, and career enjoyment versus discouragement. These are descriptive only, never a score.
 - **Settings**: pick a theme (Sage, Dusk, Sky) from live previews, set a daily reminder, and turn on Face ID lock.
 
 ## Data model (SwiftData)
