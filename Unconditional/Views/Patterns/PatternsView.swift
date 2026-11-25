@@ -49,24 +49,11 @@ struct PatternsView: View {
                 stepsAndWinsSection
                 if careerEnabled { careerSection }
             }
-
-            Section {
-                NavigationLink {
-                    ParkedReviewView()
-                } label: {
-                    Label("Weekly review", systemImage: "tray")
-                }
-                if careerEnabled {
-                    NavigationLink {
-                        CareerHistoryView()
-                    } label: {
-                        Label("Career reflections", systemImage: "briefcase")
-                    }
-                }
-            }
         }
         .themedBackground()
         .paperList()
+        .navigationTitle("patterns")
+        .navigationBarTitleDisplayMode(.inline)
         .animation(.calm, value: span)
     }
 
@@ -108,8 +95,8 @@ struct PatternsView: View {
                 BubbleCluster {
                     ForEach(counted.indices, id: \.self) { index in
                         let item = counted[index]
-                        LoopBubble(name: item.loop.name, count: item.now, previous: item.before,
-                                   maxCount: maxCount, color: color(for: item.loop))
+                        LoopRing(name: item.loop.name, count: item.now, previous: item.before,
+                                 maxCount: maxCount, color: color(for: item.loop))
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -120,7 +107,7 @@ struct PatternsView: View {
         } header: {
             Text("Loops")
         } footer: {
-            Text("Bigger means it came up more. Arrows compare with the \(span.label) before. More often might just mean you noticed it more.")
+            Text("Each loop is a ring. Every time it came up adds a turn. A ring opens when it came up less than the \(span.label) before. More often might just mean you noticed it more.")
         }
     }
 

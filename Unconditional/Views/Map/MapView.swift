@@ -15,6 +15,8 @@ struct MapView: View {
     @Query private var entries: [Entry]
     @AppStorage("mapRoot") private var root = ""
     @State private var selected: Loop?
+    /// Show every loop, not just the ones that fit comfortably.
+    @State private var showAllLoops = false
 
     /// Entries needed before the map has enough to go on.
     static let entriesNeeded = 5
@@ -28,15 +30,37 @@ struct MapView: View {
                                 message: "After \(left) more check-in\(left == 1 ? "" : "s"), you'll start to see which loops travel together.")
                         .padding(.top, 40)
                 } else {
-                    MapWeb(loops: loops, values: linkedValues, links: links.filter(\.isConfirmed),
+                    let shown = showAllLoops ? loops : MapLayout.visibleLoops(loops, links: links)
+                    MapWeb(loops: shown, values: linkedValues, links: links.filter(\.isConfirmed),
                            color: color(for:), onSelect: { selected = $0 })
                         .aspectRatio(1, contentMode: .fit)
                         .paperCard()
 
-                    Text("Tap a loop to see its core belief and the words you use, and to connect it to your values.")
+                    // Quieter loops are one tap away, so the map never gets crowded.
+                    if loops.count > MapLayout.loopLimit, shown.count < loops.count || showAllLoops {
+                        let hidden = loops.count - MapLayout.visibleLoops(loops, links: links).count
+                        Button(showAllLoops ? "show fewer loops" : "+\(hidden) quieter \(hidden == 1 ? "loop" : "loops")") {
+                            withAnimation(.calm) { showAllLoops.toggle() }
+                        }
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    HStack(alignment: .top) {
+                        Text("Tap a loop to see its core belief and the words you use. Drag a value to move it.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        // Hand placement back to the map.
+                        if values.contains(where: { $0.mapX != nil }) {
+                            Button("tidy up") {
+                                withAnimation(.calm) {
+                                    for value in values { value.mapX = nil; value.mapY = nil }
+                                }
+                            }
+                            .font(.footnote)
+                        }
+                    }
 
                     ForEach(suggestions, id: \.id) { suggestion in
                         SuggestionCard(suggestion: suggestion) { strength in
@@ -52,6 +76,8 @@ struct MapView: View {
             .padding()
         }
         .themedBackground()
+        .navigationTitle("your map")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selected) { loop in
             LoopMapDetail(loop: loop, loops: loops, values: values, color: color(for: loop))
                 .presentationDetents([.large])
@@ -138,13 +164,16 @@ private struct MapWeb: View {
     let links: [MapLink]
     let color: (Loop) -> Color
     let onSelect: (Loop) -> Void
+    /// A value being dragged, and how far it has moved so far.
+    @State private var dragging: (id: PersistentIdentifier, offset: CGSize)?
 
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             let outer = min(size.width, size.height) / 2 - 46
-            let inner = values.count <= 1 ? 0 : outer * 0.45
+            let auto = MapLayout.spread(values: values, loops: loops, links: links, center: center, outer: outer)
+            let positions = values.indices.map { place(values[$0], auto: auto[$0], center: center, outer: outer) }
 
             ZStack {
                 Canvas { ctx, _ in
@@ -167,13 +196,14 @@ private struct MapWeb: View {
                             path.addQuadCurve(to: end, control: control)
                         } else if let value = link.value, let iv = values.firstIndex(of: value) {
                             path.move(to: start)
-                            path.addLine(to: valuePoint(iv, radius: inner, center: center))
+                            path.addLine(to: positions[iv])
                         }
                         ctx.stroke(path, with: .color(shade), style: StrokeStyle(lineWidth: width, lineCap: .round))
                     }
                 }
 
                 ForEach(Array(values.enumerated()), id: \.element.id) { index, value in
+                    let isDragging = dragging?.id == value.persistentModelID
                     Text(value.name)
                         .font(.caption2)
                         .lineLimit(1)
@@ -182,14 +212,38 @@ private struct MapWeb: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(Paper.card, in: Capsule())
-                        .overlay(Capsule().stroke(.tint.opacity(0.35)))
-                        .position(valuePoint(index, radius: inner, center: center))
+                        .overlay(Capsule().stroke(.tint.opacity(isDragging ? 0.8 : 0.35)))
+                        .scaleEffect(isDragging ? 1.12 : 1)
+                        .shadow(color: .black.opacity(isDragging ? 0.15 : 0), radius: 6, y: 3)
+                        .position(positions[index])
+                        // Drag a value to wherever it reads best. The spot is remembered.
+                        .gesture(
+                            DragGesture(minimumDistance: 3)
+                                .onChanged { drag in
+                                    dragging = (value.persistentModelID, drag.translation)
+                                }
+                                .onEnded { drag in
+                                    // Start from where it sat before the drag (positions[index]
+                                    // already includes the drag, so adding it again made it jump).
+                                    let p = place(value, auto: auto[index], center: center, outer: outer, includingDrag: false)
+                                    let end = CGPoint(x: p.x + drag.translation.width, y: p.y + drag.translation.height)
+                                    let spot = MapLayout.clamp(end, center: center, limit: outer * MapLayout.dragLimit)
+                                    value.mapX = Double((spot.x - center.x) / outer)
+                                    value.mapY = Double((spot.y - center.y) / outer)
+                                    dragging = nil
+                                }
+                        )
+                        .zIndex(isDragging ? 1 : 0)
+                        .animation(.spring(duration: 0.3), value: isDragging)
+                        .sensoryFeedback(.selection, trigger: isDragging)
+                        .accessibilityHint("Drag to move it on your map")
                 }
 
                 ForEach(Array(loops.enumerated()), id: \.element.id) { index, loop in
                     Button { onSelect(loop) } label: {
                         VStack(spacing: 4) {
-                            MiniOrb(color: color(loop), seed: Double(index))
+                            // Loops are rings here too, matching Patterns.
+                            MiniRing(color: color(loop))
                                 .frame(width: dotSize(loop) + 6, height: dotSize(loop) + 6)
                             Text(loop.name)
                                 .font(.caption2)
@@ -207,11 +261,21 @@ private struct MapWeb: View {
         }
     }
 
-    /// Values share the middle. With more than four, every other one sits on a
-    /// slightly smaller ring, so neighbouring labels don't run into each other.
-    private func valuePoint(_ index: Int, radius: CGFloat, center: CGPoint) -> CGPoint {
-        let staggered = values.count > 4 && index.isMultiple(of: 2)
-        return point(index, of: values.count, radius: staggered ? radius * 0.55 : radius, center: center, offset: 0.5)
+    /// Where a value is drawn: where you put it, or where the map placed it,
+    /// plus any drag in progress.
+    private func place(_ value: PersonalValue, auto: CGPoint, center: CGPoint, outer: CGFloat,
+                       includingDrag: Bool = true) -> CGPoint {
+        var p = auto
+        if let x = value.mapX, let y = value.mapY {
+            p = CGPoint(x: center.x + CGFloat(x) * outer, y: center.y + CGFloat(y) * outer)
+        }
+        if includingDrag, let dragging, dragging.id == value.persistentModelID {
+            p.x += dragging.offset.width
+            p.y += dragging.offset.height
+            // Held inside the map while dragging, so letting go never makes it jump.
+            p = MapLayout.clamp(p, center: center, limit: outer * MapLayout.dragLimit)
+        }
+        return p
     }
 
     /// Bigger dot for a loop that comes up more, within a gentle range.
@@ -223,6 +287,107 @@ private struct MapWeb: View {
         guard count > 0 else { return center }
         let angle = -Double.pi / 2 + 2 * Double.pi * (Double(index) + offset) / Double(count)
         return CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
+    }
+}
+
+// MARK: - Placing values
+
+/// Spreads values out so their labels don't overlap, and nudges each one
+/// toward the loops it's linked to so lines stay short and cross less.
+enum MapLayout {
+    /// Room a value label needs around it.
+    static let labelWidth: CGFloat = 92
+    static let labelHeight: CGFloat = 30
+    /// About how many loop labels fit around the ring on an iPhone.
+    static let loopLimit = 8
+
+    /// The loops to show: every loop you've linked to something (so a connection
+    /// never disappears), then the ones that came up most in the last three months,
+    /// up to `loopLimit`. Kept in your own order.
+    static func visibleLoops(_ loops: [Loop], links: [MapLink], now: Date = .now) -> [Loop] {
+        guard loops.count > loopLimit else { return loops }
+        let confirmed = links.filter(\.isConfirmed)
+        let linked = loops.filter { loop in confirmed.contains { $0.loopA == loop || $0.loopB == loop } }
+        let since = now.addingTimeInterval(-90 * 86_400)
+        func recent(_ loop: Loop) -> Int { loop.entries.filter { $0.createdAt >= since }.count }
+        let others = loops.filter { !linked.contains($0) }
+            .sorted { recent($0) == recent($1) ? $0.sortOrder < $1.sortOrder : recent($0) > recent($1) }
+        let chosen = linked + others.prefix(max(loopLimit - linked.count, 0))
+        return loops.filter { chosen.contains($0) }
+    }
+
+    /// How far from the middle you can drag a value, as a share of the map's radius.
+    static let dragLimit: CGFloat = 0.82
+
+    static func spread(values: [PersonalValue], loops: [Loop], links: [MapLink],
+                       center: CGPoint, outer: CGFloat) -> [CGPoint] {
+        guard !values.isEmpty else { return [] }
+        if values.count == 1 { return [center] }
+
+        // Start evenly around a ring in the middle.
+        let ring = outer * 0.42
+        var points: [CGPoint] = values.indices.map { i in
+            let angle = -Double.pi / 2 + 2 * Double.pi * (Double(i) + 0.5) / Double(values.count)
+            return CGPoint(x: center.x + ring * cos(angle), y: center.y + ring * sin(angle))
+        }
+
+        // Where each value's linked loops sit, so it can lean toward them.
+        let loopPoints: [CGPoint] = loops.indices.map { i in
+            let angle = -Double.pi / 2 + 2 * Double.pi * Double(i) / Double(loops.count)
+            return CGPoint(x: center.x + outer * cos(angle), y: center.y + outer * sin(angle))
+        }
+        let targets: [CGPoint?] = values.map { value in
+            let linked = links.compactMap { link -> CGPoint? in
+                guard link.value == value, let loop = link.loopA, let i = loops.firstIndex(of: loop) else { return nil }
+                return loopPoints[i]
+            }
+            guard !linked.isEmpty else { return nil }
+            let x = linked.map(\.x).reduce(0, +) / CGFloat(linked.count)
+            let y = linked.map(\.y).reduce(0, +) / CGFloat(linked.count)
+            return CGPoint(x: x, y: y)
+        }
+
+        for _ in 0..<80 {
+            // Lean a little toward linked loops, but stay well inside the ring of loops.
+            for i in points.indices {
+                if let target = targets[i] {
+                    points[i].x += (target.x - points[i].x) * 0.02
+                    points[i].y += (target.y - points[i].y) * 0.02
+                }
+            }
+            // Push apart any two labels that overlap.
+            for i in points.indices {
+                for j in points.indices where j > i {
+                    let dx = points[j].x - points[i].x
+                    let dy = points[j].y - points[i].y
+                    let overlapX = labelWidth - abs(dx)
+                    let overlapY = labelHeight - abs(dy)
+                    guard overlapX > 0, overlapY > 0 else { continue }
+                    // Separate along whichever way needs less movement.
+                    if overlapX / labelWidth < overlapY / labelHeight {
+                        let push = overlapX / 2 * (dx >= 0 ? 1 : -1)
+                        points[i].x -= push
+                        points[j].x += push
+                    } else {
+                        let push = overlapY / 2 * (dy >= 0 ? 1 : -1)
+                        points[i].y -= push
+                        points[j].y += push
+                    }
+                }
+            }
+            for i in points.indices {
+                points[i] = clamp(points[i], center: center, limit: outer * 0.7)
+            }
+        }
+        return points
+    }
+
+    /// Keeps a point within `limit` of the center.
+    static func clamp(_ point: CGPoint, center: CGPoint, limit: CGFloat) -> CGPoint {
+        let dx = point.x - center.x, dy = point.y - center.y
+        let distance = (dx * dx + dy * dy).squareRoot()
+        guard distance > limit, distance > 0 else { return point }
+        return CGPoint(x: center.x + dx / distance * limit, y: center.y + dy / distance * limit)
     }
 }
 

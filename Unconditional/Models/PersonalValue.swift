@@ -14,6 +14,10 @@ final class PersonalValue {
     /// How much you lived it lately, 0 to 10. Not a grade: a check-in.
     var livedLately: Double = 5
     var createdAt: Date
+    /// Where you placed it on your map, as a fraction of the map's radius from
+    /// the middle (-1 to 1). Nil means the map places it on its own.
+    var mapX: Double?
+    var mapY: Double?
 
     /// Map links from loops to this value. Deleting the value removes them.
     @Relationship(deleteRule: .cascade, inverse: \MapLink.value)

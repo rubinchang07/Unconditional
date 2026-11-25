@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 /// Anchors: what stays true about you, whatever happens.
 ///
@@ -15,15 +16,15 @@ struct AnchorsView: View {
     @Query(sort: \Win.createdAt, order: .reverse) private var wins: [Win]
     @Query(sort: \SavedReminder.createdAt, order: .reverse) private var reminders: [SavedReminder]
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
+    @Query(sort: \GroundingPhoto.createdAt) private var photos: [GroundingPhoto]
+    /// The photo opened up close.
+    @State private var openPhoto: GroundingPhoto?
 
     /// Where you are in the water.
     @State private var scroll = ScrollState()
     @State private var adding = false
     /// A new anchor falling from the surface to its layer.
     @State private var droppedAt: Date?
-    /// A reminder rising as a bubble after pulling down at the surface.
-    @State private var bubble: SavedReminder?
-    @State private var pulled = false
     /// Where the falls land, in screen coordinates, so the water stops there.
     @State private var splashY: CGFloat = .infinity
 
@@ -76,7 +77,6 @@ struct AnchorsView: View {
                             viewport: geometry.containerSize.height)
             } action: { _, new in
                 scroll = new
-                surfacePull(new.offset)
             }
             .background {
                 ZStack(alignment: .topLeading) {
@@ -92,7 +92,6 @@ struct AnchorsView: View {
                 }
                 .ignoresSafeArea()
             }
-            .overlay(alignment: .top) { bubbleView }
             .overlay { fallingDrop }
             .navigationTitle("anchors")
             .toolbar {
@@ -100,12 +99,15 @@ struct AnchorsView: View {
                     Button("Add an anchor", systemImage: "plus") { adding = true }
                 }
             }
+            .sheet(item: $openPhoto) { photo in
+                PhotoCloseUp(photo: photo, glow: palette.colors[0])
+                    .presentationDetents([.large])
+            }
             .sheet(isPresented: $adding) {
                 AddAnchorSheet {
                     if !reduceMotion { droppedAt = .now }
                 }
             }
-            .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: pulled) { _, new in new }
         }
     }
 
@@ -126,9 +128,6 @@ struct AnchorsView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("The deeper you go, the steadier it gets.")
                 .font(.system(.title3, design: .serif))
-            Text("Pull down at the surface for something you wanted to remember.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
         .padding(.top, 8)
     }
@@ -136,25 +135,25 @@ struct AnchorsView: View {
     // MARK: - Near the surface: wins
 
     private var winsLayer: some View {
-        Layer(title: "you kept showing up", subtitle: "Small things count. So does trying.") {
+        let split = Win.split(wins)
+        return Layer(title: "you kept showing up", subtitle: "Small things count. So does trying.") {
             if wins.isEmpty {
                 Text("Your wins will gather here.").foregroundStyle(.secondary)
             }
-            ForEach(wins) { win in
+            ForEach(split.surface) { win in
                 DropCard(color: palette.colors[2]) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(win.text)
-                        if !win.meaning.isEmpty {
-                            Text(win.meaning).font(.callout).foregroundStyle(.secondary)
-                        }
-                        Text(win.effortLabel.lowercased())
-                            .font(.caption)
-                            .foregroundStyle(.tint)
-                    }
+                    WinContent(win: win)
                 }
-                .contextMenu {
-                    Button("Remove", systemImage: "minus.circle") { withAnimation(.calm) { context.delete(win) } }
+                .contextMenu { WinMenu(win: win) }
+            }
+            // After about two weeks, wins settle here instead of crowding the top.
+            if !split.settled.isEmpty {
+                NavigationLink {
+                    KeptWinsView()
+                } label: {
+                    KeptStone(count: split.settled.count, color: palette.colors[2])
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -192,6 +191,7 @@ struct AnchorsView: View {
 
     private var valuesLayer: some View {
         Layer(title: "what holds you", subtitle: "What you care about, on good days and hard ones. The falls land here.") {
+            if !photos.isEmpty { photoRow }
             if values.isEmpty {
                 Text("Add the values that feel like yours. They'll rest here, steady, whatever the day brings.")
                     .foregroundStyle(.secondary)
@@ -223,44 +223,33 @@ struct AnchorsView: View {
         }
     }
 
-    /// Bigger when you've lived it more lately, but never tiny.
-    private func orbSize(_ value: PersonalValue) -> CGFloat {
-        44 + CGFloat(value.livedLately) * 3
-    }
-
-    // MARK: - Pull at the surface for a bubble
-
-    private func surfacePull(_ offset: CGFloat) {
-        if offset < -90, !pulled, let reminder = reminders.randomElement() {
-            pulled = true
-            withAnimation(.spring(duration: 0.8)) { bubble = reminder }
-            Task {
-                try? await Task.sleep(for: .seconds(6))
-                withAnimation(.easeOut(duration: 0.8)) { bubble = nil }
-            }
-        } else if offset > -10, pulled {
-            pulled = false
-        }
-    }
-
-    @ViewBuilder
-    private var bubbleView: some View {
-        if let bubble {
-            Text(bubble.text)
-                .font(.system(.body, design: .serif))
-                .multilineTextAlignment(.center)
-                .padding(20)
-                .background {
-                    Capsule().fill(.ultraThinMaterial)
-                    Capsule().fill(palette.colors[0].opacity(0.12))
+    /// Grounding photos, as stickers resting on the riverbed, each tilted a little.
+    private var photoRow: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 18) {
+                ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
+                    Button { openPhoto = photo } label: {
+                        PhotoSticker(photo: photo, glow: palette.colors[index % 3])
+                            .frame(width: 130, height: 150)
+                            .rotationEffect(.degrees(index.isMultiple(of: 2) ? -4 : 3))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(photo.caption.isEmpty ? "Grounding photo" : photo.caption)
+                    .contextMenu {
+                        Button("Remove", systemImage: "minus.circle") { withAnimation(.calm) { context.delete(photo) } }
+                    }
                 }
-                .padding(.horizontal, 30)
-                .padding(.top, 8)
-                .onTapGesture { withAnimation(.easeOut) { self.bubble = nil } }
-                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.6)),
-                                        removal: .opacity.combined(with: .offset(y: -40))))
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 4)
         }
+        .scrollIndicators(.hidden)
+        .scrollClipDisabled()
     }
+
+    /// Every value is the same size. What you care about doesn't shrink in a hard week.
+    /// How much you've lived it lately shows only when you open one, as a ring.
+    private func orbSize(_ value: PersonalValue) -> CGFloat { 62 }
 
     // MARK: - A new anchor falls in
 
@@ -505,7 +494,7 @@ private struct Riverbed: View {
 /// One place to add any kind of anchor.
 private struct AddAnchorSheet: View {
     enum Kind: String, CaseIterable, Identifiable {
-        case win = "a win", words = "words", value = "a value"
+        case win = "a win", words = "words", value = "a value", photo = "a photo"
         var id: String { rawValue }
     }
 
@@ -519,6 +508,14 @@ private struct AddAnchorSheet: View {
     @State private var meaning = ""
     @State private var tried = false
     @State private var workedOut = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var sticker: StickerMaker.Result?
+    @State private var makingSticker = false
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+
+    private var canAdd: Bool {
+        kind == .photo ? sticker != nil : !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var unusedValues: [String] {
         let taken = Set(values.map { $0.name.lowercased() })
@@ -552,6 +549,37 @@ private struct AddAnchorSheet: View {
                     } footer: {
                         Text("For example: I can feel uncertain and still take one step.")
                     }
+                case .photo:
+                    Section {
+                        PhotosPicker(selection: $photoItem, matching: .images) {
+                            Label(sticker == nil ? "Choose a photo" : "Choose a different photo", systemImage: "photo")
+                        }
+                        if makingSticker {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Making it a sticker…").foregroundStyle(.secondary)
+                            }
+                        } else if let sticker, let image = UIImage(data: sticker.png) {
+                            StickerView(image: image, isCutout: sticker.isCutout, glow: palette.colors[0])
+                                .frame(height: 220)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .listRowBackground(Color.clear)
+                        }
+                        TextField("What it reminds you of (optional)", text: $meaning, axis: .vertical)
+                    } footer: {
+                        Text("A place, a person, a pet, anything that steadies you. If there's someone or something in front, it's lifted out like a sticker, right on your phone.")
+                    }
+                    .onChange(of: photoItem) { _, item in
+                        guard let item else { return }
+                        makingSticker = true
+                        Task {
+                            if let data = try? await item.loadTransferable(type: Data.self) {
+                                sticker = await StickerMaker.make(from: data)
+                            }
+                            makingSticker = false
+                        }
+                    }
                 case .value:
                     Section {
                         TextField("A value, in a word or two", text: $text)
@@ -578,7 +606,7 @@ private struct AddAnchorSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add", action: add)
-                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(!canAdd)
                 }
             }
         }
@@ -595,9 +623,181 @@ private struct AddAnchorSheet: View {
             context.insert(SavedReminder(text: main))
         case .value:
             context.insert(PersonalValue(name: main, meaning: extra))
+        case .photo:
+            guard let sticker else { return }
+            context.insert(GroundingPhoto(imageData: sticker.png, isCutout: sticker.isCutout, caption: extra))
         }
         try? context.save()
         dismiss()
         onAdded()
+    }
+}
+
+/// One grounding photo, up close, with what it reminds you of.
+private struct PhotoCloseUp: View {
+    let photo: GroundingPhoto
+    let glow: Color
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 28) {
+                Spacer()
+                PhotoSticker(photo: photo, glow: glow, border: 9)
+                    .padding(.horizontal, 40)
+                    .frame(maxHeight: 420)
+                if !photo.caption.isEmpty {
+                    Text(photo.caption)
+                        .font(.system(.title3, design: .serif))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 30)
+                }
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .themedBackground()
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+}
+
+/// Decodes a grounding photo once, not on every scroll, and shows it as a sticker.
+private struct PhotoSticker: View {
+    let photo: GroundingPhoto
+    let glow: Color
+    var border: CGFloat = 6
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                StickerView(image: image, isCutout: photo.isCutout, glow: glow, border: border)
+            } else {
+                Color.clear
+            }
+        }
+        .task(id: photo.persistentModelID) {
+            image = UIImage(data: photo.imageData)
+        }
+    }
+}
+
+// MARK: - Wins kept over time
+
+/// One win's words, shared by the surface cards and the kept list.
+private struct WinContent: View {
+    let win: Win
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(win.text)
+                Spacer(minLength: 8)
+                if win.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption)
+                        .foregroundStyle(.tint)
+                        .accessibilityLabel("Kept at the surface")
+                }
+            }
+            if !win.meaning.isEmpty {
+                Text(win.meaning).font(.callout).foregroundStyle(.secondary)
+            }
+            Text(win.effortLabel.lowercased())
+                .font(.caption)
+                .foregroundStyle(.tint)
+        }
+    }
+}
+
+/// Long-press actions for a win: keep it at the surface, let it settle, or remove it.
+private struct WinMenu: View {
+    @Environment(\.modelContext) private var context
+    let win: Win
+
+    var body: some View {
+        Button(win.isPinned ? "Let it settle" : "Keep at the surface",
+               systemImage: win.isPinned ? "pin.slash" : "pin") {
+            withAnimation(.calm) { win.isPinned.toggle() }
+        }
+        Button("Remove", systemImage: "minus.circle") { withAnimation(.calm) { context.delete(win) } }
+    }
+}
+
+/// A smooth stone resting just under the surface wins: everything older lives inside it.
+private struct KeptStone: View {
+    let count: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Ellipse()
+                    .fill(LinearGradient(colors: [color.opacity(0.55), color.opacity(0.25)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 46, height: 34)
+                Ellipse()
+                    .fill(.white.opacity(0.5))
+                    .frame(width: 16, height: 6)
+                    .offset(x: -8, y: -8)
+                    .blur(radius: 1.5)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("kept over time")
+                    .font(.system(.headline, design: .serif))
+                Text("\(count) earlier \(count == 1 ? "win" : "wins"), still true")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .background(.thinMaterial, in: Capsule())
+        .contentShape(Capsule())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Every win that has settled, by month. Nothing here ever disappears on its own.
+struct KeptWinsView: View {
+    @Query(sort: \Win.createdAt, order: .reverse) private var wins: [Win]
+
+    private var months: [(title: String, wins: [Win])] {
+        let settled = Win.split(wins).settled
+        let grouped = Dictionary(grouping: settled) {
+            Calendar.current.dateInterval(of: .month, for: $0.createdAt)?.start ?? $0.createdAt
+        }
+        return grouped.keys.sorted(by: >).map { start in
+            (start.formatted(.dateTime.month(.wide).year()).lowercased(), grouped[start] ?? [])
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Text("Wins settle here after about two weeks. They're still yours, and still true. Long-press one to keep it at the surface.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            }
+            ForEach(months, id: \.title) { month in
+                Section(month.title) {
+                    ForEach(month.wins) { win in
+                        WinContent(win: win)
+                            .padding(.vertical, 4)
+                            .contextMenu { WinMenu(win: win) }
+                    }
+                }
+            }
+        }
+        .themedBackground()
+        .paperList()
+        .navigationTitle("kept over time")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

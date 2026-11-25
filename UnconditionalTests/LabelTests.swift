@@ -62,3 +62,32 @@ struct OrbTests {
         #expect(calmest == .settling)
     }
 }
+
+/// Wins stay at the surface for about two weeks, then settle. Pinned ones stay up.
+@MainActor
+struct WinSettlingTests {
+    let now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private func win(_ text: String, daysAgo: Int, pinned: Bool = false) -> Win {
+        let win = Win(text: text, createdAt: Calendar.current.date(byAdding: .day, value: -daysAgo, to: now)!)
+        win.isPinned = pinned
+        return win
+    }
+
+    @Test("Recent wins stay at the surface, older ones settle, nothing is dropped")
+    func split() {
+        let wins = [win("today", daysAgo: 0), win("last week", daysAgo: 7), win("last month", daysAgo: 30)]
+        let result = Win.split(wins, now: now)
+        #expect(result.surface.map(\.text) == ["today", "last week"])
+        #expect(result.settled.map(\.text) == ["last month"])
+        #expect(result.surface.count + result.settled.count == wins.count)
+    }
+
+    @Test("A pinned win stays at the surface however old, and comes first")
+    func pinned() {
+        let wins = [win("today", daysAgo: 0), win("the big one", daysAgo: 200, pinned: true)]
+        let result = Win.split(wins, now: now)
+        #expect(result.surface.map(\.text) == ["the big one", "today"])
+        #expect(result.settled.isEmpty)
+    }
+}
