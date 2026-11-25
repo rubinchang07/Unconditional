@@ -11,15 +11,23 @@ struct TensionReleaseView: View {
     private struct Area {
         let name: String
         let squeeze: String
+        /// What to notice as it lets go. Different for each part, so it never feels like a loop.
+        let release: String
     }
 
     private let areas = [
-        Area(name: "hands", squeeze: "Make tight fists."),
-        Area(name: "arms", squeeze: "Bend your elbows and tighten your arms."),
-        Area(name: "shoulders", squeeze: "Lift your shoulders up toward your ears."),
-        Area(name: "face", squeeze: "Scrunch your eyes, nose, and mouth together."),
-        Area(name: "stomach", squeeze: "Pull your stomach in tight."),
-        Area(name: "legs and feet", squeeze: "Press your feet down and curl your toes."),
+        Area(name: "hands", squeeze: "Make tight fists.",
+             release: "Open your hands. Feel the warmth coming back into your fingers."),
+        Area(name: "arms", squeeze: "Bend your elbows and tighten your arms.",
+             release: "Let your arms get heavy. They don't have to hold anything right now."),
+        Area(name: "shoulders", squeeze: "Lift your shoulders up toward your ears.",
+             release: "Let them drop, a little lower than feels normal."),
+        Area(name: "face", squeeze: "Scrunch your eyes, nose, and mouth together.",
+             release: "Unclench your jaw. Let your forehead go smooth."),
+        Area(name: "stomach", squeeze: "Pull your stomach in tight.",
+             release: "Let your belly be soft, and breathe all the way down."),
+        Area(name: "legs and feet", squeeze: "Press your feet down and curl your toes.",
+             release: "Feel the floor holding you up. You can rest your weight on it."),
     ]
 
     private let squeezeSeconds = 5.0
@@ -46,7 +54,7 @@ struct TensionReleaseView: View {
                 let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1000)
                 let dx: Double = (sin(t * 83) + 0.6 * sin(t * 131 + 1)) * 2.4 * strength
                 let dy: Double = (sin(t * 71 + 2) + 0.6 * sin(t * 113)) * 2.4 * strength
-                OrbView(palette: palette, speed: 0.5, state: orbState)
+                DispersingOrb(palette: palette, state: orbState, dispersed: finished)
                     .frame(width: 260, height: 260)
                     .offset(x: dx, y: dy)
             }
@@ -83,7 +91,7 @@ struct TensionReleaseView: View {
     private var detail: String {
         if finished { return "Notice how your body feels now. Some of that tightness was holding on for you." }
         if !started { return "Six parts of your body, about two minutes. Squeeze for 5 seconds, then let go for 10. Gentle is enough, nothing should hurt." }
-        return tensing ? areas[index].squeeze : "Notice the difference between tight and loose. Part \(index + 1) of \(areas.count)."
+        return tensing ? areas[index].squeeze : areas[index].release
     }
 
     private func run() async {
@@ -99,6 +107,6 @@ struct TensionReleaseView: View {
             try? await Task.sleep(for: .seconds(releaseSeconds))
             if Task.isCancelled { return }
         }
-        finished = true
+        withAnimation(.calm) { finished = true }
     }
 }

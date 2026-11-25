@@ -44,14 +44,16 @@ struct GroundingView: View {
             .id(finished ? -1 : index)
             .transition(.opacity)
 
-            Button(action: notice) {
-                OrbView(palette: palette, speed: 0.5, state: finished ? .settling : .resting)
-                    .frame(width: 240, height: 240)
-                    .scaleEffect(pulse ? 1.08 : 1)
-            }
-            .buttonStyle(.plain)
-            .disabled(finished)
-            .accessibilityLabel("I noticed one")
+            // The orb draws itself without taking touches, so the circle here is what you tap.
+            DispersingOrb(palette: palette, state: .resting, dispersed: finished)
+                .frame(width: 240, height: 240)
+                .scaleEffect(pulse ? 1.08 : 1)
+                .contentShape(Circle())
+                .onTapGesture(perform: notice)
+                .accessibilityElement()
+                .accessibilityLabel("I noticed one")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction(.default, notice)
             .sensoryFeedback(.impact(weight: .light, intensity: 0.7), trigger: noticed)
 
             if finished {
@@ -98,7 +100,7 @@ struct GroundingView: View {
     }
 
     private func notice() {
-        guard noticed < sense.count else { return }
+        guard !finished, noticed < sense.count else { return }
         noticed += 1
         withAnimation(.spring(duration: 0.25, bounce: 0.5)) { pulse = true }
         withAnimation(.spring(duration: 0.5).delay(0.2)) { pulse = false }
@@ -115,7 +117,7 @@ struct GroundingView: View {
         if index + 1 < senses.count {
             index += 1
         } else {
-            finished = true
+            withAnimation(.calm) { finished = true }
         }
     }
 }

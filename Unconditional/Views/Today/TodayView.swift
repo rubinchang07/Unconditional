@@ -231,8 +231,8 @@ struct TodayView: View {
             return
         }
         try? await Task.sleep(for: .milliseconds(400))
-        withAnimation(.spring(duration: 2.2, bounce: 0.4)) { introStage = 1 }
-        try? await Task.sleep(for: .milliseconds(2000))
+        withAnimation(.spring(duration: 2.8, bounce: 0.4)) { introStage = 1 }
+        try? await Task.sleep(for: .milliseconds(2600))
         withAnimation(.easeOut(duration: 1.0)) { introStage = 2 }
         try? await Task.sleep(for: .milliseconds(700))
         withAnimation(.easeOut(duration: 1.0)) { introStage = 3 }

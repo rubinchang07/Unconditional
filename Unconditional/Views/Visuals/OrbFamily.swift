@@ -324,3 +324,90 @@ struct CheckInConstellation: View {
         return CGPoint(x: x, y: y)
     }
 }
+
+// MARK: - Dispersing into light
+
+/// The orb that ends a "calm your body" exercise: when `dispersed` turns true,
+/// it loosens into small specks of light that drift outward and up and fade,
+/// like the tension leaving. With Reduce Motion it simply fades.
+struct DispersingOrb: View {
+    var palette: OrbPalette
+    var state: OrbState = .resting
+    var dispersed: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dispersedAt: Date?
+
+    /// How long the specks take to fade completely.
+    private let duration = 3.2
+    private let count = 160
+    /// Room around the frame for the specks to drift into.
+    private let bleed: CGFloat = 140
+
+    var body: some View {
+        ZStack {
+            if let dispersedAt, !reduceMotion {
+                TimelineView(.animation) { timeline in
+                    let e = timeline.date.timeIntervalSince(dispersedAt)
+                    ZStack {
+                        // The orb itself lets go in the first half second.
+                        OrbView(palette: palette, speed: 0.5, state: .settling)
+                            .scaleEffect(1 + 0.12 * min(e / 0.5, 1))
+                            .opacity(max(0, 1 - e / 0.5))
+                        Canvas { context, size in
+                            drawSpecks(in: &context, size: size, elapsed: e)
+                        }
+                        .padding(-bleed)
+                        .allowsHitTesting(false)
+                    }
+                }
+            } else {
+                OrbView(palette: palette, speed: 0.5, state: state)
+                    .opacity(dispersed ? 0 : 1)
+                    .animation(.easeOut(duration: 1.2), value: dispersed)
+            }
+        }
+        .onChange(of: dispersed) { _, now in
+            dispersedAt = now ? .now : nil
+        }
+        .accessibilityHidden(true)
+    }
+
+    /// A repeatable "random" number from 0 to 1, so each speck keeps its own path.
+    private func noise(_ i: Int, _ salt: Int) -> Double {
+        let x = sin(Double(i) * 12.9898 + Double(salt) * 78.233) * 43758.5453
+        return x - x.rounded(.down)
+    }
+
+    private func drawSpecks(in context: inout GraphicsContext, size: CGSize, elapsed e: Double) {
+        guard e < duration else { return }
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let radius = Double(min(size.width, size.height) - bleed * 2) / 2 * 0.78
+        let colors = palette.colors
+        let p = min(e / duration, 1)
+        let travel = 1 - pow(1 - p, 3) // fast at first, then drifting
+
+        for i in 0..<count {
+            let angle = noise(i, 1) * 2 * .pi
+            let start = sqrt(noise(i, 2)) * radius * 0.9
+            let reach = radius * (0.5 + 1.3 * noise(i, 3))
+            let distance = start + reach * travel
+            let sway = sin(e * 1.6 + Double(i)) * 5 * p
+            let rise = radius * 0.45 * p * (0.4 + noise(i, 4))
+            let x = Double(center.x) + cos(angle) * distance + sway
+            let y = Double(center.y) + sin(angle) * distance - rise
+
+            // Each speck fades on its own schedule, so they don't vanish all at once.
+            let life = 0.55 + 0.45 * noise(i, 5)
+            let fade = max(0, 1 - p / life)
+            guard fade > 0 else { continue }
+            let opacity = pow(fade, 1.3) * (0.55 + 0.45 * noise(i, 6))
+            let dot = 1.4 + 3.2 * noise(i, 7)
+            let color = colors[i % colors.count]
+
+            let glowRect = CGRect(x: x - dot * 2.2, y: y - dot * 2.2, width: dot * 4.4, height: dot * 4.4)
+            context.fill(Path(ellipseIn: glowRect), with: .color(color.opacity(opacity * 0.25)))
+            let coreRect = CGRect(x: x - dot / 2, y: y - dot / 2, width: dot, height: dot)
+            context.fill(Path(ellipseIn: coreRect), with: .color(color.opacity(opacity)))
+        }
+    }
+}
