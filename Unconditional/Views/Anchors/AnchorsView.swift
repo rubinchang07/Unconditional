@@ -24,6 +24,8 @@ struct AnchorsView: View {
     /// A reminder rising as a bubble after pulling down at the surface.
     @State private var bubble: SavedReminder?
     @State private var pulled = false
+    /// Where the falls land, in screen coordinates, so the water stops there.
+    @State private var splashY: CGFloat = .infinity
 
     struct ScrollState: Equatable {
         var offset: CGFloat = 0
@@ -52,6 +54,9 @@ struct AnchorsView: View {
                         .background {
                             // The bed reaches under the waterfall, so the falls land in it.
                             Riverbed(color: palette.colors[0])
+                                .onGeometryChange(for: CGFloat.self) { proxy in
+                                    proxy.frame(in: .global).minY + Riverbed.fadeIn + 6
+                                } action: { splashY = $0 }
                                 .padding(.leading, -(Self.streamX + 22))
                                 .padding(.trailing, -20)
                                 .padding(.top, -Riverbed.fadeIn)
@@ -78,8 +83,12 @@ struct AnchorsView: View {
                     depthBackground
                     // The falls stay fixed on screen while the page scrolls over them,
                     // so scrolling never speeds the water up. Only depth slows it.
-                    Stream(depth: scroll.depth, color: palette.colors[0])
-                        .allowsHitTesting(false)
+                    GeometryReader { proxy in
+                        // The water stops where it lands in the riverbed.
+                        Stream(depth: scroll.depth, color: palette.colors[0],
+                               stopAt: splashY - proxy.frame(in: .global).minY)
+                    }
+                    .allowsHitTesting(false)
                 }
                 .ignoresSafeArea()
             }
@@ -337,6 +346,8 @@ private struct Stream: View {
     /// 0 at the surface, 1 at the riverbed.
     let depth: Double
     let color: Color
+    /// How far down the screen the water runs before it lands.
+    var stopAt: CGFloat = .infinity
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Each strand: sideways offset, width, and how its wave is shifted.
@@ -369,7 +380,10 @@ private struct Stream: View {
             Canvas { ctx, size in
                 // Drawn in screen space: from the top of the screen to the bottom.
                 let top: CGFloat = 0
-                let bottom: CGFloat = size.height
+                let bottom: CGFloat = min(size.height, stopAt)
+                guard bottom > top else { return }
+                // Nothing is drawn below where the falls land.
+                ctx.clip(to: Path(CGRect(x: 0, y: 0, width: size.width, height: bottom)))
                 let calm = 1 - 0.6 * depth
                 let x = AnchorsView.streamX
 
