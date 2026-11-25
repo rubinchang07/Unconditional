@@ -25,6 +25,18 @@ enum DataTransfer {
         var parkedThoughts: [ParkedRecord] = []
         var tinySteps: [TinyStepRecord] = []
         var careerReflections: [CareerRecord] = []
+        /// Optional so files exported before map links were included still open.
+        var mapLinks: [MapLinkRecord]? = []
+    }
+
+    /// A link on your map. Loops and values are named, since they're matched by name on restore.
+    struct MapLinkRecord: Codable {
+        var loopA: String?
+        var loopB: String?
+        var value: String?
+        var strength: Double
+        var status: String
+        var createdAt: Date
     }
 
     struct LoopRecord: Codable {
@@ -162,6 +174,10 @@ enum DataTransfer {
                          interesting: $0.interesting, enjoyment: $0.enjoyment, discouragement: $0.discouragement,
                          urgeToQuit: $0.urgeToQuit, quitSource: $0.quitSource)
         }
+        s.mapLinks = all(MapLink.self).map {
+            MapLinkRecord(loopA: $0.loopA?.name, loopB: $0.loopB?.name, value: $0.value?.name,
+                          strength: $0.strength, status: $0.status, createdAt: $0.createdAt)
+        }
         return s
     }
 
@@ -243,12 +259,14 @@ enum DataTransfer {
             summary.added += 1
         }
 
-        let valueNames = Set(all(PersonalValue.self).map { $0.name.lowercased() })
+        var valuesByName: [String: PersonalValue] = [:]
+        for value in all(PersonalValue.self) { valuesByName[value.name.lowercased()] = value }
         for r in s.values {
-            if valueNames.contains(r.name.lowercased()) { summary.skipped += 1; continue }
+            if valuesByName[r.name.lowercased()] != nil { summary.skipped += 1; continue }
             let value = PersonalValue(name: r.name, meaning: r.meaning, createdAt: r.createdAt)
             value.livedLately = r.livedLately
             context.insert(value)
+            valuesByName[r.name.lowercased()] = value
             summary.added += 1
         }
 
@@ -300,6 +318,34 @@ enum DataTransfer {
             c.urgeToQuit = r.urgeToQuit
             c.quitSource = r.quitSource
             context.insert(c)
+            summary.added += 1
+        }
+
+        // Map links last, once every loop and value they point at exists.
+        // A link is the same if it joins the same two things, in either order.
+        func linkKey(_ a: String?, _ b: String?, _ v: String?) -> String {
+            let loops = [a, b].compactMap { $0?.lowercased() }.sorted()
+            return loops.joined(separator: "|") + "|" + (v?.lowercased() ?? "")
+        }
+        var linkKeys = Set(all(MapLink.self).map { linkKey($0.loopA?.name, $0.loopB?.name, $0.value?.name) })
+        for r in s.mapLinks ?? [] {
+            let key = linkKey(r.loopA, r.loopB, r.value)
+            let loopA = loop(named: r.loopA)
+            let loopB = loop(named: r.loopB)
+            let value = r.value.flatMap { valuesByName[$0.lowercased()] }
+            // Skip duplicates, and links whose loops or value are missing from the file.
+            guard !linkKeys.contains(key), loopA != nil, (loopB != nil) != (value != nil) else {
+                summary.skipped += 1; continue
+            }
+            let link = MapLink()
+            context.insert(link)
+            link.loopA = loopA
+            link.loopB = loopB
+            link.value = value
+            link.strength = r.strength
+            link.status = r.status
+            link.createdAt = r.createdAt
+            linkKeys.insert(key)
             summary.added += 1
         }
 

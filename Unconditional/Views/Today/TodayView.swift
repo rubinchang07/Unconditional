@@ -37,6 +37,7 @@ struct TodayView: View {
     @State private var showCareer = false
     @State private var showSettings = false
     @State private var showValues = false
+    @State private var saveFailed = false
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
     @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
@@ -107,6 +108,11 @@ struct TodayView: View {
             .sheet(isPresented: $showCareer) { CareerReflectionView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(item: $savedGood) { entry in GoodMomentSheet(entry: entry) }
+            .alert("couldn't save just now", isPresented: $saveFailed) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Your entry is still here. Try saving again in a moment.")
+            }
         }
     }
 
@@ -366,7 +372,14 @@ struct TodayView: View {
         entry.loop = good ? nil : loop
         entry.isGood = good
         if kind == .draw { entry.drawingBackground = canvasBackground.rawValue }
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            // Undo the half-made entry, keep what you wrote on screen, and say so.
+            context.rollback()
+            saveFailed = true
+            return
+        }
 
         // Reset for next time, then offer the reframe step.
         text = ""

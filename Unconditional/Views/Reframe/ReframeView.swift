@@ -22,6 +22,7 @@ struct ReframeView: View {
     @State private var beliefBefore = 70.0
     @State private var beliefAfter = 70.0
     @State private var showBreathing = false
+    @State private var saveFailed = false
 
     /// Three short steps: the thought, another way to see it, and how it feels now.
     private enum Step: Int, CaseIterable { case thought, another, now }
@@ -73,6 +74,11 @@ struct ReframeView: View {
             if beliefAfter == old { beliefAfter = new }
         }
         .sheet(isPresented: $showBreathing) { BreathingView() }
+        .alert("couldn't save just now", isPresented: $saveFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Everything you wrote is still here. Try again in a moment.")
+        }
     }
 
     // MARK: - Step 1: the thought
@@ -144,8 +150,7 @@ struct ReframeView: View {
         if let onCompassion {
             Section {
                 Button("Add a self-compassion break", systemImage: "heart") {
-                    persist()
-                    onCompassion()
+                    if persist() { onCompassion() }
                 }
             } footer: {
                 Text("Optional. For when it needs kindness more than logic.")
@@ -177,11 +182,13 @@ struct ReframeView: View {
     }
 
     private func save() {
-        persist()
-        onDone()
+        if persist() { onDone() }
     }
 
-    private func persist() {
+    /// Saves the reframe. Returns false (and says so gently) if it couldn't,
+    /// so you stay on this screen with everything you wrote.
+    @discardableResult
+    private func persist() -> Bool {
         let reframe = entry.reframe ?? Reframe()
         reframe.trigger = trigger
         reframe.coreBelief = coreBelief
@@ -197,6 +204,12 @@ struct ReframeView: View {
             context.insert(reframe)
             entry.reframe = reframe
         }
-        try? context.save()
+        do {
+            try context.save()
+            return true
+        } catch {
+            saveFailed = true
+            return false
+        }
     }
 }

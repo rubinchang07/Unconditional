@@ -28,16 +28,31 @@ struct DataTransferTests {
         good.isGood = true
 
         context.insert(Win(text: "Finished the problem set", effortToOutcome: 0.2, createdAt: day))
-        context.insert(PersonalValue(name: "Curiosity", meaning: "Learning for its own sake", createdAt: day))
+        let curiosity = PersonalValue(name: "Curiosity", meaning: "Learning for its own sake", createdAt: day)
+        context.insert(curiosity)
+        let career = Loop(name: "Career indecision", coreBelief: "", pattern: "", sortOrder: 1)
+        context.insert(career)
+
+        // Two map links: loop to loop, and loop to value (turned down).
+        let loops = MapLink()
+        context.insert(loops)
+        loops.loopA = loop
+        loops.loopB = career
+        loops.strength = 0.8
+        let toValue = MapLink()
+        context.insert(toValue)
+        toValue.loopA = loop
+        toValue.value = curiosity
+        toValue.status = "dismissed"
         context.insert(SavedReminder(text: "You're allowed to rest.", createdAt: day))
         let thought = ResetThought(text: "Everyone is ahead", perspective: "Highlights, not lives", sortOrder: 0)
         context.insert(thought)
         thought.loop = loop
         context.insert(ParkedThought(text: "Should I switch majors?", createdAt: day))
         context.insert(TinyStep(text: "Email one person", createdAt: day))
-        let career = CareerReflection(moment: .interview, topic: "Internship", createdAt: day)
-        career.enjoyment = 7
-        context.insert(career)
+        let reflection = CareerReflection(moment: .interview, topic: "Internship", createdAt: day)
+        reflection.enjoyment = 7
+        context.insert(reflection)
         try context.save()
     }
 
@@ -64,7 +79,7 @@ struct DataTransferTests {
         let new = newPhone.mainContext
         let summary = DataTransfer.restore(try DataTransfer.decode(file), into: new)
 
-        #expect(summary == .init(added: 10, skipped: 0))
+        #expect(summary == .init(added: 13, skipped: 0))
         #expect(try count(Entry.self, in: new) == 2)
         #expect(try count(Reframe.self, in: new) == 1)
         #expect(try count(CareerReflection.self, in: new) == 1)
@@ -78,6 +93,24 @@ struct DataTransferTests {
 
         let thought = try #require(try new.fetch(FetchDescriptor<ResetThought>()).first)
         #expect(thought.loop?.name == "Falling behind")
+
+        // Your map comes back too, including the link you turned down.
+        let links = try new.fetch(FetchDescriptor<MapLink>())
+        let loopLink = try #require(links.first { $0.loopB != nil })
+        #expect(Set([loopLink.loopA?.name, loopLink.loopB?.name]) == ["Falling behind", "Career indecision"])
+        #expect(loopLink.strength == 0.8)
+        let valueLink = try #require(links.first { $0.value != nil })
+        #expect(valueLink.value?.name == "Curiosity")
+        #expect(!valueLink.isConfirmed)
+    }
+
+    @Test("Files from before map links were exported still open")
+    func olderFile() throws {
+        var snapshot = DataTransfer.snapshot(from: oldPhone.mainContext)
+        snapshot.mapLinks = nil
+        let text = String(decoding: try DataTransfer.encode(snapshot), as: UTF8.self)
+        #expect(!text.contains("mapLinks"))
+        #expect(throws: Never.self) { try DataTransfer.decode(Data(text.utf8)) }
     }
 
     @Test("Restoring the same file twice adds nothing the second time")
@@ -89,7 +122,8 @@ struct DataTransferTests {
         let summary = DataTransfer.restore(snapshot, into: context)
         #expect(summary.added == 0)
         #expect(try count(Entry.self, in: context) == 2)
-        #expect(try count(Loop.self, in: context) == 1)
+        #expect(try count(Loop.self, in: context) == 2)
+        #expect(try count(MapLink.self, in: context) == 2)
     }
 
     @Test("A loop with the same name is reused, not doubled")
@@ -102,7 +136,7 @@ struct DataTransferTests {
         new.insert(Loop(name: "falling BEHIND", coreBelief: "", pattern: "", sortOrder: 0))
         DataTransfer.restore(snapshot, into: new)
 
-        #expect(try count(Loop.self, in: new) == 1)
+        #expect(try count(Loop.self, in: new) == 2)
         let entry = try #require(try new.fetch(FetchDescriptor<Entry>()).first { $0.loop != nil })
         #expect(entry.loop?.name == "falling BEHIND")
     }
