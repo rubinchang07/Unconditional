@@ -5,10 +5,9 @@ A private iOS journal for working through self-doubt one day at a time. Write, s
 Everything stays on the phone. See [PRIVACY.md](PRIVACY.md).
 
 ## Screenshots
-<!-- Add images to docs/screenshots/ and they show up here. -->
-| Today | Check in | Reframe | Reflect | Anchors |
-|---|---|---|---|---|
-| ![Today](docs/screenshots/today.png) | ![Check in](docs/screenshots/check-in.png) | ![Reframe](docs/screenshots/reframe.png) | ![Reflect](docs/screenshots/reflect.png) | ![Anchors](docs/screenshots/anchors.png) |
+| Today | Check in | Reflect | Insights |
+|---|---|---|---|
+| <img src="docs/screenshots/today.png" width="200" alt="Today: the orb, a greeting, and check in"> | <img src="docs/screenshots/check-in.png" width="200" alt="Check in: write, speak, or draw"> | <img src="docs/screenshots/reflect.png" width="200" alt="Reflect: a calendar of dots and this month's light"> | <img src="docs/screenshots/insights.png" width="200" alt="Insights: loops as bubbles and before/after orbs"> |
 
 ## Screens
 - **Welcome tour**: on first launch, an animated orb and one idea per screen. One step asks which thoughts you tend to get stuck on: pick from general starters (not good enough, comparing myself, worrying about the future, people-pleasing, overthinking decisions, wasted effort, love and belonging) or name your own. Replay it from Settings.
