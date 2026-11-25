@@ -356,9 +356,6 @@ struct TodayView: View {
         }
         // Hide what slides above the top, but let the canvas shadow spill sideways.
         .mask(Rectangle().padding(.horizontal, -20).padding(.bottom, -40))
-        .overlay(alignment: .topTrailing) {
-            if maxDrawOffset > 1 { pageHandle }
-        }
     }
 
     private var maxDrawOffset: CGFloat { max(0, drawContentHeight - drawVisibleHeight) }
@@ -370,10 +367,15 @@ struct TodayView: View {
 
     /// A short vertical bar on the canvas's right edge. Hold and move it to slide the
     /// page; drawing anywhere else on the canvas never moves the page.
-    /// It stays put on screen like a scroll bar, so it stays under your finger.
+    /// It lives on the canvas and never leaves it: top of the canvas means the top of
+    /// the page, bottom of the canvas means the bottom. The canvas itself slides up a
+    /// little as you go, and the math below keeps the bar under your finger anyway.
     private var pageHandle: some View {
         let track = max(1, canvasHeight - 2 * handleInset - handleLength)
         let fraction = min(max(drawOffset / maxDrawOffset, 0), 1)
+        // On screen the bar sits at  -offset + fraction * track,  so for every point the
+        // finger moves, the page moves  1 / (track / max - 1)  points.
+        let pagePerPoint = 1 / max(track / max(maxDrawOffset, 1) - 1, 0.25)
         let held = handleStart != nil
         return Capsule()
             .fill(.secondary.opacity(held ? 0.8 : 0.5))
@@ -385,7 +387,7 @@ struct TodayView: View {
                     .onChanged { drag in
                         let start = handleStart ?? drawOffset
                         if handleStart == nil { handleStart = start }
-                        let target = start + drag.translation.height * maxDrawOffset / track
+                        let target = start + drag.translation.height * pagePerPoint
                         drawOffset = min(max(target, 0), maxDrawOffset)
                     }
                     .onEnded { _ in
@@ -515,6 +517,9 @@ struct TodayView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
                     .overlay(alignment: .topLeading) { drawingTools.padding(10) }
+                    .overlay(alignment: .topTrailing) {
+                        if maxDrawOffset > 1 { pageHandle }
+                    }
             }
 
             // Optional: which loop this belongs to, or that it was good after all.
