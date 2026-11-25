@@ -5,13 +5,12 @@ import PencilKit
 /// The daily flow, one calm step per screen:
 /// 0. home: the orb, a greeting, and one main action ("Check in")
 /// 1. choose how to start (Write, Speak, Draw)
-/// 2. get it out
-/// 3. name the loop and save
+/// 2. get it out, optionally tap the loop it belongs to, and save
 /// Saving then offers the optional Reframe step.
 struct TodayView: View {
     @Environment(\.modelContext) private var context
 
-    private enum Step: Int, CaseIterable { case home, choose, capture, loop }
+    private enum Step: Int, CaseIterable { case home, choose, capture }
     @State private var step: Step = .home
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
 
@@ -38,6 +37,8 @@ struct TodayView: View {
     @State private var showSettings = false
     @State private var showValues = false
     @State private var saveFailed = false
+    /// Becomes true the first time you hold the orb, and the hint under it goes away for good.
+    @AppStorage("hasHeldOrb") private var hasHeldOrb = false
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
     @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
@@ -52,7 +53,7 @@ struct TodayView: View {
         NavigationStack {
             VStack(spacing: 20) {
                 if step != .home {
-                    // Dots for the three check-in steps (home doesn't count).
+                    // Dots for the check-in steps (home doesn't count).
                     StepDots(count: Step.allCases.count - 1, current: step.rawValue - 1)
                 }
 
@@ -62,7 +63,6 @@ struct TodayView: View {
                     case .home: homeStep
                     case .choose: chooseStep
                     case .capture: captureStep
-                    case .loop: loopStep
                     }
                 }
                 .id(step)
@@ -129,9 +129,7 @@ struct TodayView: View {
                 .transition(.opacity)
             } else {
                 // Hold the orb and it divides into your values.
-                OrbView(palette: orbPalette, interactive: true, onHold: {
-                    withAnimation(.calm) { showValues = true }
-                })
+                OrbView(palette: orbPalette, interactive: true, onHold: openValues)
                 .frame(width: 260, height: 260)
                 .transition(.opacity)
                 .overlay {
@@ -140,12 +138,21 @@ struct TodayView: View {
                         .accessibilityElement()
                         .accessibilityLabel("Show your values")
                         .accessibilityAddTraits(.isButton)
-                        .accessibilityAction { withAnimation(.calm) { showValues = true } }
+                        .accessibilityAction { openValues() }
                         .allowsHitTesting(false)
                 }
             }
             if !showValues {
             VStack(spacing: 10) {
+                // A quiet hint, shown until you've found it once.
+                if !hasHeldOrb {
+                    Label("hold the orb to see what matters to you", systemImage: "hand.tap")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                        .padding(.bottom, 4)
+                        .transition(.opacity)
+                        .accessibilityHidden(true)
+                }
                 Text(Greeting.now)
                     .font(.system(.largeTitle, design: .serif).weight(.semibold))
                     .softCase()
@@ -304,57 +311,25 @@ struct TodayView: View {
                 }
             }
 
-            // A good moment doesn't need a loop, so it saves straight away.
-            Button(good ? "Keep it" : "Next") {
-                if good { save() } else { go(to: .loop) }
-            }
+            // Optional: which loop this belongs to, or that it was good after all.
+            // Never required, so it never stands between you and saving.
+            LoopChips(loop: $loop, good: $good)
+
+            Button(good ? "Keep it" : "Save entry", action: save)
             .buttonStyle(.paper)
             .disabled(!hasContent)
             .padding(.bottom, 12)
         }
     }
 
-    // MARK: - Step 3: loop
-
-    private var loopStep: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                PaperHeading(title: "Which loop is this?",
-                             subtitle: "Naming the pattern makes it a little smaller. It's okay not to be sure.")
-                    .padding(.bottom, 8)
-
-                // In case it turned out to be a good moment after all.
-                Button {
-                    withAnimation(.calm) {
-                        good.toggle()
-                        if good { loop = nil }
-                    }
-                } label: {
-                    HStack {
-                        Label("Actually, this was something good", systemImage: "sun.max")
-                            .font(.system(.headline, design: .serif))
-                        Spacer()
-                        Image(systemName: good ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
-                            .foregroundStyle(good ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
-                    }
-                    .paperCard(padding: 16)
-                }
-                .buttonStyle(.plain)
-
-                LoopChoices(selection: $loop)
-                    .onChange(of: loop) { _, new in if new != nil { good = false } }
-
-                Button("Save entry", action: save)
-                    .buttonStyle(.paper)
-                    .padding(.top, 8)
-            }
-            .padding(.bottom, 24)
-        }
-        .scrollIndicators(.hidden)
-    }
-
     // MARK: - Actions
+
+    private func openValues() {
+        withAnimation(.calm) {
+            showValues = true
+            hasHeldOrb = true
+        }
+    }
 
     private func go(to newStep: Step) {
         withAnimation(.calm) { step = newStep }
@@ -476,66 +451,101 @@ private struct JournalEditor: View {
     }
 }
 
-/// Loop cards, each with its core belief, plus "Not sure yet".
-private struct LoopChoices: View {
-    @Binding var selection: Loop?
+/// "Which loop is this?" as a row of small chips under what you wrote.
+/// Tap one to tag it, tap it again to untag. Leaving them all off is fine.
+/// "Something good" sits in the same row, for when it turned out to be good.
+private struct LoopChips: View {
+    @Binding var loop: Loop?
+    @Binding var good: Bool
     @Environment(\.modelContext) private var context
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
+    @State private var naming = false
     @State private var newLoop = ""
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
-        ForEach(loops) { loop in
-            choice(isSelected: selection == loop, action: { selection = loop }) {
-                Text(loop.name)
-                    .font(.system(.headline, design: .serif))
-                if !loop.coreBelief.isEmpty {
-                    Text("“\(loop.coreBelief)”")
-                        .font(.subheadline)
-                        .italic()
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(good ? "Kept as something good" : "Which loop is this? (optional)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            ChipFlow {
+                if !good {
+                    ForEach(loops) { option in
+                        chip(option.name, isOn: loop == option) {
+                            loop = loop == option ? nil : option
+                        }
+                    }
+                }
+                chip("something good", systemImage: "sun.max", isOn: good) {
+                    good.toggle()
+                    if good { loop = nil }
+                }
+                if !good && !naming {
+                    chip("new loop", systemImage: "plus", isOn: false) {
+                        naming = true
+                        nameFocused = true
+                    }
                 }
             }
+
+            if naming && !good {
+                HStack {
+                    TextField("Name the loop", text: $newLoop)
+                        .focused($nameFocused)
+                        .onSubmit(addLoop)
+                    Button("Add", action: addLoop)
+                        .disabled(newLoop.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .paperCard(padding: 14)
+            }
+
+            // Seeing the belief written down makes it a little easier to question.
+            if let loop, !loop.coreBelief.isEmpty, !good {
+                Text("“\(loop.coreBelief)”")
+                    .font(.footnote)
+                    .italic()
+                    .foregroundStyle(.secondary)
+            }
         }
-        choice(isSelected: selection == nil, action: { selection = nil }) {
-            Text("Not sure yet")
-                .font(.system(.headline, design: .serif))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.calm, value: loop)
+        .animation(.calm, value: good)
+        .animation(.calm, value: naming)
+    }
+
+    private func chip(_ title: String, systemImage: String? = nil, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let systemImage { Image(systemName: systemImage).imageScale(.small) }
+                Text(title)
+            }
+            .font(.subheadline)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(isOn ? AnyShapeStyle(.tint.opacity(0.18)) : AnyShapeStyle(.secondary.opacity(0.08)), in: Capsule())
+            .overlay(Capsule().strokeBorder(.tint.opacity(isOn ? 0.5 : 0), lineWidth: 1))
+            .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            .contentShape(Capsule())
         }
-        // A new loop can be named right here, without a trip to Settings.
-        HStack {
-            TextField(loops.isEmpty ? "Name the loop this belongs to" : "Or name a new loop", text: $newLoop)
-                .onSubmit(addLoop)
-            Button("Add", action: addLoop)
-                .disabled(newLoop.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        .paperCard(padding: 16)
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+        .sensoryFeedback(.selection, trigger: isOn)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     private func addLoop() {
         let name = newLoop.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
-        let loop = Loop(name: name, coreBelief: "", pattern: "", sortOrder: (loops.map(\.sortOrder).max() ?? -1) + 1)
-        context.insert(loop)
-        selection = loop
-        newLoop = ""
-    }
-
-    private func choice(isSelected: Bool, action: @escaping () -> Void, @ViewBuilder content: () -> some View) -> some View {
-        Button(action: action) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6, content: content)
-                Spacer(minLength: 12)
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
-            }
-            .paperCard(padding: 16)
-            .overlay(
-                RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous)
-                    .strokeBorder(.tint.opacity(isSelected ? 0.6 : 0), lineWidth: 1.5)
-            )
+        if let existing = loops.first(where: { $0.name.lowercased() == name.lowercased() }) {
+            loop = existing
+        } else {
+            let created = Loop(name: name, coreBelief: "", pattern: "", sortOrder: (loops.map(\.sortOrder).max() ?? -1) + 1)
+            context.insert(created)
+            loop = created
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        newLoop = ""
+        naming = false
     }
 }
 

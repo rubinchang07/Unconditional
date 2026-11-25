@@ -52,6 +52,8 @@ struct MapView: View {
             .padding()
         }
         .themedBackground()
+        .navigationTitle("your map")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selected) { loop in
             LoopMapDetail(loop: loop, loops: loops, values: values, color: color(for: loop))
                 .presentationDetents([.large])
@@ -189,7 +191,8 @@ private struct MapWeb: View {
                 ForEach(Array(loops.enumerated()), id: \.element.id) { index, loop in
                     Button { onSelect(loop) } label: {
                         VStack(spacing: 4) {
-                            MiniOrb(color: color(loop), seed: Double(index))
+                            // Loops are rings here too, matching Patterns.
+                            MiniRing(color: color(loop))
                                 .frame(width: dotSize(loop) + 6, height: dotSize(loop) + 6)
                             Text(loop.name)
                                 .font(.caption2)

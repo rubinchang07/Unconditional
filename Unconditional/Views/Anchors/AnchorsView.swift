@@ -223,10 +223,9 @@ struct AnchorsView: View {
         }
     }
 
-    /// Bigger when you've lived it more lately, but never tiny.
-    private func orbSize(_ value: PersonalValue) -> CGFloat {
-        44 + CGFloat(value.livedLately) * 3
-    }
+    /// Every value is the same size. What you care about doesn't shrink in a hard week.
+    /// How much you've lived it lately shows only when you open one, as a ring.
+    private func orbSize(_ value: PersonalValue) -> CGFloat { 62 }
 
     // MARK: - Pull at the surface for a bubble
 

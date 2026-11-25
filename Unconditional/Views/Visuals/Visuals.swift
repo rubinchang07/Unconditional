@@ -167,43 +167,119 @@ struct BubbleCluster: Layout {
 
 /// One loop as a bubble: bigger when it came up more. A small arrow shows
 /// whether it came up more or less than the weeks before.
-struct LoopBubble: View {
+/// A loop drawn as what it is: a ring you go around.
+///
+/// - Each time it came up adds one more thin turn, like a coil (up to seven),
+///   so "often" looks like "around and around", never like a number.
+/// - When it came up less than the period before, the ring opens: a soft gap,
+///   as if the loop is loosening. Coming up more never looks alarming, just more turns.
+/// - It turns slowly, with the orb's soft wobble, and stands still with Reduce Motion.
+struct LoopRing: View {
     let name: String
     let count: Int
     let previous: Int
     let maxCount: Int
     let color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var diameter: CGFloat {
         let share = maxCount == 0 ? 0 : sqrt(Double(count) / Double(maxCount))
-        return 64 + 86 * CGFloat(share)
+        return 92 + 64 * CGFloat(share)
+    }
+
+    /// How many turns to draw.
+    var turns: Int { min(max(count, 1), 7) }
+
+    /// The gap in radians: none if it came up as much or more, up to about a third of the ring.
+    var gap: Double {
+        guard previous > 0, count < previous else { return 0 }
+        let eased = Double(previous - count) / Double(previous)
+        return 0.35 + 1.75 * eased
     }
 
     var body: some View {
         ZStack {
-            MiniOrb(color: color, seed: Double(name.count))
-            VStack(spacing: 2) {
-                Text(name)
-                    .font(.caption2.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.8)
-                // Size says how often. Only a small arrow, no count, so it never reads as a score.
-                if let symbol = trendSymbol {
-                    Image(systemName: symbol).font(.caption2.weight(.bold))
+            TimelineView(.animation(paused: reduceMotion)) { timeline in
+                let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000)
+                Canvas { context, size in
+                    draw(in: &context, size: size, time: t)
                 }
             }
-            .foregroundStyle(.white)
-            .padding(10)
+            .padding(-8) // room for the soft glow
+            Text(name)
+                .font(.caption2.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.75)
+                .foregroundStyle(.primary)
+                .padding(diameter * 0.2)
         }
         .frame(width: diameter, height: diameter)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(name): \(count), \(previous) the period before")
+        .accessibilityLabel(accessibilityText)
     }
 
-    private var trendSymbol: String? {
-        if count == previous { return nil }
-        return count > previous ? "arrow.up" : "arrow.down"
+    private func draw(in context: inout GraphicsContext, size: CGSize, time: Double) {
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let outer = Double(diameter) / 2 - 4
+        let spin = time * 0.12 + Double(name.count)
+        let seed = Double(name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 100)
+
+        for turn in 0..<turns {
+            let share = turns == 1 ? 1.0 : Double(turn) / Double(turns - 1)
+            let radius = outer * (0.8 + 0.2 * share)
+            let start = spin + gap / 2 + Double(turn) * 0.4
+            let sweep = 2 * Double.pi - gap
+            let closed = gap == 0
+
+            var path = Path()
+            let steps = 96
+            for step in 0...steps {
+                let angle = start + sweep * Double(step) / Double(steps)
+                let wobble1: Double = sin(angle * 3 + time * 0.6 + seed + Double(turn)) * 1.6
+                let wobble2: Double = sin(angle * 5 - time * 0.4 + Double(turn) * 1.3) * 0.9
+                let r = radius + wobble1 + wobble2
+                let point = CGPoint(x: center.x + r * cos(angle), y: center.y + r * sin(angle))
+                if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
+            }
+            if closed { path.closeSubpath() }
+
+            let strength = 0.35 + 0.65 * Double(turn + 1) / Double(turns)
+            let style = StrokeStyle(lineWidth: turn == turns - 1 ? 3 : 1.6, lineCap: .round, lineJoin: .round)
+            // A faint glow under each turn, then the line itself.
+            var glow = context
+            glow.addFilter(.blur(radius: 4))
+            glow.stroke(path, with: .color(color.opacity(0.35 * strength)), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+            context.stroke(path, with: .color(color.opacity(strength)), style: style)
+        }
+    }
+
+    private var accessibilityText: String {
+        let times = "came up \(count) time\(count == 1 ? "" : "s")"
+        if previous == 0 || count == previous { return "\(name), \(times)" }
+        return count < previous
+            ? "\(name), \(times), less than before (\(previous)). The ring is opening."
+            : "\(name), \(times), more than before (\(previous))."
+    }
+}
+
+/// A small, still loop ring for tight spaces like the map: two soft turns and a glow.
+struct MiniRing: View {
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.35), lineWidth: 6)
+                .blur(radius: 4)
+            Circle()
+                .inset(by: 5)
+                .stroke(color.opacity(0.5), lineWidth: 1.5)
+            Circle()
+                .inset(by: 1.5)
+                .stroke(color, lineWidth: 3)
+        }
+        .padding(2)
     }
 }
 

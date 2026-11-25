@@ -102,6 +102,13 @@ struct ValueDetailView: View {
                 Text("What it looks like for me")
             }
             Section {
+                HStack(spacing: 16) {
+                    ValueRing(amount: value.livedLately, size: 54)
+                    Text("How much you've lived it lately. It never changes how big the value looks.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
                 RatingSlider(title: "Lived it lately", value: $value.livedLately,
                              lowLabel: "Not much", highLabel: "A lot")
             } footer: {

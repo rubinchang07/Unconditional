@@ -88,7 +88,7 @@ struct MiniOrb: View {
 // MARK: - The orb divides into your values
 
 /// Hold the orb on Today and it gently divides into one small orb per value,
-/// each sized by how much you've lived it lately. Tap one to read it. Tap the
+/// all the same size, because a value doesn't shrink in a hard week. Tap one to read it. Tap the
 /// middle to let them flow back together.
 struct ValuesBloom: View {
     let values: [PersonalValue]
@@ -178,7 +178,8 @@ struct ValuesBloom: View {
     private func baseRadius(_ size: CGSize) -> CGFloat { min(size.width, size.height) / 2 * 0.62 }
 
     private func smallRadius(_ value: PersonalValue, size: CGSize, p: Double) -> CGFloat {
-        baseRadius(size) * (0.2 + 0.14 * CGFloat(value.livedLately) / 10) * CGFloat(0.5 + 0.5 * p)
+        // All the same size: a value doesn't get smaller when life gets in the way.
+        baseRadius(size) * 0.27 * CGFloat(0.5 + 0.5 * p)
     }
 
     private func position(_ index: Int, center: CGPoint, size: CGSize, p: Double, t: Double) -> CGPoint {
