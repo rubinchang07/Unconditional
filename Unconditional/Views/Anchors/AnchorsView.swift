@@ -47,6 +47,14 @@ struct AnchorsView: View {
                     winsLayer
                     wordsLayer
                     valuesLayer
+                        .padding(.vertical, 24)
+                        .padding(.trailing, 16)
+                        .background {
+                            // The bed reaches under the waterfall, so the falls land in it.
+                            Riverbed(color: palette.colors[0])
+                                .padding(.leading, -(Self.streamX + 22))
+                                .padding(.trailing, -4)
+                        }
                 }
                 .padding(.leading, Self.streamX + 22)
                 .padding(.trailing, 20)
@@ -164,7 +172,7 @@ struct AnchorsView: View {
     // MARK: - The riverbed: values
 
     private var valuesLayer: some View {
-        Layer(title: "what holds you", subtitle: "What you care about, on good days and hard ones.") {
+        Layer(title: "what holds you", subtitle: "What you care about, on good days and hard ones. The falls land here.") {
             if values.isEmpty {
                 Text("Add the values that feel like yours. They'll rest here, steady, whatever the day brings.")
                     .foregroundStyle(.secondary)
@@ -190,15 +198,8 @@ struct AnchorsView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-                .background(alignment: .bottom) {
-                    // A soft riverbed for them to rest on.
-                    Ellipse()
-                        .fill(palette.colors[0].opacity(0.12))
-                        .frame(height: 50)
-                        .blur(radius: 12)
-                        .offset(y: 10)
-                }
+                .padding(.top, 44)
+                .padding(.bottom, 56)
             }
         }
     }
@@ -319,12 +320,21 @@ struct DropCard<Content: View>: View {
     }
 }
 
-/// The stream: a soft line of water down the left of the page, with drops
-/// sliding along it. Scrolling pushes them along faster; deeper, it all slows.
+/// The waterfall: a few soft strands of water falling down the left of the
+/// page, melted together, with bright streaks sliding down them. Scrolling
+/// nudges them along a little; deeper down, everything slows.
 private struct Stream: View {
     let scroll: AnchorsView.ScrollState
     let color: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Each strand: sideways offset, width, and how its wave is shifted.
+    private static let strands: [(dx: CGFloat, width: CGFloat, phase: Double)] = [
+        (-6, 4, 0), (0, 6, 1.7), (6, 3.5, 3.1), (11, 2, 4.4),
+    ]
+    /// Falling streaks: which strand, speed, length, and a starting offset.
+    private static let streaks: [(strand: Int, speed: Double, length: CGFloat, start: Double)] =
+        (0..<14).map { i in (strand: i % 4, speed: 40 + Double((i * 37) % 30), length: 16 + CGFloat((i * 13) % 20), start: Double(i) * 97) }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
@@ -337,38 +347,109 @@ private struct Stream: View {
                 let calm = 1 - 0.6 * scroll.depth
                 let x = AnchorsView.streamX
 
-                func wiggle(_ y: CGFloat) -> CGFloat {
-                    x + CGFloat(sin(Double(y) / 90 + t * 0.6) * 5 * calm)
+                func strandX(_ strand: Int, _ y: CGFloat) -> CGFloat {
+                    let s = Self.strands[strand]
+                    return x + s.dx + CGFloat(sin(Double(y) / 110 + t * 0.5 + s.phase) * 3 * calm)
                 }
 
-                var silhouette = ctx
-                silhouette.opacity = 0.5
-                silhouette.addFilter(.alphaThreshold(min: 0.5, color: color))
-                silhouette.addFilter(.blur(radius: 5))
-                silhouette.drawLayer { layer in
-                    var line = Path()
-                    line.move(to: CGPoint(x: wiggle(top), y: top))
-                    var y = top
-                    while y < bottom {
-                        y += 8
-                        line.addLine(to: CGPoint(x: wiggle(y), y: y))
-                    }
-                    layer.stroke(line, with: .color(.black), lineWidth: 5)
-
-                    // Drops slide down; scrolling adds to their travel.
-                    let spacing: CGFloat = 140
-                    let travel = CGFloat(t * 26 * calm) + scroll.offset * 0.5
-                    var dropY = top - top.truncatingRemainder(dividingBy: spacing) + travel.truncatingRemainder(dividingBy: spacing)
-                    while dropY < bottom {
-                        if dropY > top {
-                            let r: CGFloat = 7 + CGFloat(sin(Double(dropY) * 0.07)) * 2
-                            layer.fill(Circle().path(in: Gooey.rect(CGPoint(x: wiggle(dropY), y: dropY), r)), with: .color(.black))
+                // The body of the falls: strands melted into one soft sheet of water.
+                var sheet = ctx
+                sheet.opacity = 0.45
+                sheet.addFilter(.alphaThreshold(min: 0.4, color: color))
+                sheet.addFilter(.blur(radius: 4))
+                sheet.drawLayer { layer in
+                    for strand in Self.strands.indices {
+                        var line = Path()
+                        var y = top
+                        line.move(to: CGPoint(x: strandX(strand, y), y: y))
+                        while y < bottom {
+                            y += 10
+                            line.addLine(to: CGPoint(x: strandX(strand, y), y: y))
                         }
-                        dropY += spacing
+                        layer.stroke(line, with: .color(.black), lineWidth: Self.strands[strand].width)
+                    }
+                }
+
+                // Bright streaks sliding down, like light catching falling water.
+                // Scrolling only nudges them a little, so they never rush.
+                let height = max(size.height, 1)
+                for streak in Self.streaks {
+                    let fall = (streak.start + t * streak.speed * calm + Double(scroll.offset) * 0.12)
+                        .truncatingRemainder(dividingBy: Double(height))
+                    // Repeat down the whole page, one copy per screen height.
+                    var y = CGFloat(fall) - height
+                    while y < bottom {
+                        if y + streak.length > top {
+                            let sx = strandX(streak.strand, y)
+                            let rect = CGRect(x: sx - 1.2, y: y, width: 2.4, height: streak.length)
+                            ctx.fill(Capsule().path(in: rect),
+                                     with: .linearGradient(Gradient(colors: [.white.opacity(0), .white.opacity(0.85)]),
+                                                           startPoint: CGPoint(x: sx, y: y),
+                                                           endPoint: CGPoint(x: sx, y: y + streak.length)))
+                        }
+                        y += max(scroll.viewport, 400)
                     }
                 }
             }
         }
+    }
+}
+
+/// The riverbed: where the falls land and your values rest. Deeper water at
+/// the top, warm sand and pebbles at the bottom, with soft light moving over it.
+private struct Riverbed: View {
+    let color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let sand = Color(hex: 0xE3D3B4)
+    private static let stone = Color(hex: 0xB9B2A6)
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
+            let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+            Canvas { ctx, size in
+                let bed = Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 30)
+                ctx.clip(to: bed)
+
+                // Water deepening into sand.
+                ctx.fill(bed, with: .linearGradient(
+                    Gradient(stops: [.init(color: color.opacity(0.18), location: 0),
+                                     .init(color: color.opacity(0.28), location: 0.45),
+                                     .init(color: Self.sand.opacity(0.75), location: 0.85),
+                                     .init(color: Self.sand, location: 1)]),
+                    startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
+
+                // Light rippling across the water (caustics), very soft.
+                ctx.drawLayer { layer in
+                    layer.addFilter(.blur(radius: 18))
+                    for i in 0..<5 {
+                        let fx = (sin(t * 0.25 + Double(i) * 1.9) * 0.5 + 0.5) * Double(size.width)
+                        let fy = (cos(t * 0.2 + Double(i) * 1.3) * 0.25 + 0.3) * Double(size.height)
+                        layer.fill(Ellipse().path(in: CGRect(x: fx - 50, y: fy - 14, width: 100, height: 28)),
+                                   with: .color(.white.opacity(0.35)))
+                    }
+                }
+
+                // Where the waterfall lands: rings spreading out from the splash.
+                let splash = CGPoint(x: AnchorsView.streamX, y: 16)
+                for i in 0..<3 {
+                    let phase = (t * 0.5 + Double(i) / 3).truncatingRemainder(dividingBy: 1)
+                    let r = CGFloat(8 + phase * 46)
+                    ctx.stroke(Ellipse().path(in: CGRect(x: splash.x - r, y: splash.y - r * 0.35, width: r * 2, height: r * 0.7)),
+                               with: .color(.white.opacity(0.6 * (1 - phase))), lineWidth: 1.5)
+                }
+
+                // Pebbles along the bottom: the same layout every time.
+                for i in 0..<26 {
+                    let px = CGFloat((Double(i) * 0.618).truncatingRemainder(dividingBy: 1)) * size.width
+                    let py = size.height - 10 - CGFloat((Double(i * 7) * 0.31).truncatingRemainder(dividingBy: 1)) * 34
+                    let w = 9 + CGFloat(i % 4) * 4
+                    let rect = CGRect(x: px - w / 2, y: py - w * 0.3, width: w, height: w * 0.6)
+                    ctx.fill(Ellipse().path(in: rect), with: .color(Self.stone.opacity(0.35 + Double(i % 3) * 0.12)))
+                }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
