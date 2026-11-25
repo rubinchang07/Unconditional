@@ -16,7 +16,7 @@ struct TodayView: View {
     @State private var kind: EntryKind = .write
     @State private var text = ""
     @State private var drawing = PKDrawing()
-    @State private var ink: InkChoice = .ink
+    @State private var tool = DrawingTool()
     @State private var loop: Loop?
 
     @State private var recorder = VoiceRecorder()
@@ -25,6 +25,7 @@ struct TodayView: View {
 
     /// When set, the "reframe this?" sheet opens for that entry.
     @State private var savedEntry: Entry?
+    @State private var showBreathing = false
 
     private var hasContent: Bool {
         if recorder.isRecording { return false }
@@ -73,6 +74,7 @@ struct TodayView: View {
             .sheet(item: $savedEntry) { entry in
                 ReframePromptView(entry: entry)
             }
+            .sheet(isPresented: $showBreathing) { BreathingView() }
         }
     }
 
@@ -111,6 +113,22 @@ struct TodayView: View {
                     .buttonStyle(.plain)
                 }
 
+                Button {
+                    showBreathing = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "wind")
+                            .foregroundStyle(.tint)
+                        Text("Feeling a lot right now? Breathe for a minute first.")
+                            .font(.subheadline)
+                            .multilineTextAlignment(.leading)
+                        Spacer()
+                    }
+                    .padding(14)
+                    .background(.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
                 Text("No right way to do this. Just get it out of your head.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -137,8 +155,12 @@ struct TodayView: View {
                     .disabled(recorder.isRecording)
             case .draw:
                 PaperHeading(title: "Draw it", subtitle: "Shapes, scribbles, a face. Whatever it feels like.")
-                InkPalette(selection: $ink)
-                DrawingCanvas(drawing: $drawing, ink: ink)
+                VStack(spacing: 12) {
+                    InkPalette(selection: $tool.ink)
+                    BrushBar(tool: $tool)
+                }
+                .paperCard(padding: 14)
+                DrawingCanvas(drawing: $drawing, tool: tool)
                     .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
                 if !drawing.strokes.isEmpty {
@@ -369,7 +391,7 @@ struct ReframePromptView: View {
     @Environment(\.dismiss) private var dismiss
     let entry: Entry
 
-    private enum Step { case ask, reframe, win }
+    private enum Step { case ask, reframe, compassion, win }
     @State private var step: Step = .ask
 
     var body: some View {
@@ -384,13 +406,15 @@ struct ReframePromptView: View {
                             .foregroundStyle(.tint)
                         Text("Saved.")
                             .font(.system(.title, design: .serif).weight(.semibold))
-                        Text("Getting it out counts. Want to look at it from another angle?")
+                        Text("Getting it out counts. Want to look at it from another angle, or just be kind to yourself about it?")
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Reframe this thought") { withAnimation { step = .reframe } }
                             .buttonStyle(.paper)
+                        Button("Self-compassion break instead") { withAnimation { step = .compassion } }
                         Button("Not today") { dismiss() }
+                            .foregroundStyle(.secondary)
                             .padding(.bottom, 8)
                     }
                     .padding(28)
@@ -398,6 +422,8 @@ struct ReframePromptView: View {
                     .background(ThemeBackground())
                 case .reframe:
                     ReframeView(entry: entry, onDone: { withAnimation { step = .win } })
+                case .compassion:
+                    SelfCompassionView(entry: entry, onDone: { withAnimation { step = .win } })
                 case .win:
                     WinReminderView(onDone: { dismiss() })
                 }
@@ -411,6 +437,8 @@ struct ReframePromptView: View {
 /// "Remember this?" One random past win, shown after a reframe.
 struct WinReminderView: View {
     @Query private var wins: [Win]
+    @Query private var values: [PersonalValue]
+    @State private var value: PersonalValue?
     let onDone: () -> Void
 
     /// Picked once when the view appears, so it doesn't change on every redraw.
@@ -443,6 +471,11 @@ struct WinReminderView: View {
                 Text("One hard moment doesn't erase this. Both are true.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
+                if let value {
+                    Text("And you still care about **\(value.name)**, whatever today brought.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Text("Nice work.")
                     .font(.system(.title, design: .serif).weight(.semibold))
@@ -458,6 +491,9 @@ struct WinReminderView: View {
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeBackground())
-        .onAppear { win = wins.randomElement() }
+        .onAppear {
+            win = wins.randomElement()
+            value = values.randomElement()
+        }
     }
 }

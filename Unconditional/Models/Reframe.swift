@@ -19,6 +19,15 @@ final class Reframe {
     var smallStep: String
     var createdAt: Date
 
+    // Before-and-after ratings. Feelings come in degrees, so these are
+    // sliders, not yes/no. Over time they show whether reframing helps.
+    /// How distressed you felt, 0 (calm) to 10 (overwhelmed), before the reframe.
+    var distressBefore: Double = 5
+    var distressAfter: Double = 5
+    /// How much you believed the core belief, 0 to 100%, before and after.
+    var beliefBefore: Double = 70
+    var beliefAfter: Double = 70
+
     var entry: Entry?
 
     init(trigger: String = "", coreBelief: String = "", kinderRead: String = "", smallStep: String = "", createdAt: Date = .now) {

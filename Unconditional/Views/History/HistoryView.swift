@@ -6,6 +6,7 @@ struct HistoryView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Entry.createdAt, order: .reverse) private var entries: [Entry]
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
+    @Query private var reframes: [Reframe]
 
     var body: some View {
         NavigationStack {
@@ -25,6 +26,16 @@ struct HistoryView: View {
                 } footer: {
                     if entries.isEmpty {
                         Text("Your patterns will show up here as you write.")
+                    }
+                }
+
+                if !reframes.isEmpty {
+                    Section {
+                        ReframeShift(reframes: reframes)
+                    } header: {
+                        Text("When you reframe")
+                    } footer: {
+                        Text("Averages across \(reframes.count) reframe\(reframes.count == 1 ? "" : "s"). Small shifts add up.")
                     }
                 }
 
@@ -129,5 +140,41 @@ struct LoopEditView: View {
         .themedBackground()
         .keyboardDoneButton()
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Average distress and belief, before vs after reframing.
+private struct ReframeShift: View {
+    let reframes: [Reframe]
+
+    private func average(_ values: [Double]) -> Double {
+        values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
+    }
+
+    var body: some View {
+        let distressBefore = average(reframes.map(\.distressBefore))
+        let distressAfter = average(reframes.map(\.distressAfter))
+        let beliefBefore = average(reframes.map(\.beliefBefore))
+        let beliefAfter = average(reframes.map(\.beliefAfter))
+
+        VStack(alignment: .leading, spacing: 12) {
+            row("Distress", before: distressBefore.formatted(.number.precision(.fractionLength(1))),
+                after: distressAfter.formatted(.number.precision(.fractionLength(1))))
+            row("Believed the thought", before: "\(Int(beliefBefore.rounded()))%", after: "\(Int(beliefAfter.rounded()))%")
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func row(_ title: String, before: String, after: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(before).foregroundStyle(.secondary)
+            Image(systemName: "arrow.right").font(.caption).foregroundStyle(.tertiary)
+            Text(after)
+                .font(.system(.body, design: .serif).weight(.semibold))
+                .foregroundStyle(.tint)
+        }
+        .monospacedDigit()
     }
 }

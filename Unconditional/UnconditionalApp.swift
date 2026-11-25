@@ -7,7 +7,7 @@ struct UnconditionalApp: App {
     /// Nothing leaves the phone (no iCloud) unless we add that later.
     let container: ModelContainer = {
         do {
-            return try ModelContainer(for: Loop.self, Entry.self, Reframe.self, Win.self)
+            return try ModelContainer(for: Loop.self, Entry.self, Reframe.self, Win.self, PersonalValue.self)
         } catch {
             fatalError("Could not create the SwiftData container: \(error)")
         }

@@ -15,7 +15,7 @@ struct RootView: View {
                 TodayView()
                     .tabItem { Label("Today", systemImage: "sun.max") }
                 WinsView()
-                    .tabItem { Label("Wins", systemImage: "star") }
+                    .tabItem { Label("Anchors", systemImage: "star") }
                 HistoryView()
                     .tabItem { Label("History", systemImage: "clock") }
                 SettingsView()
