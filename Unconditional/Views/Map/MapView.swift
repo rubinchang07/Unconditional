@@ -378,6 +378,9 @@ enum MapLayout {
     static func spread(values: [PersonalValue], loops: [Loop], links: [MapLink],
                        center: CGPoint, outer: CGFloat) -> [CGPoint] {
         guard !values.isEmpty else { return [] }
+        // Before the map has a real size (its first layout pass can be zero wide),
+        // there's no room to place anything yet, so everything waits in the middle.
+        guard outer > 1 else { return values.map { _ in center } }
 
         func ringPoint(_ i: Int, of count: Int, radius: CGFloat, turn: Double = 0) -> CGPoint {
             let angle = -Double.pi / 2 + 2 * Double.pi * (Double(i) + turn) / Double(count)
@@ -416,7 +419,7 @@ enum MapLayout {
         // Spots to choose from: a fine grid inside the map.
         let limit = outer * 0.9
         let step: CGFloat = 7
-        let reach = Int(limit / step)
+        let reach = max(0, Int(limit / step))
         var spots: [CGPoint] = []
         for x in -reach...reach {
             for y in -reach...reach {

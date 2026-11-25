@@ -182,6 +182,13 @@ struct MapLayoutTests {
         }
     }
 
+    @Test("A map with no size yet doesn't crash")
+    func zeroSize() {
+        let values = (1...3).map { PersonalValue(name: "Value \($0)") }
+        let points = MapLayout.spread(values: values, loops: [], links: [], center: .zero, outer: -46)
+        #expect(points.count == 3)
+    }
+
     @Test("A value dragged outside the map is kept inside it")
     func clamp() {
         let center = CGPoint(x: 100, y: 100)
