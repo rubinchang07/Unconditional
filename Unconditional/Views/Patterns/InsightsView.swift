@@ -66,6 +66,8 @@ struct InsightsView: View {
         }
         .themedBackground()
         .paperList()
+        // Room at the end, so the floating tab bar never sits over the last card.
+        .contentMargins(.bottom, 80, for: .scrollContent)
         .navigationTitle("insights")
         .navigationBarTitleDisplayMode(.inline)
     }

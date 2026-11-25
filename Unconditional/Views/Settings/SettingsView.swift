@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
     @AppStorage("eveningWarmth") private var eveningWarmth = true
+    @AppStorage(OrbMotion.storageKey) private var orbMotion: OrbMotion = .always
     @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
     @Environment(\.modelContext) private var context
@@ -76,6 +77,9 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 6)
+                    Picker("Orb moves", selection: $orbMotion) {
+                        ForEach(OrbMotion.allCases) { Text($0.label).tag($0) }
+                    }
                     Toggle("Evening warmth after 9 PM", isOn: $eveningWarmth)
                     Button("Replay the welcome tour") {
                         dismiss()
@@ -83,6 +87,8 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Orb")
+                } footer: {
+                    Text("Some people like the orb moving during exercises but prefer stillness while writing.")
                 }
 
                 Section {

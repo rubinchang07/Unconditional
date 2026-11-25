@@ -35,6 +35,21 @@ extension Color {
     init(hex: UInt32) { self.init(uiColor: UIColor(hex: hex)) }
 }
 
+/// When the orb is allowed to move. Separate from the system's Reduce Motion,
+/// so you can enjoy it during exercises but have stillness while you write.
+enum OrbMotion: String, CaseIterable, Identifiable {
+    case always, exercises, never
+    static let storageKey = "orbMotion"
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .always: "Always"
+        case .exercises: "Only during exercises"
+        case .never: "Never"
+        }
+    }
+}
+
 /// What the app is doing, which the orb reflects. It never claims to know how
 /// you feel. It only shows whether the app is resting, listening, breathing
 /// with you, or settling after you've looked at a thought.
@@ -78,7 +93,16 @@ struct OrbView: View {
     var onHold: (() -> Void)? = nil
     /// A little warmer and brighter, for the "something good" screens.
     var warm = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Part of an exercise (breathing, grounding, tension) or listening to your voice,
+    /// where the motion itself is the guide. Moves even when set to "only during exercises".
+    var exercise = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @AppStorage(OrbMotion.storageKey) private var motion: OrbMotion = .always
+
+    /// Still when the system asks for less motion, or when you've chosen a stiller orb.
+    private var reduceMotion: Bool {
+        systemReduceMotion || motion == .never || (motion == .exercises && !exercise)
+    }
 
     /// Where the finger is, in the orb's own frame. Kept after lifting so the
     /// edge can settle back from there.

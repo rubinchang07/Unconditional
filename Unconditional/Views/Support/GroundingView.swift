@@ -25,6 +25,10 @@ struct GroundingView: View {
     @State private var noticed = 0
     @State private var pulse = false
     @State private var finished = false
+    /// The words fade out fully before the next sense's words fade in,
+    /// so two lines never sit on top of each other.
+    @State private var wordsShown = true
+    @State private var changing = false
 
     private var sense: Sense { senses[min(index, senses.count - 1)] }
 
@@ -40,9 +44,7 @@ struct GroundingView: View {
             }
             .font(.system(.title, design: .serif).weight(.semibold))
             .multilineTextAlignment(.center)
-            .contentTransition(.opacity)
-            .id(finished ? -1 : index)
-            .transition(.opacity)
+            .opacity(wordsShown ? 1 : 0)
 
             // The orb draws itself without taking touches, so the circle here is what you tap.
             // Each thing you notice brings the orb a little more into focus,
@@ -75,12 +77,14 @@ struct GroundingView: View {
                 }
                 .accessibilityElement()
                 .accessibilityLabel("\(noticed) of \(sense.count)")
+                .opacity(wordsShown ? 1 : 0)
                 Text(sense.hint)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
+                    .opacity(wordsShown ? 1 : 0)
                 Text("Tap the orb for each one you notice.")
                     .font(.footnote)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -99,12 +103,11 @@ struct GroundingView: View {
         }
         .padding(28)
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .animation(.calm, value: index)
         .animation(.calm, value: finished)
     }
 
     private func notice() {
-        guard !finished, noticed < sense.count else { return }
+        guard !finished, !changing, noticed < sense.count else { return }
         noticed += 1
         withAnimation(.spring(duration: 0.25, bounce: 0.5)) { pulse = true }
         withAnimation(.spring(duration: 0.5).delay(0.2)) { pulse = false }
@@ -117,11 +120,20 @@ struct GroundingView: View {
     }
 
     private func next() {
-        noticed = 0
-        if index + 1 < senses.count {
-            index += 1
-        } else {
-            withAnimation(.calm) { finished = true }
+        guard !changing else { return }
+        changing = true
+        Task {
+            // Out, swap while nothing shows, then in.
+            withAnimation(.easeOut(duration: 0.3)) { wordsShown = false }
+            try? await Task.sleep(for: .milliseconds(320))
+            noticed = 0
+            if index + 1 < senses.count {
+                index += 1
+            } else {
+                withAnimation(.calm) { finished = true }
+            }
+            withAnimation(.easeIn(duration: 0.4)) { wordsShown = true }
+            changing = false
         }
     }
 }

@@ -350,7 +350,7 @@ struct DispersingOrb: View {
                     let e = timeline.date.timeIntervalSince(dispersedAt)
                     ZStack {
                         // The orb itself lets go in the first half second.
-                        OrbView(palette: palette, speed: 0.5, state: .settling)
+                        OrbView(palette: palette, speed: 0.5, state: .settling, exercise: true)
                             .scaleEffect(1 + 0.12 * min(e / 0.5, 1))
                             .opacity(max(0, 1 - e / 0.5))
                         Canvas { context, size in
@@ -361,7 +361,7 @@ struct DispersingOrb: View {
                     }
                 }
             } else {
-                OrbView(palette: palette, speed: 0.5, state: state)
+                OrbView(palette: palette, speed: 0.5, state: state, exercise: true)
                     .opacity(dispersed ? 0 : 1)
                     .animation(.easeOut(duration: 1.2), value: dispersed)
             }

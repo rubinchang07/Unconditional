@@ -47,7 +47,7 @@ struct MapView: View {
                     }
 
                     HStack(alignment: .top) {
-                        Text("Tap a loop to see its core belief and the words you use. Drag a value to move it.")
+                        Text("Tap a loop or value to light up what it's connected to, and tap a lit loop again to open it. Drag a value to move it.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -76,6 +76,7 @@ struct MapView: View {
             .padding()
         }
         .themedBackground()
+        .contentMargins(.bottom, 80, for: .scrollContent)
         .navigationTitle("your map")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selected) { loop in
@@ -166,6 +167,33 @@ private struct MapWeb: View {
     let onSelect: (Loop) -> Void
     /// A value being dragged, and how far it has moved so far.
     @State private var dragging: (id: PersistentIdentifier, offset: CGSize)?
+    /// The loop or value you tapped. Its connections stay lit and the rest fades back.
+    @State private var focus: PersistentIdentifier?
+
+    /// Everything directly connected to the focus, including the focus itself.
+    private var lit: Set<PersistentIdentifier> {
+        guard let focus else { return [] }
+        var ids: Set<PersistentIdentifier> = [focus]
+        for link in links where involves(link, focus) {
+            for id in [link.loopA?.persistentModelID, link.loopB?.persistentModelID, link.value?.persistentModelID] {
+                if let id { ids.insert(id) }
+            }
+        }
+        return ids
+    }
+
+    private func involves(_ link: MapLink, _ id: PersistentIdentifier) -> Bool {
+        link.loopA?.persistentModelID == id || link.loopB?.persistentModelID == id || link.value?.persistentModelID == id
+    }
+
+    /// How strongly to draw a node: full when nothing is focused or it's connected.
+    private func presence(_ id: PersistentIdentifier) -> Double {
+        focus == nil || lit.contains(id) ? 1 : 0.25
+    }
+
+    private func toggleFocus(_ id: PersistentIdentifier) {
+        withAnimation(.calm) { focus = focus == id ? nil : id }
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -185,7 +213,8 @@ private struct MapWeb: View {
                         guard let a = link.loopA, let ia = loops.firstIndex(of: a) else { continue }
                         let start = point(ia, of: loops.count, radius: outer, center: center)
                         let width = 1 + link.strength * 5
-                        let shade = color(a).opacity(0.25 + link.strength * 0.45)
+                        let faded = focus.map { !involves(link, $0) } ?? false
+                        let shade = color(a).opacity((0.25 + link.strength * 0.45) * (faded ? 0.12 : 1))
                         var path = Path()
                         if let b = link.loopB, let ib = loops.firstIndex(of: b) {
                             // Loop to loop: a curve that bows toward the middle.
@@ -201,6 +230,9 @@ private struct MapWeb: View {
                         ctx.stroke(path, with: .color(shade), style: StrokeStyle(lineWidth: width, lineCap: .round))
                     }
                 }
+                // Tapping empty space lets everything come back.
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation(.calm) { focus = nil } }
 
                 ForEach(Array(values.enumerated()), id: \.element.id) { index, value in
                     let isDragging = dragging?.id == value.persistentModelID
@@ -215,7 +247,9 @@ private struct MapWeb: View {
                         .overlay(Capsule().stroke(.tint.opacity(isDragging ? 0.8 : 0.35)))
                         .scaleEffect(isDragging ? 1.12 : 1)
                         .shadow(color: .black.opacity(isDragging ? 0.15 : 0), radius: 6, y: 3)
+                        .opacity(isDragging ? 1 : presence(value.persistentModelID))
                         .position(positions[index])
+                        .onTapGesture { toggleFocus(value.persistentModelID) }
                         // Drag a value to wherever it reads best. The spot is remembered.
                         .gesture(
                             DragGesture(minimumDistance: 3)
@@ -236,15 +270,23 @@ private struct MapWeb: View {
                         .zIndex(isDragging ? 1 : 0)
                         .animation(.spring(duration: 0.3), value: isDragging)
                         .sensoryFeedback(.selection, trigger: isDragging)
-                        .accessibilityHint("Drag to move it on your map")
+                        .accessibilityAddTraits(focus == value.persistentModelID ? [.isButton, .isSelected] : .isButton)
+                        .accessibilityHint("Tap to light up its connections. Drag to move it on your map.")
                 }
 
                 ForEach(Array(loops.enumerated()), id: \.element.id) { index, loop in
-                    Button { onSelect(loop) } label: {
+                    // First tap lights up its connections; a second tap opens it.
+                    Button {
+                        if focus == loop.persistentModelID {
+                            onSelect(loop)
+                        } else {
+                            toggleFocus(loop.persistentModelID)
+                        }
+                    } label: {
                         VStack(spacing: 4) {
                             // Loops are rings here too, matching Patterns.
                             MiniRing(color: color(loop))
-                                .frame(width: dotSize(loop) + 6, height: dotSize(loop) + 6)
+                                .frame(width: MapLayout.dotSize(loop) + 6, height: MapLayout.dotSize(loop) + 6)
                             Text(loop.name)
                                 .font(.caption2)
                                 .multilineTextAlignment(.center)
@@ -253,9 +295,12 @@ private struct MapWeb: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .opacity(presence(loop.persistentModelID))
                     .position(point(index, of: loops.count, radius: outer, center: center))
                     .accessibilityLabel("\(loop.name), \(loop.entries.count) entries")
-                    .accessibilityHint("Shows its core belief and connections")
+                    .accessibilityAddTraits(focus == loop.persistentModelID ? .isSelected : [])
+                    .accessibilityHint(focus == loop.persistentModelID ? "Opens its core belief and words" : "Lights up its connections")
+                    .accessibilityAction(named: "Open") { onSelect(loop) }
                 }
             }
         }
@@ -276,11 +321,6 @@ private struct MapWeb: View {
             p = MapLayout.clamp(p, center: center, limit: outer * MapLayout.dragLimit)
         }
         return p
-    }
-
-    /// Bigger dot for a loop that comes up more, within a gentle range.
-    private func dotSize(_ loop: Loop) -> CGFloat {
-        18 + CGFloat(min(loop.entries.count, 20))
     }
 
     private func point(_ index: Int, of count: Int, radius: CGFloat, center: CGPoint, offset: Double = 0) -> CGPoint {
@@ -319,65 +359,98 @@ enum MapLayout {
     /// How far from the middle you can drag a value, as a share of the map's radius.
     static let dragLimit: CGFloat = 0.82
 
+    /// Bigger ring for a loop that comes up more, within a gentle range.
+    static func dotSize(_ loop: Loop) -> CGFloat {
+        18 + CGFloat(min(loop.entries.count, 20))
+    }
+
+    /// About how much room a loop's ring and name take, so values can keep clear of it.
+    static func loopBox(_ loop: Loop) -> CGSize {
+        let textWidth = CGFloat(loop.name.count) * 6.2
+        let lines: CGFloat = textWidth > 84 ? 2 : 1
+        return CGSize(width: min(84, textWidth) + 10, height: dotSize(loop) + 6 + 4 + lines * 14 + 6)
+    }
+
+    /// Places each value label in the free spot closest to where it would like to be:
+    /// evenly around the middle, leaning toward the loops it's linked to. Loop labels and
+    /// values you've moved yourself are treated as taken, so nothing lands on top of them.
+    /// Only when the map is truly full does a label overlap, and then as little as possible.
     static func spread(values: [PersonalValue], loops: [Loop], links: [MapLink],
                        center: CGPoint, outer: CGFloat) -> [CGPoint] {
         guard !values.isEmpty else { return [] }
-        if values.count == 1 { return [center] }
 
-        // Start evenly around a ring in the middle.
-        let ring = outer * 0.42
-        var points: [CGPoint] = values.indices.map { i in
-            let angle = -Double.pi / 2 + 2 * Double.pi * (Double(i) + 0.5) / Double(values.count)
-            return CGPoint(x: center.x + ring * cos(angle), y: center.y + ring * sin(angle))
+        func ringPoint(_ i: Int, of count: Int, radius: CGFloat, turn: Double = 0) -> CGPoint {
+            let angle = -Double.pi / 2 + 2 * Double.pi * (Double(i) + turn) / Double(count)
+            return CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
         }
+        func box(_ point: CGPoint, _ size: CGSize) -> CGRect {
+            CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height)
+        }
+        let valueSize = CGSize(width: labelWidth, height: labelHeight)
 
-        // Where each value's linked loops sit, so it can lean toward them.
-        let loopPoints: [CGPoint] = loops.indices.map { i in
-            let angle = -Double.pi / 2 + 2 * Double.pi * Double(i) / Double(loops.count)
-            return CGPoint(x: center.x + outer * cos(angle), y: center.y + outer * sin(angle))
+        let loopPoints = loops.indices.map { ringPoint($0, of: loops.count, radius: outer) }
+        var taken: [CGRect] = loops.indices.map { box(loopPoints[$0], loopBox(loops[$0])) }
+
+        // Values you've placed by hand stay put, and the rest keep clear of them.
+        let manual: [CGPoint?] = values.map { value in
+            guard let x = value.mapX, let y = value.mapY else { return nil }
+            return CGPoint(x: center.x + CGFloat(x) * outer, y: center.y + CGFloat(y) * outer)
         }
-        let targets: [CGPoint?] = values.map { value in
+        for case let point? in manual { taken.append(box(point, valueSize)) }
+
+        // Where each value would like to sit.
+        let preferred: [CGPoint] = values.indices.map { i in
+            var p = values.count == 1 ? center : ringPoint(i, of: values.count, radius: outer * 0.42, turn: 0.5)
             let linked = links.compactMap { link -> CGPoint? in
-                guard link.value == value, let loop = link.loopA, let i = loops.firstIndex(of: loop) else { return nil }
-                return loopPoints[i]
+                guard link.value == values[i], let loop = link.loopA, let j = loops.firstIndex(of: loop) else { return nil }
+                return loopPoints[j]
             }
-            guard !linked.isEmpty else { return nil }
-            let x = linked.map(\.x).reduce(0, +) / CGFloat(linked.count)
-            let y = linked.map(\.y).reduce(0, +) / CGFloat(linked.count)
-            return CGPoint(x: x, y: y)
+            if !linked.isEmpty {
+                let tx = linked.map(\.x).reduce(0, +) / CGFloat(linked.count)
+                let ty = linked.map(\.y).reduce(0, +) / CGFloat(linked.count)
+                p = clamp(CGPoint(x: p.x + (tx - p.x) * 0.5, y: p.y + (ty - p.y) * 0.5), center: center, limit: outer * 0.6)
+            }
+            return p
         }
 
-        for _ in 0..<80 {
-            // Lean a little toward linked loops, but stay well inside the ring of loops.
-            for i in points.indices {
-                if let target = targets[i] {
-                    points[i].x += (target.x - points[i].x) * 0.02
-                    points[i].y += (target.y - points[i].y) * 0.02
+        // Spots to choose from: a fine grid inside the map.
+        let limit = outer * 0.9
+        let step: CGFloat = 7
+        let reach = Int(limit / step)
+        var spots: [CGPoint] = []
+        for x in -reach...reach {
+            for y in -reach...reach {
+                let dx = CGFloat(x) * step, dy = CGFloat(y) * step
+                if dx * dx + dy * dy <= limit * limit { spots.append(CGPoint(x: center.x + dx, y: center.y + dy)) }
+            }
+        }
+
+        var points = preferred
+        for i in values.indices {
+            if let point = manual[i] {
+                points[i] = point
+                continue
+            }
+            var best = preferred[i]
+            var bestOverlap = CGFloat.infinity
+            var bestDistance = CGFloat.infinity
+            for spot in spots {
+                let rect = box(spot, valueSize)
+                var overlap: CGFloat = 0
+                for other in taken where other.intersects(rect) {
+                    let shared = other.intersection(rect)
+                    overlap += shared.width * shared.height
+                }
+                guard overlap <= bestOverlap else { continue }
+                let distance = hypot(spot.x - preferred[i].x, spot.y - preferred[i].y)
+                if overlap < bestOverlap || distance < bestDistance {
+                    best = spot
+                    bestOverlap = overlap
+                    bestDistance = distance
                 }
             }
-            // Push apart any two labels that overlap.
-            for i in points.indices {
-                for j in points.indices where j > i {
-                    let dx = points[j].x - points[i].x
-                    let dy = points[j].y - points[i].y
-                    let overlapX = labelWidth - abs(dx)
-                    let overlapY = labelHeight - abs(dy)
-                    guard overlapX > 0, overlapY > 0 else { continue }
-                    // Separate along whichever way needs less movement.
-                    if overlapX / labelWidth < overlapY / labelHeight {
-                        let push = overlapX / 2 * (dx >= 0 ? 1 : -1)
-                        points[i].x -= push
-                        points[j].x += push
-                    } else {
-                        let push = overlapY / 2 * (dy >= 0 ? 1 : -1)
-                        points[i].y -= push
-                        points[j].y += push
-                    }
-                }
-            }
-            for i in points.indices {
-                points[i] = clamp(points[i], center: center, limit: outer * 0.7)
-            }
+            points[i] = best
+            taken.append(box(best, valueSize))
         }
         return points
     }

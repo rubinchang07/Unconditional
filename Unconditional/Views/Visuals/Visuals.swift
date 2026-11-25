@@ -314,7 +314,7 @@ struct CalendarDots: View {
 
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
-                    Text(symbol).font(.caption2).foregroundStyle(.tertiary)
+                    Text(symbol).font(.caption2).foregroundStyle(.secondary)
                 }
                 ForEach(0..<leadingBlanks, id: \.self) { _ in Color.clear.frame(height: 30) }
                 ForEach(daysInMonth, id: \.self) { day in
@@ -347,7 +347,11 @@ struct CalendarDots: View {
         let isToday = calendar.isDateInToday(day)
         ZStack {
             if colors.isEmpty {
-                Circle().stroke(.secondary.opacity(0.2), lineWidth: 1)
+                // Just the date, faint. An empty ring per day read like a streak to keep up,
+                // and missing days aren't something to fill in.
+                Text(day, format: .dateTime.day())
+                    .font(.caption2)
+                    .foregroundStyle(.secondary.opacity(0.7))
             } else if colors.count == 1 {
                 Circle().fill(colors[0].gradient)
             } else {

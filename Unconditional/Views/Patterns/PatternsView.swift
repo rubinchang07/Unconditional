@@ -52,6 +52,7 @@ struct PatternsView: View {
         }
         .themedBackground()
         .paperList()
+        .contentMargins(.bottom, 80, for: .scrollContent)
         .navigationTitle("patterns")
         .navigationBarTitleDisplayMode(.inline)
         .animation(.calm, value: span)

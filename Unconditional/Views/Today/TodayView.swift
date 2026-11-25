@@ -40,10 +40,18 @@ struct TodayView: View {
     @State private var showValues = false
     @State private var saveFailed = false
     @State private var showDrawingTools = false
-    /// True while a finger is on the drawing, so the page holds still.
-    @State private var touchingCanvas = false
+    /// The color to go back to after the eraser.
+    @State private var lastInk: InkChoice = .ink
+    @State private var showInkPicker = false
+    /// The page doesn't scroll under your finger while drawing. It only moves
+    /// with the small handle on the canvas's edge.
+    @State private var pagePosition = ScrollPosition(edge: .top)
+    @State private var page = PageMetrics()
+    @State private var handleStart: CGFloat?
     /// The opening: 0 nothing, 1 the orb swells in, 2 the greeting, 3 everything else.
     @State private var introStage = Intro.played ? 3 : 0
+    /// The day the full opening last played. After that, the day's launches just fade in.
+    @AppStorage("introDay") private var introDay = ""
     @Environment(\.accessibilityReduceMotion) private var introReduceMotion
     /// Becomes true the first time you hold the orb, and the hint under it goes away for good.
     @AppStorage("hasHeldOrb") private var hasHeldOrb = false
@@ -161,7 +169,7 @@ struct TodayView: View {
                 if !hasHeldOrb {
                     Label("hold the orb to see what matters to you", systemImage: "hand.tap")
                         .font(.footnote)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .padding(.bottom, 4)
                         .transition(.opacity)
                         .accessibilityHidden(true)
@@ -186,18 +194,20 @@ struct TodayView: View {
             }
                 .buttonStyle(.paper)
 
-            // Good moments are as easy to keep as hard ones are to work through.
-            HStack(spacing: 28) {
-                Button("something good", systemImage: "sun.max") {
+            // Same size on purpose: a good moment is as worth keeping as a hard one is worth working through.
+            HStack(spacing: 12) {
+                Button {
                     good = true
                     go(to: .choose)
+                } label: {
+                    Label("something good", systemImage: "sun.max").pill()
                 }
-                Button("i'm spiraling", systemImage: "wind") { showReset = true }
+                Button { showReset = true } label: {
+                    Label("i'm spiraling", systemImage: "wind").pill()
+                }
             }
-            .font(.headline)
-            .labelStyle(.titleOnly)
-            .frame(minHeight: 44)
-            .padding(.vertical, 6)
+            .buttonStyle(.plain)
+            .padding(.vertical, 4)
 
             // Everything else stays tucked away until you want it.
             Menu {
@@ -221,7 +231,20 @@ struct TodayView: View {
             .offset(y: introStage >= 3 ? 0 : 14)
             .allowsHitTesting(introStage >= 3)
         }
+        // Tap anywhere to skip the opening and get straight to the buttons.
+        .overlay {
+            if introStage < 3 {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { skipIntro() }
+                    .accessibilityHidden(true)
+            }
+        }
         .task { await playIntro() }
+    }
+
+    private func skipIntro() {
+        withAnimation(.easeOut(duration: 0.35)) { introStage = 3 }
     }
 
     /// Plays once per launch: the orb swells in alone, then the words, then the choices.
@@ -232,11 +255,21 @@ struct TodayView: View {
             introStage = 3
             return
         }
+        // The full swell once a day. Later the same day, everything simply fades in.
+        let today = Date.now.formatted(.iso8601.year().month().day())
+        if introDay == today {
+            withAnimation(.easeOut(duration: 0.6)) { introStage = 3 }
+            return
+        }
+        introDay = today
         try? await Task.sleep(for: .milliseconds(400))
+        guard introStage < 1 else { return }
         withAnimation(.spring(duration: 2.8, bounce: 0.4)) { introStage = 1 }
         try? await Task.sleep(for: .milliseconds(2600))
+        guard introStage < 2 else { return }
         withAnimation(.easeOut(duration: 1.0)) { introStage = 2 }
         try? await Task.sleep(for: .milliseconds(700))
+        guard introStage < 3 else { return }
         withAnimation(.easeOut(duration: 1.0)) { introStage = 3 }
     }
 
@@ -246,8 +279,8 @@ struct TodayView: View {
         ScrollView {
             VStack(spacing: 16) {
                 if good {
-                    OrbView(palette: orbPalette, warm: true)
-                        .frame(width: 80, height: 80)
+                    OrbView(palette: orbPalette, speed: 0.35, warm: true)
+                        .frame(width: 64, height: 64)
                         .padding(.vertical, 6)
                 }
                 PaperHeading(title: good ? "Something good" : "How do you want to start?",
@@ -290,15 +323,157 @@ struct TodayView: View {
     // MARK: - Step 2: capture
 
     private var captureStep: some View {
-        // Everything scrolls, so the keyboard never hides your words and the
-        // save button is always reachable. While a finger is on the drawing,
-        // scrolling pauses so strokes don't move the page.
+        // Everything scrolls, so the keyboard never hides your words. When drawing,
+        // the page stays put under your strokes and only the handle moves it.
+        // Save sits in a bar of its own, above the tab bar, so it's always in reach.
         ScrollView {
             captureContent
         }
+        .scrollPosition($pagePosition)
+        .onScrollGeometryChange(for: PageMetrics.self) { geo in
+            PageMetrics(offset: geo.contentOffset.y,
+                        minOffset: -geo.contentInsets.top,
+                        maxOffset: max(-geo.contentInsets.top,
+                                       geo.contentSize.height + geo.contentInsets.bottom - geo.containerSize.height),
+                        visibleHeight: geo.containerSize.height - geo.contentInsets.top - geo.contentInsets.bottom)
+        } action: { _, new in
+            page = new
+        }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
-        .scrollDisabled(touchingCanvas)
+        .scrollDisabled(kind == .draw)
+        .overlay(alignment: .topTrailing) {
+            if kind == .draw && page.span > 1 { pageHandle }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
+    }
+
+    private var saveBar: some View {
+        Button(good ? "Keep it" : "Save entry", action: save)
+            .buttonStyle(.paper)
+            .disabled(!hasContent)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+            .background { FadingThemeBar() }
+    }
+
+    // MARK: Drawing
+
+    /// Most of the screen, leaving room to glimpse what's below.
+    private var canvasHeight: CGFloat { max(300, page.visibleHeight * 0.82) }
+    private let handleLength: CGFloat = 54
+    private let handleInset: CGFloat = 18
+
+    /// A short vertical bar on the canvas's right edge. Hold and move it to scroll the
+    /// page; drawing anywhere else on the canvas never moves the page.
+    /// It's pinned to the screen like a scroll bar, so it stays under your finger.
+    private var pageHandle: some View {
+        let track = max(1, canvasHeight - 2 * handleInset - handleLength)
+        let fraction = min(max((page.offset - page.minOffset) / page.span, 0), 1)
+        let held = handleStart != nil
+        return Capsule()
+            .fill(.secondary.opacity(held ? 0.8 : 0.45))
+            .frame(width: held ? 8 : 6, height: handleLength)
+            .frame(width: 40, height: handleLength + 24) // a bigger, invisible target for your thumb
+            .contentShape(Rectangle())
+            .padding(.top, handleInset - 12 + fraction * track)
+            .padding(.trailing, 2)
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { drag in
+                        let start = handleStart ?? page.offset
+                        if handleStart == nil { handleStart = start }
+                        let target = start + drag.translation.height * page.span / track
+                        pagePosition.scrollTo(y: min(max(target, page.minOffset), page.maxOffset))
+                    }
+                    .onEnded { _ in
+                        withAnimation(.calm) { handleStart = nil }
+                    }
+            )
+            .animation(.calm, value: held)
+            .accessibilityElement()
+            .accessibilityLabel("Scroll page")
+            .accessibilityHint("Swipe up or down to move the page without drawing.")
+            .accessibilityAdjustableAction { direction in
+                let step: CGFloat = direction == .increment ? 160 : -160
+                pagePosition.scrollTo(y: min(max(page.offset + step, page.minOffset), page.maxOffset))
+            }
+    }
+
+    /// A small floating capsule on the canvas: color, eraser, undo, and the rest of the tools.
+    private var drawingTools: some View {
+        HStack(spacing: 0) {
+            Button { showInkPicker = true } label: {
+                Circle()
+                    .fill(Color(uiColor: lastInk.uiColor))
+                    .frame(width: 22, height: 22)
+                    .overlay(Circle().strokeBorder(.background, lineWidth: 2))
+                    .opacity(tool.ink == .eraser ? 0.5 : 1)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Color, \(lastInk.name)")
+            .popover(isPresented: $showInkPicker) {
+                InkPalette(selection: $tool.ink)
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+            }
+
+            Button {
+                tool.ink = tool.ink == .eraser ? lastInk : .eraser
+            } label: {
+                Image(systemName: tool.ink == .eraser ? "eraser.fill" : "eraser")
+                    .foregroundStyle(tool.ink == .eraser ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Eraser")
+            .accessibilityAddTraits(tool.ink == .eraser ? .isSelected : [])
+
+            Button {
+                guard !drawing.strokes.isEmpty else { return }
+                drawing = PKDrawing(strokes: drawing.strokes.dropLast())
+            } label: {
+                Image(systemName: "arrow.uturn.backward")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+            }
+            .disabled(drawing.strokes.isEmpty)
+            .accessibilityLabel("Undo last stroke")
+
+            Button { showDrawingTools = true } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Brushes and paper")
+        }
+        .font(.system(size: 16))
+        .buttonStyle(.plain)
+        .padding(.horizontal, 4)
+        .background(.regularMaterial, in: Capsule())
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+        .onChange(of: tool.ink) { _, ink in
+            if ink != .eraser { lastInk = ink }
+            showInkPicker = false
+        }
+        .sheet(isPresented: $showDrawingTools) {
+            VStack(spacing: 18) {
+                Text("brushes and paper")
+                    .font(.system(.headline, design: .serif))
+                BrushBar(tool: $tool)
+                BackgroundPicker(selection: $canvasBackground)
+                if !drawing.strokes.isEmpty {
+                    Button("clear drawing") {
+                        withAnimation(.calm) { drawing = PKDrawing() }
+                        showDrawingTools = false
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(20)
+            .presentationDetents([.height(300)])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var captureContent: some View {
@@ -306,8 +481,9 @@ struct TodayView: View {
             switch kind {
             case .write:
                 if good {
-                    OrbView(palette: orbPalette, warm: true)
-                        .frame(width: 70, height: 70)
+                    // Small and slow while you write, so it keeps you company without pulling focus.
+                    OrbView(palette: orbPalette, speed: 0.35, warm: true)
+                        .frame(width: 56, height: 56)
                         .padding(.top, 4)
                 }
                 PaperHeading(title: good ? "What went well?" : "What's on your mind?",
@@ -319,7 +495,8 @@ struct TodayView: View {
                 PaperHeading(title: good ? "Tell me what went well" : "Say it out loud",
                              subtitle: "Transcribed on your phone. Fix any words after you stop.")
                 // The orb listens: it grows gently with your voice while recording.
-                OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting, level: recorder.level, warm: good)
+                OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting, level: recorder.level, warm: good,
+                        exercise: true)
                     .frame(width: 130, height: 130)
                     .padding(.vertical, 8)
                 SpeakControls(recorder: recorder, onStart: { textBeforeRecording = text })
@@ -327,48 +504,18 @@ struct TodayView: View {
                 JournalEditor(text: $text, placeholder: "Your words will appear here…")
                     .disabled(recorder.isRecording)
             case .draw:
-                // Colors stay in reach; brushes and paper tuck away, so the canvas gets the room.
-                VStack(spacing: 8) {
-                    InkPalette(selection: $tool.ink)
-                    Button {
-                        withAnimation(.calm) { showDrawingTools.toggle() }
-                    } label: {
-                        Label(showDrawingTools ? "hide brushes and paper" : "brushes and paper",
-                              systemImage: showDrawingTools ? "chevron.up" : "chevron.down")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .frame(minHeight: 32)
-                    }
-                    if showDrawingTools {
-                        BrushBar(tool: $tool)
-                        BackgroundPicker(selection: $canvasBackground)
-                    }
-                }
-                .paperCard(padding: 12)
+                // The canvas gets the room; the tools float on it in one small capsule.
                 DrawingCanvas(drawing: $drawing, tool: tool, background: canvasBackground)
-                    .frame(height: 440)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { _ in if !touchingCanvas { touchingCanvas = true } }
-                            .onEnded { _ in touchingCanvas = false }
-                    )
+                    .frame(height: canvasHeight)
                     .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
-                if !drawing.strokes.isEmpty {
-                    Button("clear drawing") { withAnimation(.calm) { drawing = PKDrawing() } }
-                        .foregroundStyle(.secondary)
-                        .font(.footnote)
-                }
+                    .overlay(alignment: .topLeading) { drawingTools.padding(10) }
             }
 
             // Optional: which loop this belongs to, or that it was good after all.
             // Never required, so it never stands between you and saving.
             LoopChips(loop: $loop, good: $good)
-
-            Button(good ? "Keep it" : "Save entry", action: save)
-            .buttonStyle(.paper)
-            .disabled(!hasContent)
-            .padding(.bottom, 12)
+                .padding(.bottom, 12)
         }
     }
 
@@ -429,6 +576,40 @@ private extension EntryKind {
         case .speak: "Talk it through, I'll write it down"
         case .draw: "When words aren't there yet"
         }
+    }
+}
+
+/// How far the capture page has scrolled, for the drawing page's handle.
+struct PageMetrics: Equatable {
+    var offset: CGFloat = 0
+    var minOffset: CGFloat = 0
+    var maxOffset: CGFloat = 0
+    var visibleHeight: CGFloat = 600
+    var span: CGFloat { maxOffset - minOffset }
+}
+
+/// The theme's background fading in from clear, behind the Save bar,
+/// so content scrolling underneath softens instead of cutting off.
+private struct FadingThemeBar: View {
+    @AppStorage(Theme.storageKey) private var theme: Theme = .white
+
+    var body: some View {
+        theme.background
+            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.35)],
+                                 startPoint: .top, endPoint: .bottom))
+            .ignoresSafeArea(edges: .bottom)
+    }
+}
+
+private extension View {
+    /// A soft, tinted pill: clearly a button, quieter than "Check in".
+    func pill() -> some View {
+        self
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.tint)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(.tint.opacity(0.13), in: Capsule())
+            .contentShape(Capsule())
     }
 }
 
@@ -760,7 +941,7 @@ struct WinReminderView: View {
                                 .font(.system(.body, design: .serif))
                             Text(win.createdAt, format: .dateTime.month().day())
                                 .font(.caption)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.secondary)
                         }
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
@@ -857,13 +1038,13 @@ private struct GoodMomentSheet: View {
                 }
             }
             .frame(height: 140)
-            Text("Kept.")
+            Text("Saved to your journal.")
                 .font(.system(.title, design: .serif).weight(.semibold))
-            Text("Noticing good moments is a skill, just like working through hard ones. This one's yours now.")
+            Text("Noticing good moments is a skill, just like working through hard ones. Want it in Anchors too, with your wins?")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Keep it as a win too") {
+            Button("Add to Anchors") {
                 let words = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 let title = words.isEmpty ? "A good moment" : String(words.prefix(140))
                 context.insert(Win(text: title))
@@ -876,7 +1057,7 @@ private struct GoodMomentSheet: View {
             }
             .buttonStyle(.paper)
             .disabled(sendingToAnchors)
-            Button("Just keep it here") { dismiss() }
+            Button("Done") { dismiss() }
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 8)
         }

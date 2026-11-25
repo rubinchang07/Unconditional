@@ -145,6 +145,43 @@ struct MapLayoutTests {
         }
     }
 
+    @Test("Values keep clear of loop labels and of values you've moved")
+    func avoidsLoopsAndPlacedValues() throws {
+        let container = try AppSchema.inMemoryContainer()
+        let context = container.mainContext
+        let loops = ["Self-worth", "Career", "Falling behind"].enumerated().map { i, name in
+            let loop = Loop(name: name, coreBelief: "", pattern: "", sortOrder: i)
+            context.insert(loop)
+            return loop
+        }
+        let values = (1...4).map { PersonalValue(name: "Value \($0)") }
+        values.forEach(context.insert)
+        // One value you've placed yourself, just right of the middle.
+        values[0].mapX = 0.2
+        values[0].mapY = 0
+        let center = CGPoint(x: 180, y: 180)
+        let outer: CGFloat = 134
+        let points = MapLayout.spread(values: values, loops: loops, links: [], center: center, outer: outer)
+
+        #expect(points[0] == CGPoint(x: center.x + 0.2 * outer, y: center.y))
+        func rect(_ p: CGPoint, _ size: CGSize) -> CGRect {
+            CGRect(x: p.x - size.width / 2, y: p.y - size.height / 2, width: size.width, height: size.height)
+        }
+        let valueSize = CGSize(width: MapLayout.labelWidth, height: MapLayout.labelHeight)
+        for (i, point) in points.enumerated() {
+            for (j, loop) in loops.enumerated() {
+                let angle = -Double.pi / 2 + 2 * Double.pi * Double(j) / Double(loops.count)
+                let spot = CGPoint(x: center.x + outer * cos(angle), y: center.y + outer * sin(angle))
+                let shared = rect(point, valueSize).intersection(rect(spot, MapLayout.loopBox(loop)))
+                #expect(shared.isNull || shared.width * shared.height < 1, "Value \(i + 1) sits on \(loop.name)")
+            }
+            for j in points.indices where j > i {
+                let shared = rect(point, valueSize).intersection(rect(points[j], valueSize))
+                #expect(shared.isNull || shared.width * shared.height < 1, "Value \(i + 1) and \(j + 1) overlap")
+            }
+        }
+    }
+
     @Test("A value dragged outside the map is kept inside it")
     func clamp() {
         let center = CGPoint(x: 100, y: 100)
