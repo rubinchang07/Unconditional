@@ -13,7 +13,7 @@ struct LoopPicker: View {
                 Text(loop.name).tag(Optional(loop))
             }
         }
-        if let selection {
+        if let selection, !selection.coreBelief.isEmpty {
             Text("“\(selection.coreBelief)”")
                 .font(.footnote)
                 .italic()

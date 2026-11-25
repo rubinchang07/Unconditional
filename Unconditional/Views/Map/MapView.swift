@@ -51,7 +51,6 @@ struct MapView: View {
             }
             .padding()
         }
-        .navigationTitle("your map")
         .themedBackground()
         .sheet(item: $selected) { loop in
             LoopMapDetail(loop: loop, loops: loops, values: values, color: color(for: loop))
@@ -289,7 +288,7 @@ private struct LoopMapDetail: View {
                 } header: {
                     Text("Core belief")
                 } footer: {
-                    Text("The belief this loop runs on, in your words. You can edit it from History.")
+                    Text("The belief this loop runs on, in your words. You can edit it in Settings → Your loops.")
                 }
 
                 Section {

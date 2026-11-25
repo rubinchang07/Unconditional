@@ -31,6 +31,7 @@ struct TodayView: View {
     @State private var showBreathing = false
     @State private var showReset = false
     @State private var showCareer = false
+    @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
     private var hasContent: Bool {
         if recorder.isRecording { return false }
@@ -129,7 +130,9 @@ struct TodayView: View {
             // Everything else stays tucked away until you want it.
             Menu {
                 Button("Breathe for a minute", systemImage: "wind") { showBreathing = true }
-                Button("Career check-in", systemImage: "briefcase") { showCareer = true }
+                if careerEnabled {
+                    Button("Career check-in", systemImage: "briefcase") { showCareer = true }
+                }
             } label: {
                 Label("more", systemImage: "ellipsis.circle")
                     .font(.subheadline)
@@ -307,7 +310,7 @@ enum Greeting {
 }
 
 /// Small progress dots: the current step is a longer pill.
-private struct StepDots: View {
+struct StepDots: View {
     let count: Int
     let current: Int
 
@@ -351,23 +354,44 @@ private struct JournalEditor: View {
 /// Loop cards, each with its core belief, plus "Not sure yet".
 private struct LoopChoices: View {
     @Binding var selection: Loop?
+    @Environment(\.modelContext) private var context
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
+    @State private var newLoop = ""
 
     var body: some View {
         ForEach(loops) { loop in
             choice(isSelected: selection == loop, action: { selection = loop }) {
                 Text(loop.name)
                     .font(.system(.headline, design: .serif))
-                Text("“\(loop.coreBelief)”")
-                    .font(.subheadline)
-                    .italic()
-                    .foregroundStyle(.secondary)
+                if !loop.coreBelief.isEmpty {
+                    Text("“\(loop.coreBelief)”")
+                        .font(.subheadline)
+                        .italic()
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         choice(isSelected: selection == nil, action: { selection = nil }) {
             Text("Not sure yet")
                 .font(.system(.headline, design: .serif))
         }
+        // A new loop can be named right here, without a trip to Settings.
+        HStack {
+            TextField(loops.isEmpty ? "Name the loop this belongs to" : "Or name a new loop", text: $newLoop)
+                .onSubmit(addLoop)
+            Button("Add", action: addLoop)
+                .disabled(newLoop.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .paperCard(padding: 16)
+    }
+
+    private func addLoop() {
+        let name = newLoop.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let loop = Loop(name: name, coreBelief: "", pattern: "", sortOrder: (loops.map(\.sortOrder).max() ?? -1) + 1)
+        context.insert(loop)
+        selection = loop
+        newLoop = ""
     }
 
     private func choice(isSelected: Bool, action: @escaping () -> Void, @ViewBuilder content: () -> some View) -> some View {
@@ -451,13 +475,12 @@ struct ReframePromptView: View {
                             .foregroundStyle(.tint)
                         Text("Saved.")
                             .font(.system(.title, design: .serif).weight(.semibold))
-                        Text("Getting it out counts. Want to look at it from another angle, or just be kind to yourself about it?")
+                        Text("Getting it out counts. Want to look at it from another angle?")
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("Reframe this thought") { withAnimation { step = .reframe } }
+                        Button("Look at it another way") { withAnimation { step = .reframe } }
                             .buttonStyle(.paper)
-                        Button("Self-compassion break instead") { withAnimation { step = .compassion } }
                         Button("Not today") { dismiss() }
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 8)
@@ -466,7 +489,8 @@ struct ReframePromptView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(ThemeBackground())
                 case .reframe:
-                    ReframeView(entry: entry, onDone: { withAnimation { step = .win } })
+                    ReframeView(entry: entry, onDone: { withAnimation { step = .win } },
+                                onCompassion: { withAnimation { step = .compassion } })
                 case .compassion:
                     SelfCompassionView(entry: entry, onDone: { withAnimation { step = .win } })
                 case .win:

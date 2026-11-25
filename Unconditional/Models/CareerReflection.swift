@@ -41,6 +41,9 @@ enum CareerMoment: String, Codable, CaseIterable, Identifiable {
 /// "I don't like this work" and "I don't like feeling incompetent at this work."
 @Model
 final class CareerReflection {
+    /// Settings toggle. Off by default, since not everyone needs career check-ins.
+    static let enabledKey = "careerCheckIns"
+
     var createdAt: Date
     var moment: CareerMoment
     var topic: String
