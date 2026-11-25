@@ -43,6 +43,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        SupportView()
+                    } label: {
+                        Label("Support and crisis lines", systemImage: "lifepreserver")
+                    }
+                } footer: {
+                    Text("If things feel like too much, you don't have to handle it alone.")
+                }
+
+                Section {
                     Toggle("Require Face ID", isOn: lockBinding)
                 } header: {
                     Text("Privacy")

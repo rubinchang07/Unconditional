@@ -15,9 +15,29 @@ struct ReframeView: View {
     @State private var evidenceAgainst = ""
     @State private var kinderRead = ""
     @State private var smallStep = ""
+    @State private var distressBefore = 5.0
+    @State private var distressAfter = 5.0
+    @State private var beliefBefore = 70.0
+    @State private var beliefAfter = 70.0
+    @State private var showBreathing = false
 
     var body: some View {
         Form {
+            Section {
+                RatingSlider(title: "How distressed do you feel?", value: $distressBefore,
+                             lowLabel: "Calm", highLabel: "Overwhelmed")
+                RatingSlider(title: "How much do you believe the thought?", value: $beliefBefore,
+                             range: 0...100, step: 5, lowLabel: "Not at all", highLabel: "Completely",
+                             valueText: { "\(Int($0))%" })
+                if distressBefore >= 7 {
+                    Button("That's a lot. Breathe for a minute first?", systemImage: "wind") { showBreathing = true }
+                }
+            } header: {
+                Text("Right now")
+            } footer: {
+                Text("Somewhere in between is normal. There's no right number.")
+            }
+
             Section {
                 TextField("e.g. I couldn't solve a LeetCode medium", text: $trigger, axis: .vertical)
             } header: {
@@ -59,6 +79,18 @@ struct ReframeView: View {
             } header: {
                 Text("One small step")
             }
+
+            Section {
+                RatingSlider(title: "How distressed do you feel now?", value: $distressAfter,
+                             lowLabel: "Calm", highLabel: "Overwhelmed")
+                RatingSlider(title: "How much do you believe it now?", value: $beliefAfter,
+                             range: 0...100, step: 5, lowLabel: "Not at all", highLabel: "Completely",
+                             valueText: { "\(Int($0))%" })
+            } header: {
+                Text("After looking at it")
+            } footer: {
+                Text("Even a small shift counts. A thought can go from 90% to 70% and that's real progress.")
+            }
         }
         .navigationTitle("Reframe")
         .themedBackground()
@@ -72,6 +104,14 @@ struct ReframeView: View {
             }
         }
         .onAppear(perform: load)
+        .onChange(of: distressBefore) { old, new in
+            // Keep "after" following "before" until you've looked at the thought.
+            if distressAfter == old { distressAfter = new }
+        }
+        .onChange(of: beliefBefore) { old, new in
+            if beliefAfter == old { beliefAfter = new }
+        }
+        .sheet(isPresented: $showBreathing) { BreathingView() }
     }
 
     private func load() {
@@ -82,6 +122,10 @@ struct ReframeView: View {
             evidenceAgainst = existing.evidenceAgainst
             kinderRead = existing.kinderRead
             smallStep = existing.smallStep
+            distressBefore = existing.distressBefore
+            distressAfter = existing.distressAfter
+            beliefBefore = existing.beliefBefore
+            beliefAfter = existing.beliefAfter
         } else {
             // Start from the loop's core belief, so you can see it written down and question it.
             coreBelief = entry.loop?.coreBelief ?? ""
@@ -96,6 +140,10 @@ struct ReframeView: View {
         reframe.evidenceAgainst = evidenceAgainst
         reframe.kinderRead = kinderRead
         reframe.smallStep = smallStep
+        reframe.distressBefore = distressBefore
+        reframe.distressAfter = distressAfter
+        reframe.beliefBefore = beliefBefore
+        reframe.beliefAfter = beliefAfter
         if entry.reframe == nil {
             context.insert(reframe)
             entry.reframe = reframe

@@ -46,6 +46,18 @@ final class Entry {
     /// Which loop this thought belongs to. Optional: you might not know yet.
     var loop: Loop?
 
+    // Self-compassion break: three short reflections, all optional.
+    /// "This is hard." Naming the difficulty.
+    var compassionHard: String = ""
+    /// "Others feel this too." Common humanity.
+    var compassionShared: String = ""
+    /// "What do I need right now?" Kindness toward yourself.
+    var compassionNeed: String = ""
+
+    var hasCompassion: Bool {
+        !(compassionHard + compassionShared + compassionNeed).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// The optional CBT reframe. `.cascade` means deleting an entry deletes its reframe too.
     @Relationship(deleteRule: .cascade, inverse: \Reframe.entry)
     var reframe: Reframe?
