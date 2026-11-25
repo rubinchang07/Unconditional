@@ -27,6 +27,15 @@ enum DataTransfer {
         var careerReflections: [CareerRecord] = []
         /// Optional so files exported before map links were included still open.
         var mapLinks: [MapLinkRecord]? = []
+        /// Optional for the same reason. Images are stored as base64 text.
+        var photos: [PhotoRecord]? = []
+    }
+
+    struct PhotoRecord: Codable {
+        var imageData: Data
+        var isCutout: Bool
+        var caption: String
+        var createdAt: Date
     }
 
     /// A link on your map. Loops and values are named, since they're matched by name on restore.
@@ -178,6 +187,9 @@ enum DataTransfer {
             MapLinkRecord(loopA: $0.loopA?.name, loopB: $0.loopB?.name, value: $0.value?.name,
                           strength: $0.strength, status: $0.status, createdAt: $0.createdAt)
         }
+        s.photos = all(GroundingPhoto.self).map {
+            PhotoRecord(imageData: $0.imageData, isCutout: $0.isCutout, caption: $0.caption, createdAt: $0.createdAt)
+        }
         return s
     }
 
@@ -318,6 +330,13 @@ enum DataTransfer {
             c.urgeToQuit = r.urgeToQuit
             c.quitSource = r.quitSource
             context.insert(c)
+            summary.added += 1
+        }
+
+        let photoKeys = Set(all(GroundingPhoto.self).map { key($0.createdAt, $0.caption) })
+        for r in s.photos ?? [] {
+            if photoKeys.contains(key(r.createdAt, r.caption)) { summary.skipped += 1; continue }
+            context.insert(GroundingPhoto(imageData: r.imageData, isCutout: r.isCutout, caption: r.caption, createdAt: r.createdAt))
             summary.added += 1
         }
 

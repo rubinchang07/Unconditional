@@ -163,12 +163,6 @@ struct TodayView: View {
                 Text(Greeting.now)
                     .font(.system(.largeTitle, design: .serif).weight(.semibold))
                     .softCase()
-                Text(Greeting.dailyPrompt)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 12)
             }
             .transition(.opacity)
             .opacity(introStage >= 2 ? 1 : 0)
@@ -228,12 +222,12 @@ struct TodayView: View {
             introStage = 3
             return
         }
-        try? await Task.sleep(for: .milliseconds(250))
-        withAnimation(.spring(duration: 1.3, bounce: 0.45)) { introStage = 1 }
-        try? await Task.sleep(for: .milliseconds(1100))
-        withAnimation(.easeOut(duration: 0.7)) { introStage = 2 }
-        try? await Task.sleep(for: .milliseconds(450))
-        withAnimation(.easeOut(duration: 0.7)) { introStage = 3 }
+        try? await Task.sleep(for: .milliseconds(400))
+        withAnimation(.spring(duration: 2.2, bounce: 0.4)) { introStage = 1 }
+        try? await Task.sleep(for: .milliseconds(2000))
+        withAnimation(.easeOut(duration: 1.0)) { introStage = 2 }
+        try? await Task.sleep(for: .milliseconds(700))
+        withAnimation(.easeOut(duration: 1.0)) { introStage = 3 }
     }
 
     // MARK: - Step 1: choose how to start
@@ -431,7 +425,7 @@ private enum Intro {
     static var played = false
 }
 
-/// Time-of-day greeting and a gentle prompt that changes each day.
+/// Time-of-day greeting.
 enum Greeting {
     static var now: String {
         switch Calendar.current.component(.hour, from: .now) {
@@ -439,21 +433,6 @@ enum Greeting {
         case 12..<17: "Good afternoon"
         default: "Good evening"
         }
-    }
-
-    static let prompts = [
-        "What's taking up the most room in your head today?",
-        "What felt heavy today, and what felt a little lighter?",
-        "What would you want a friend to know about your day?",
-        "What are you afraid it means? Let's look at it together.",
-        "What did you do today that took effort, even if it didn't work?",
-        "What's one thing that's true about you no matter how today went?",
-    ]
-
-    /// Same prompt all day, a new one tomorrow.
-    static var dailyPrompt: String {
-        let day = Calendar.current.ordinality(of: .day, in: .era, for: .now) ?? 0
-        return prompts[day % prompts.count]
     }
 }
 

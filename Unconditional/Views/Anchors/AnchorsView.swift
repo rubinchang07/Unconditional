@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 /// Anchors: what stays true about you, whatever happens.
 ///
@@ -15,6 +16,9 @@ struct AnchorsView: View {
     @Query(sort: \Win.createdAt, order: .reverse) private var wins: [Win]
     @Query(sort: \SavedReminder.createdAt, order: .reverse) private var reminders: [SavedReminder]
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
+    @Query(sort: \GroundingPhoto.createdAt) private var photos: [GroundingPhoto]
+    /// The photo opened up close.
+    @State private var openPhoto: GroundingPhoto?
 
     /// Where you are in the water.
     @State private var scroll = ScrollState()
@@ -94,6 +98,10 @@ struct AnchorsView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Add an anchor", systemImage: "plus") { adding = true }
                 }
+            }
+            .sheet(item: $openPhoto) { photo in
+                PhotoCloseUp(photo: photo, glow: palette.colors[0])
+                    .presentationDetents([.large])
             }
             .sheet(isPresented: $adding) {
                 AddAnchorSheet {
@@ -183,6 +191,7 @@ struct AnchorsView: View {
 
     private var valuesLayer: some View {
         Layer(title: "what holds you", subtitle: "What you care about, on good days and hard ones. The falls land here.") {
+            if !photos.isEmpty { photoRow }
             if values.isEmpty {
                 Text("Add the values that feel like yours. They'll rest here, steady, whatever the day brings.")
                     .foregroundStyle(.secondary)
@@ -212,6 +221,30 @@ struct AnchorsView: View {
                 .padding(.bottom, 56)
             }
         }
+    }
+
+    /// Grounding photos, as stickers resting on the riverbed, each tilted a little.
+    private var photoRow: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 18) {
+                ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
+                    Button { openPhoto = photo } label: {
+                        PhotoSticker(photo: photo, glow: palette.colors[index % 3])
+                            .frame(width: 130, height: 150)
+                            .rotationEffect(.degrees(index.isMultiple(of: 2) ? -4 : 3))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(photo.caption.isEmpty ? "Grounding photo" : photo.caption)
+                    .contextMenu {
+                        Button("Remove", systemImage: "minus.circle") { withAnimation(.calm) { context.delete(photo) } }
+                    }
+                }
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 4)
+        }
+        .scrollIndicators(.hidden)
+        .scrollClipDisabled()
     }
 
     /// Every value is the same size. What you care about doesn't shrink in a hard week.
@@ -461,7 +494,7 @@ private struct Riverbed: View {
 /// One place to add any kind of anchor.
 private struct AddAnchorSheet: View {
     enum Kind: String, CaseIterable, Identifiable {
-        case win = "a win", words = "words", value = "a value"
+        case win = "a win", words = "words", value = "a value", photo = "a photo"
         var id: String { rawValue }
     }
 
@@ -475,6 +508,14 @@ private struct AddAnchorSheet: View {
     @State private var meaning = ""
     @State private var tried = false
     @State private var workedOut = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var sticker: StickerMaker.Result?
+    @State private var makingSticker = false
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+
+    private var canAdd: Bool {
+        kind == .photo ? sticker != nil : !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var unusedValues: [String] {
         let taken = Set(values.map { $0.name.lowercased() })
@@ -508,6 +549,37 @@ private struct AddAnchorSheet: View {
                     } footer: {
                         Text("For example: I can feel uncertain and still take one step.")
                     }
+                case .photo:
+                    Section {
+                        PhotosPicker(selection: $photoItem, matching: .images) {
+                            Label(sticker == nil ? "Choose a photo" : "Choose a different photo", systemImage: "photo")
+                        }
+                        if makingSticker {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Making it a sticker…").foregroundStyle(.secondary)
+                            }
+                        } else if let sticker, let image = UIImage(data: sticker.png) {
+                            StickerView(image: image, isCutout: sticker.isCutout, glow: palette.colors[0])
+                                .frame(height: 220)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .listRowBackground(Color.clear)
+                        }
+                        TextField("What it reminds you of (optional)", text: $meaning, axis: .vertical)
+                    } footer: {
+                        Text("A place, a person, a pet, anything that steadies you. If there's someone or something in front, it's lifted out like a sticker, right on your phone.")
+                    }
+                    .onChange(of: photoItem) { _, item in
+                        guard let item else { return }
+                        makingSticker = true
+                        Task {
+                            if let data = try? await item.loadTransferable(type: Data.self) {
+                                sticker = await StickerMaker.make(from: data)
+                            }
+                            makingSticker = false
+                        }
+                    }
                 case .value:
                     Section {
                         TextField("A value, in a word or two", text: $text)
@@ -534,7 +606,7 @@ private struct AddAnchorSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add", action: add)
-                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(!canAdd)
                 }
             }
         }
@@ -551,9 +623,63 @@ private struct AddAnchorSheet: View {
             context.insert(SavedReminder(text: main))
         case .value:
             context.insert(PersonalValue(name: main, meaning: extra))
+        case .photo:
+            guard let sticker else { return }
+            context.insert(GroundingPhoto(imageData: sticker.png, isCutout: sticker.isCutout, caption: extra))
         }
         try? context.save()
         dismiss()
         onAdded()
+    }
+}
+
+/// One grounding photo, up close, with what it reminds you of.
+private struct PhotoCloseUp: View {
+    let photo: GroundingPhoto
+    let glow: Color
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 28) {
+                Spacer()
+                PhotoSticker(photo: photo, glow: glow, border: 9)
+                    .padding(.horizontal, 40)
+                    .frame(maxHeight: 420)
+                if !photo.caption.isEmpty {
+                    Text(photo.caption)
+                        .font(.system(.title3, design: .serif))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 30)
+                }
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .themedBackground()
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+}
+
+/// Decodes a grounding photo once, not on every scroll, and shows it as a sticker.
+private struct PhotoSticker: View {
+    let photo: GroundingPhoto
+    let glow: Color
+    var border: CGFloat = 6
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                StickerView(image: image, isCutout: photo.isCutout, glow: glow, border: border)
+            } else {
+                Color.clear
+            }
+        }
+        .task(id: photo.persistentModelID) {
+            image = UIImage(data: photo.imageData)
+        }
     }
 }

@@ -45,6 +45,7 @@ struct DataTransferTests {
         toValue.value = curiosity
         toValue.status = "dismissed"
         context.insert(SavedReminder(text: "You're allowed to rest.", createdAt: day))
+        context.insert(GroundingPhoto(imageData: Data([9, 8, 7]), isCutout: true, caption: "The lake", createdAt: day))
         let thought = ResetThought(text: "Everyone is ahead", perspective: "Highlights, not lives", sortOrder: 0)
         context.insert(thought)
         thought.loop = loop
@@ -79,7 +80,7 @@ struct DataTransferTests {
         let new = newPhone.mainContext
         let summary = DataTransfer.restore(try DataTransfer.decode(file), into: new)
 
-        #expect(summary == .init(added: 13, skipped: 0))
+        #expect(summary == .init(added: 14, skipped: 0))
         #expect(try count(Entry.self, in: new) == 2)
         #expect(try count(Reframe.self, in: new) == 1)
         #expect(try count(CareerReflection.self, in: new) == 1)
@@ -93,6 +94,11 @@ struct DataTransferTests {
 
         let thought = try #require(try new.fetch(FetchDescriptor<ResetThought>()).first)
         #expect(thought.loop?.name == "Falling behind")
+
+        let photo = try #require(try new.fetch(FetchDescriptor<GroundingPhoto>()).first)
+        #expect(photo.imageData == Data([9, 8, 7]))
+        #expect(photo.isCutout)
+        #expect(photo.caption == "The lake")
 
         // Your map comes back too, including the link you turned down.
         let links = try new.fetch(FetchDescriptor<MapLink>())
@@ -108,6 +114,7 @@ struct DataTransferTests {
     func olderFile() throws {
         var snapshot = DataTransfer.snapshot(from: oldPhone.mainContext)
         snapshot.mapLinks = nil
+        snapshot.photos = nil
         let text = String(decoding: try DataTransfer.encode(snapshot), as: UTF8.self)
         #expect(!text.contains("mapLinks"))
         #expect(throws: Never.self) { try DataTransfer.decode(Data(text.utf8)) }
@@ -124,6 +131,7 @@ struct DataTransferTests {
         #expect(try count(Entry.self, in: context) == 2)
         #expect(try count(Loop.self, in: context) == 2)
         #expect(try count(MapLink.self, in: context) == 2)
+        #expect(try count(GroundingPhoto.self, in: context) == 1)
     }
 
     @Test("A loop with the same name is reused, not doubled")
