@@ -28,9 +28,9 @@ struct MapView: View {
                                 message: "After \(left) more check-in\(left == 1 ? "" : "s"), you'll start to see which loops travel together.")
                         .padding(.top, 40)
                 } else {
-                    MapWeb(loops: loops, values: values, links: links.filter(\.isConfirmed),
+                    MapWeb(loops: loops, values: linkedValues, links: links.filter(\.isConfirmed),
                            color: color(for:), onSelect: { selected = $0 })
-                        .frame(height: 380)
+                        .aspectRatio(1, contentMode: .fit)
                         .paperCard()
 
                     Text("Tap a loop to see its core belief and the words you use, and to connect it to your values.")
@@ -72,6 +72,11 @@ struct MapView: View {
                 .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
         }
         .paperCard()
+    }
+
+    /// Only values you've connected to a loop go on the web, so it stays uncluttered.
+    private var linkedValues: [PersonalValue] {
+        values.filter { value in links.contains { $0.isConfirmed && $0.value == value } }
     }
 
     private func color(for loop: Loop) -> Color {
@@ -140,7 +145,7 @@ private struct MapWeb: View {
             let size = proxy.size
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             let outer = min(size.width, size.height) / 2 - 46
-            let inner = values.count <= 1 ? 0 : outer * 0.42
+            let inner = values.count <= 1 ? 0 : outer * 0.45
 
             ZStack {
                 Canvas { ctx, _ in
@@ -163,7 +168,7 @@ private struct MapWeb: View {
                             path.addQuadCurve(to: end, control: control)
                         } else if let value = link.value, let iv = values.firstIndex(of: value) {
                             path.move(to: start)
-                            path.addLine(to: point(iv, of: values.count, radius: inner, center: center, offset: 0.5))
+                            path.addLine(to: valuePoint(iv, radius: inner, center: center))
                         }
                         ctx.stroke(path, with: .color(shade), style: StrokeStyle(lineWidth: width, lineCap: .round))
                     }
@@ -171,12 +176,15 @@ private struct MapWeb: View {
 
                 ForEach(Array(values.enumerated()), id: \.element.id) { index, value in
                     Text(value.name)
-                        .font(.caption)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: 76)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(Paper.card, in: Capsule())
                         .overlay(Capsule().stroke(.tint.opacity(0.35)))
-                        .position(point(index, of: values.count, radius: inner, center: center, offset: 0.5))
+                        .position(valuePoint(index, radius: inner, center: center))
                 }
 
                 ForEach(Array(loops.enumerated()), id: \.element.id) { index, loop in
@@ -200,6 +208,13 @@ private struct MapWeb: View {
                 }
             }
         }
+    }
+
+    /// Values share the middle. With more than four, every other one sits on a
+    /// slightly smaller ring, so neighbouring labels don't run into each other.
+    private func valuePoint(_ index: Int, radius: CGFloat, center: CGPoint) -> CGPoint {
+        let staggered = values.count > 4 && index.isMultiple(of: 2)
+        return point(index, of: values.count, radius: staggered ? radius * 0.55 : radius, center: center, offset: 0.5)
     }
 
     /// Bigger dot for a loop that comes up more, within a gentle range.
