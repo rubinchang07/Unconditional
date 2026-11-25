@@ -4,6 +4,8 @@ import SwiftUI
 /// a few gentle questions in the journal. It's still an ordinary entry.
 struct SituationPrompts: View {
     @Binding var text: String
+    /// Prompts for a good moment instead of a hard one.
+    var good = false
 
     struct Situation: Identifiable {
         let title: String
@@ -25,10 +27,23 @@ struct SituationPrompts: View {
                   prompt: "The choice in front of me:\n\nWhat I'm afraid of getting wrong:\n\nWhat I'd do if I didn't need to be certain:\n\n"),
     ]
 
+    static let goodOnes: [Situation] = [
+        Situation(title: "A small win", symbol: "star",
+                  prompt: "What went right:\n\nWhat I did to help it happen:\n\n"),
+        Situation(title: "Someone was kind", symbol: "heart",
+                  prompt: "Who, and what they did:\n\nHow it felt:\n\n"),
+        Situation(title: "A calm moment", symbol: "leaf",
+                  prompt: "Where I was:\n\nWhat made it feel calm:\n\n"),
+        Situation(title: "I learned something", symbol: "lightbulb",
+                  prompt: "What I learned:\n\nWhat made it interesting:\n\n"),
+        Situation(title: "I'm proud that", symbol: "sparkles",
+                  prompt: "I'm proud that\n\nIt matters to me because\n\n"),
+    ]
+
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                ForEach(Self.all) { situation in
+                ForEach(good ? Self.goodOnes : Self.all) { situation in
                     Button {
                         withAnimation(.calm) {
                             text = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

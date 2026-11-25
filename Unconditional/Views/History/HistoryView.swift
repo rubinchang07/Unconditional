@@ -26,7 +26,7 @@ struct HistoryView: View {
                     CalendarDots(days: dayColors)
                         .padding(.vertical, 6)
                 } footer: {
-                    Text("One dot for each day you checked in, colored by loop.")
+                    Text("One dot for each day you checked in, colored by loop. Good moments glow warm gold.")
                 }
 
                 if !monthDays.isEmpty {
@@ -76,7 +76,10 @@ struct HistoryView: View {
         for entry in entries {
             let day = Calendar.current.startOfDay(for: entry.createdAt)
             let color: Color
-            if let loop = entry.loop, let index = loops.firstIndex(of: loop) {
+            if entry.isGood {
+                // Good moments glow warm, like sunlight.
+                color = Color(hex: 0xF6C38B)
+            } else if let loop = entry.loop, let index = loops.firstIndex(of: loop) {
                 color = Color(hex: Loop.palette[index % Loop.palette.count])
             } else {
                 color = Color.secondary.opacity(0.5)
@@ -108,6 +111,7 @@ struct EntryRow: View {
                     Text(entry.text).lineLimit(2).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 6) {
+                    if entry.isGood { Label("Something good", systemImage: "sun.max") }
                     if let loop = entry.loop { Text(loop.name) }
                     if entry.reframe != nil { Label("Reframed", systemImage: "arrow.triangle.2.circlepath") }
                 }
