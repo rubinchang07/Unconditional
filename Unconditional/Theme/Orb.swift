@@ -39,7 +39,7 @@ extension Color {
 /// you feel. It only shows whether the app is resting, listening, breathing
 /// with you, or settling after you've looked at a thought.
 enum OrbState: Equatable {
-    case resting, listening, breathing, settling, glowing
+    case resting, listening, breathing, settling, glowing, tense
 
     /// How much the edge undulates, and how big the orb is.
     func shape(level: Double) -> (wobble: Double, scale: Double) {
@@ -50,6 +50,8 @@ enum OrbState: Equatable {
         case .settling: (0.3, 0.96)
         // Opening up after keeping something good: a touch fuller, still calm.
         case .glowing: (0.7, 1.04)
+        // Tensing muscles: pulled in tight, the edge restless. Views add a fine shake on top.
+        case .tense: (1.7, 0.86)
         }
     }
 }

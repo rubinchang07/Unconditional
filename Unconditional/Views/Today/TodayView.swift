@@ -32,6 +32,8 @@ struct TodayView: View {
     /// When set, the "reframe this?" sheet opens for that entry.
     @State private var savedEntry: Entry?
     @State private var showBreathing = false
+    @State private var showGrounding = false
+    @State private var showTension = false
     @State private var showReset = false
     @State private var showCareer = false
     @State private var showSettings = false
@@ -108,6 +110,8 @@ struct TodayView: View {
                 ReframePromptView(entry: entry)
             }
             .sheet(isPresented: $showBreathing) { BreathingView() }
+            .sheet(isPresented: $showGrounding) { GroundingView() }
+            .sheet(isPresented: $showTension) { TensionReleaseView() }
             .fullScreenCover(isPresented: $showReset) { ThoughtResetView() }
             .sheet(isPresented: $showCareer) { CareerReflectionView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
@@ -195,7 +199,11 @@ struct TodayView: View {
 
             // Everything else stays tucked away until you want it.
             Menu {
-                Button("Breathe for a minute", systemImage: "wind") { showBreathing = true }
+                Section("calm your body") {
+                    Button("Breathe for a minute", systemImage: "wind") { showBreathing = true }
+                    Button("5-4-3-2-1 grounding", systemImage: "hand.raised") { showGrounding = true }
+                    Button("Release tension", systemImage: "figure.cooldown") { showTension = true }
+                }
                 if careerEnabled {
                     Button("Career check-in", systemImage: "briefcase") { showCareer = true }
                 }
