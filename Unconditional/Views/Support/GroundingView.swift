@@ -45,8 +45,12 @@ struct GroundingView: View {
             .transition(.opacity)
 
             // The orb draws itself without taking touches, so the circle here is what you tap.
+            // Each thing you notice brings the orb a little more into focus,
+            // like the room coming back. A new sense starts soft again.
             DispersingOrb(palette: palette, state: .resting, dispersed: finished)
                 .frame(width: 240, height: 240)
+                .blur(radius: finished ? 0 : 16 * (1 - Double(noticed) / Double(sense.count)))
+                .animation(.easeInOut(duration: 0.6), value: noticed)
                 .scaleEffect(pulse ? 1.08 : 1)
                 .contentShape(Circle())
                 .onTapGesture(perform: notice)
