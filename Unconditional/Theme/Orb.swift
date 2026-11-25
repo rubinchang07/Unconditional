@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Color sets for the orb.
 enum OrbPalette: String, CaseIterable, Identifiable {
-    case emberSage, midnight
+    case emberSage, midnight, tide, pearl
 
     static let storageKey = "orbPalette"
 
@@ -12,6 +12,8 @@ enum OrbPalette: String, CaseIterable, Identifiable {
         switch self {
         case .emberSage: "Ember & Sage"
         case .midnight: "Midnight"
+        case .tide: "Tide"
+        case .pearl: "Pearl"
         }
     }
 
@@ -21,6 +23,10 @@ enum OrbPalette: String, CaseIterable, Identifiable {
         switch self {
         case .emberSage: [Color(hex: 0x8FC79A), Color(hex: 0xE9785E), Color(hex: 0xF6C38B)]
         case .midnight: [Color(hex: 0x4F7BE0), Color(hex: 0x141B3A), Color(hex: 0x9CC2FF)]
+        // Aqua, deep teal, and sea foam: the same water as the anchors page.
+        case .tide: [Color(hex: 0x7FD1C7), Color(hex: 0x2E7D8C), Color(hex: 0xD6F5EF)]
+        // Pale lavender, pearl, and cream: the quietest, like moonstone.
+        case .pearl: [Color(hex: 0xC9D6F2), Color(hex: 0xDCD3EC), Color(hex: 0xFFF6E8)]
         }
     }
 }

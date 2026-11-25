@@ -48,7 +48,8 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    HStack(spacing: 16) {
+                    // Two per row, so four orbs each get room to breathe.
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 20) {
                         ForEach(OrbPalette.allCases) { option in
                             Button {
                                 withAnimation { orbPalette = option }
