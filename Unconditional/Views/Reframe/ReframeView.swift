@@ -1,7 +1,8 @@
 import SwiftUI
 import SwiftData
 
-/// CBT thought record for one entry: trigger, core belief, kinder read, small step.
+/// CBT thought record for one entry: trigger, core belief, evidence for and against,
+/// kinder read, small step.
 /// Works for a new reframe or editing an existing one.
 struct ReframeView: View {
     @Environment(\.modelContext) private var context
@@ -10,6 +11,8 @@ struct ReframeView: View {
 
     @State private var trigger = ""
     @State private var coreBelief = ""
+    @State private var evidenceFor = ""
+    @State private var evidenceAgainst = ""
     @State private var kinderRead = ""
     @State private var smallStep = ""
 
@@ -30,6 +33,20 @@ struct ReframeView: View {
             }
 
             Section {
+                TextField("What makes it feel true?", text: $evidenceFor, axis: .vertical)
+            } header: {
+                Text("Evidence for")
+            }
+
+            Section {
+                TextField("What doesn't fit? Past wins, things you've handled, what others see", text: $evidenceAgainst, axis: .vertical)
+            } header: {
+                Text("Evidence against")
+            } footer: {
+                Text("Treat the belief like a hypothesis, not a fact. Feelings count as data, but not as proof.")
+            }
+
+            Section {
                 TextField("What would you tell a friend in this spot?", text: $kinderRead, axis: .vertical)
             } header: {
                 Text("A kinder, more accurate read")
@@ -44,6 +61,9 @@ struct ReframeView: View {
             }
         }
         .navigationTitle("Reframe")
+        .themedBackground()
+        .scrollDismissesKeyboard(.interactively)
+        .keyboardDoneButton()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -57,6 +77,8 @@ struct ReframeView: View {
         if let existing = entry.reframe {
             trigger = existing.trigger
             coreBelief = existing.coreBelief
+            evidenceFor = existing.evidenceFor
+            evidenceAgainst = existing.evidenceAgainst
             kinderRead = existing.kinderRead
             smallStep = existing.smallStep
         } else {
@@ -69,6 +91,8 @@ struct ReframeView: View {
         let reframe = entry.reframe ?? Reframe()
         reframe.trigger = trigger
         reframe.coreBelief = coreBelief
+        reframe.evidenceFor = evidenceFor
+        reframe.evidenceAgainst = evidenceAgainst
         reframe.kinderRead = kinderRead
         reframe.smallStep = smallStep
         if entry.reframe == nil {

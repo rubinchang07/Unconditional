@@ -8,6 +8,11 @@ final class Reframe {
     var trigger: String
     /// What did it seem to prove? Pre-filled from the loop's core belief.
     var coreBelief: String
+    /// Facts that seem to support the belief.
+    /// Default values let SwiftData add these fields to existing reframes automatically.
+    var evidenceFor: String = ""
+    /// Facts that don't fit the belief.
+    var evidenceAgainst: String = ""
     /// A kinder, more accurate read of the same facts.
     var kinderRead: String
     /// One small, doable next step.

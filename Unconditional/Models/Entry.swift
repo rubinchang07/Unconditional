@@ -1,14 +1,33 @@
 import Foundation
 import SwiftData
 
-/// Whether an entry was written or drawn. Stored as its raw `String`.
+/// How an entry was made. Stored as its raw `String`.
+/// Speak entries are stored as text, transcribed from your voice.
 enum EntryKind: String, Codable, CaseIterable, Identifiable {
     case write
+    case speak
     case draw
 
     var id: String { rawValue }
-    var label: String { self == .write ? "Write" : "Draw" }
-    var symbol: String { self == .write ? "pencil.line" : "scribble.variable" }
+
+    var label: String {
+        switch self {
+        case .write: "Write"
+        case .speak: "Speak"
+        case .draw: "Draw"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .write: "pencil.line"
+        case .speak: "mic"
+        case .draw: "scribble.variable"
+        }
+    }
+
+    /// Write and Speak both produce text.
+    var isText: Bool { self != .draw }
 }
 
 /// One day's (or moment's) journal entry.
