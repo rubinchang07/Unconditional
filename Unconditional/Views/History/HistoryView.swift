@@ -21,6 +21,8 @@ struct HistoryView: View {
                                 x: .value("Entries", loop.entries.count),
                                 y: .value("Loop", loop.name)
                             )
+                            .foregroundStyle(.tint)
+                            .cornerRadius(6)
                         }
                         .frame(height: 220)
                     }
@@ -47,6 +49,7 @@ struct HistoryView: View {
                 }
             }
             .navigationTitle("History")
+            .themedBackground()
         }
     }
 }
@@ -67,7 +70,7 @@ struct EntryRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.createdAt, format: .dateTime.weekday().month().day())
                     .font(.headline)
-                if entry.kind == .write {
+                if entry.kind.isText {
                     Text(entry.text).lineLimit(2).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 6) {
@@ -92,6 +95,7 @@ struct LoopEditView: View {
             Section("Core belief") { TextField("Core belief", text: $loop.coreBelief, axis: .vertical) }
         }
         .navigationTitle(loop.name)
+        .themedBackground()
         .keyboardDoneButton()
         .navigationBarTitleDisplayMode(.inline)
     }

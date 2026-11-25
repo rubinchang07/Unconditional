@@ -9,7 +9,7 @@ struct EntryDetailView: View {
     var body: some View {
         List {
             Section {
-                if entry.kind == .write {
+                if entry.kind.isText {
                     Text(entry.text)
                 } else {
                     DrawingThumbnail(data: entry.drawingData)
@@ -27,6 +27,8 @@ struct EntryDetailView: View {
                 if let reframe = entry.reframe {
                     LabeledText(title: "What happened", value: reframe.trigger)
                     LabeledText(title: "The belief underneath", value: reframe.coreBelief)
+                    LabeledText(title: "Evidence for", value: reframe.evidenceFor)
+                    LabeledText(title: "Evidence against", value: reframe.evidenceAgainst)
                     LabeledText(title: "A kinder read", value: reframe.kinderRead)
                     LabeledText(title: "One small step", value: reframe.smallStep)
                     Button("Edit reframe") { editingReframe = true }
@@ -36,6 +38,7 @@ struct EntryDetailView: View {
             }
         }
         .navigationTitle("Entry")
+        .themedBackground()
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $editingReframe) {
             NavigationStack {

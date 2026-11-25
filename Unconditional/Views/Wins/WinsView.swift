@@ -46,6 +46,7 @@ struct WinsView: View {
                 }
             }
             .navigationTitle("Wins")
+            .themedBackground()
             .scrollDismissesKeyboard(.interactively)
             .keyboardDoneButton()
         }
