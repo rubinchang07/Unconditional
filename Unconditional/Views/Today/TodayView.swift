@@ -28,6 +28,7 @@ struct TodayView: View {
     @State private var savedEntry: Entry?
     @State private var showBreathing = false
     @State private var showReset = false
+    @State private var showCareer = false
 
     private var hasContent: Bool {
         if recorder.isRecording { return false }
@@ -81,6 +82,7 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showBreathing) { BreathingView() }
             .fullScreenCover(isPresented: $showReset) { ThoughtResetView() }
+            .sheet(isPresented: $showCareer) { CareerReflectionView() }
         }
     }
 
@@ -117,6 +119,27 @@ struct TodayView: View {
                 .buttonStyle(.plain)
 
                 TinyStepFollowUp()
+
+                Button {
+                    showCareer = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "briefcase")
+                            .foregroundStyle(.tint)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Career check-in")
+                                .font(.system(.subheadline, design: .serif).weight(.semibold))
+                            Text("After studying, applying, or a setback")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.tertiary)
+                    }
+                    .paperCard(padding: 14)
+                }
+                .buttonStyle(.plain)
 
                 ForEach(EntryKind.allCases) { option in
                     Button {

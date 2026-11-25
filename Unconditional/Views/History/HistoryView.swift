@@ -39,6 +39,19 @@ struct HistoryView: View {
                     }
                 }
 
+                Section {
+                    NavigationLink {
+                        CareerHistoryView()
+                    } label: {
+                        Label("Career reflections", systemImage: "briefcase")
+                    }
+                    NavigationLink {
+                        ParkedReviewView()
+                    } label: {
+                        Label("Weekly review", systemImage: "tray")
+                    }
+                }
+
                 Section("Entries") {
                     ForEach(entries) { entry in
                         NavigationLink {

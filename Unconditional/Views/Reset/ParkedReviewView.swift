@@ -9,12 +9,39 @@ struct ParkedReviewView: View {
            sort: \ParkedThought.createdAt) private var waiting: [ParkedThought]
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt != nil },
            sort: \ParkedThought.createdAt, order: .reverse) private var reviewed: [ParkedThought]
+    @Query(sort: \CareerReflection.createdAt, order: .reverse) private var reflections: [CareerReflection]
+
+    /// Things you learned or enjoyed in the last 7 days, to weigh alongside the doubts.
+    private var thisWeek: [CareerReflection] {
+        let weekAgo = Date.now.addingTimeInterval(-7 * 86_400)
+        return reflections.filter { $0.createdAt >= weekAgo && !($0.learned.isEmpty && $0.interesting.isEmpty) }
+    }
 
     var body: some View {
         List {
             Section {
                 Text("Look at each thought with fresh eyes. Has it shifted? What have you learned or enjoyed since? A thought that still feels important after a calm look deserves real attention.")
                     .foregroundStyle(.secondary)
+            }
+
+            if !thisWeek.isEmpty {
+                Section {
+                    ForEach(thisWeek) { reflection in
+                        VStack(alignment: .leading, spacing: 4) {
+                            if !reflection.learned.isEmpty {
+                                Label(reflection.learned, systemImage: "lightbulb")
+                            }
+                            if !reflection.interesting.isEmpty {
+                                Label(reflection.interesting, systemImage: "sparkles")
+                            }
+                        }
+                        .font(.callout)
+                    }
+                } header: {
+                    Text("This week you learned and enjoyed")
+                } footer: {
+                    Text("Weigh these alongside the doubts below.")
+                }
             }
 
             if waiting.isEmpty {
