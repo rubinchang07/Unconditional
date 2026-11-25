@@ -49,6 +49,9 @@ final class Entry {
     /// Which loop this thought belongs to. Optional: you might not know yet.
     var loop: Loop?
 
+    /// A good moment rather than a hard one. Good entries don't need a loop.
+    var isGood: Bool = false
+
     // Self-compassion break: three short reflections, all optional.
     /// "This is hard." Naming the difficulty.
     var compassionHard: String = ""

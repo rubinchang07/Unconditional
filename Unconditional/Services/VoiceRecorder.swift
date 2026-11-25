@@ -15,6 +15,8 @@ final class VoiceRecorder {
     var transcript = ""
     var isRecording = false
     var errorMessage: String?
+    /// How loud your voice is right now, 0 to 1. The orb grows gently with it.
+    var level: Double = 0
 
     private let engine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -46,7 +48,14 @@ final class VoiceRecorder {
             self.request = request
 
             transcript = ""
-            Self.installTap(on: engine.inputNode, request: request)
+            Self.installTap(on: engine.inputNode, request: request) { [weak self] rms in
+                Task { @MainActor in
+                    guard let self, self.isRecording else { return }
+                    // Speech sits around 0.01 to 0.1 RMS; stretch that to 0...1, then smooth it.
+                    let target = min(1, Double(rms) * 12)
+                    self.level = self.level * 0.6 + target * 0.4
+                }
+            }
             engine.prepare()
             try engine.start()
             isRecording = true
@@ -67,6 +76,7 @@ final class VoiceRecorder {
         request?.endAudio() // lets the recognizer finish the last words
         request = nil
         isRecording = false
+        level = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -82,10 +92,19 @@ final class VoiceRecorder {
     // These are `nonisolated` because the audio engine and Speech framework call
     // their closures on background threads, not the main thread.
 
-    nonisolated private static func installTap(on input: AVAudioInputNode, request: SFSpeechAudioBufferRecognitionRequest) {
+    nonisolated private static func installTap(on input: AVAudioInputNode,
+                                               request: SFSpeechAudioBufferRecognitionRequest,
+                                               onLevel: @escaping @Sendable (Float) -> Void) {
         let format = input.outputFormat(forBus: 0)
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             request.append(buffer)
+            // Root-mean-square of the samples: a simple measure of loudness.
+            if let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 {
+                let count = Int(buffer.frameLength)
+                var sum: Float = 0
+                for i in 0..<count { sum += samples[i] * samples[i] }
+                onLevel((sum / Float(count)).squareRoot())
+            }
         }
     }
 

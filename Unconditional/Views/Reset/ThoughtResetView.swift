@@ -10,10 +10,16 @@ import SwiftData
 struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Query(sort: \ResetThought.sortOrder) private var thoughts: [ResetThought]
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt == nil }) private var parked: [ParkedThought]
 
     private enum Step: Equatable { case pick, perspective, closing(String) }
+    /// How the closing orb behaves: the thought drifts into it, or a small orb pinches off.
+    private enum Closing { case plain, absorb(String), park }
+    @State private var closing: Closing = .plain
+    @State private var absorbed = false
+    @State private var ripple = 0
     @State private var step: Step = .pick
 
     @State private var chosen: ResetThought?
@@ -149,6 +155,7 @@ struct ThoughtResetView: View {
 
                 // The main action is the gentlest one: just letting it be.
                 Button("Okay. I can let it be here.") {
+                    closing = .absorb(thoughtText)
                     finish("Noticed. You don't have to solve it right now.")
                 }
                 .buttonStyle(.paper)
@@ -157,6 +164,7 @@ struct ThoughtResetView: View {
                     choice("Park it for later", symbol: "tray.and.arrow.down") {
                         context.insert(ParkedThought(text: thoughtText))
                         try? context.save()
+                        closing = .park
                         finish("Parked. You can look at it calmly later, not in the middle of a spiral.")
                     }
                     choice("Breathe", symbol: "wind") { showBreathing = true }
@@ -193,9 +201,32 @@ struct ThoughtResetView: View {
     private func closingStep(_ message: String) -> some View {
         VStack(spacing: 18) {
             Spacer()
-            Image(systemName: "leaf")
-                .font(.system(size: 40))
-                .foregroundStyle(.tint)
+            ZStack {
+                if case .park = closing {
+                    PinchOffOrb(palette: orbPalette)
+                        .frame(width: 160, height: 160)
+                } else {
+                    OrbView(palette: orbPalette, state: .settling, ripple: ripple)
+                        .frame(width: 140, height: 140)
+                }
+                // "Let it be": the thought softens and drifts into the orb, which ripples once.
+                if case .absorb(let thought) = closing {
+                    Text("“\(thought)”")
+                        .font(.system(.body, design: .serif))
+                        .italic()
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .scaleEffect(absorbed ? 0.2 : 1)
+                        .blur(radius: absorbed ? 8 : 0)
+                        .opacity(absorbed ? 0 : 1)
+                        .offset(y: absorbed ? 0 : -150)
+                        .task {
+                            withAnimation(.easeIn(duration: 1.4)) { absorbed = true }
+                            try? await Task.sleep(for: .seconds(1.25))
+                            ripple += 1
+                        }
+                }
+            }
             Text(message)
                 .font(.system(.title3, design: .serif))
                 .multilineTextAlignment(.center)
@@ -203,6 +234,8 @@ struct ThoughtResetView: View {
             Button("Done") { dismiss() }
                 .buttonStyle(.paper)
             Button("Reset another thought") {
+                closing = .plain
+                absorbed = false
                 chosen = nil
                 customThought = ""
                 go(.pick)
@@ -231,7 +264,10 @@ struct ThoughtResetView: View {
 /// Rewrite a perspective so it sounds like you.
 private struct PerspectiveEditor: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @Bindable var thought: ResetThought
+    /// What it said before you started, so a real rewrite can be kept in Anchors.
+    @State private var original = ""
 
     var body: some View {
         Form {
@@ -243,9 +279,10 @@ private struct PerspectiveEditor: View {
             } header: {
                 Text("A different perspective")
             } footer: {
-                Text("Write what you'd want to hear in that moment. It doesn't have to be positive, just kind and fair.")
+                Text("Write what you'd want to hear in that moment. It doesn't have to be positive, just kind and fair. Your rewrite is also kept in Anchors.")
             }
         }
+        .onAppear { if original.isEmpty { original = thought.perspective } }
         .navigationTitle("edit")
         .navigationBarTitleDisplayMode(.inline)
         .themedBackground()
@@ -253,8 +290,22 @@ private struct PerspectiveEditor: View {
         .keyboardDoneButton()
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }
+                Button("Done") {
+                    keepRewrite()
+                    dismiss()
+                }
             }
         }
+    }
+
+    /// A perspective you rewrote in your own words becomes one of your
+    /// "words to come back to" in Anchors.
+    private func keepRewrite() {
+        let text = thought.perspective.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text != original else { return }
+        let existing = (try? context.fetch(FetchDescriptor<SavedReminder>())) ?? []
+        guard !existing.contains(where: { $0.text == text }) else { return }
+        context.insert(SavedReminder(text: text))
+        try? context.save()
     }
 }

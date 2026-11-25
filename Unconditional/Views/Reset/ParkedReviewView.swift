@@ -5,6 +5,7 @@ import SwiftData
 /// it's to make them from a calm place instead of a spiral.
 struct ParkedReviewView: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt == nil },
            sort: \ParkedThought.createdAt) private var waiting: [ParkedThought]
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt != nil },
@@ -19,6 +20,14 @@ struct ParkedReviewView: View {
 
     var body: some View {
         List {
+            if !waiting.isEmpty {
+                Section {
+                    FloatingOrbs(count: waiting.count, palette: orbPalette)
+                        .frame(height: 110)
+                        .listRowBackground(Color.clear)
+                }
+            }
+
             Section {
                 Text("Look at each thought with fresh eyes. Has it shifted? What have you learned or enjoyed since? A thought that still feels important after a calm look deserves real attention.")
                     .foregroundStyle(.secondary)
@@ -64,9 +73,7 @@ struct ParkedReviewView: View {
                     ForEach(reviewed) { thought in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(thought.text)
-                            Text("Urgency at review: \(Int(thought.urgencyAtReview)) of 10")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            LabeledRing(amount: thought.urgencyAtReview, label: "how urgent it felt later")
                             if !thought.reviewNote.isEmpty {
                                 Text(thought.reviewNote)
                                     .font(.callout)

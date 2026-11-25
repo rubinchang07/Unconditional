@@ -21,6 +21,10 @@ struct TodayView: View {
     @State private var tool = DrawingTool()
     @State private var canvasBackground: CanvasBackground = .paper
     @State private var loop: Loop?
+    /// This check-in is about something good, not something hard.
+    @State private var good = false
+    /// When set, the "kept" sheet for a good moment opens.
+    @State private var savedGood: Entry?
 
     @State private var recorder = VoiceRecorder()
     /// Text that was already there when you pressed record, so new speech adds to it.
@@ -31,6 +35,9 @@ struct TodayView: View {
     @State private var showBreathing = false
     @State private var showReset = false
     @State private var showCareer = false
+    @State private var showSettings = false
+    @State private var showValues = false
+    @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
     @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
     private var hasContent: Bool {
@@ -69,7 +76,12 @@ struct TodayView: View {
             .navigationTitle(step == .home ? "" : Date.now.formatted(.dateTime.weekday(.wide).month().day()).lowercased())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if step != .home {
+                if step == .home {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Settings", systemImage: "gearshape") { showSettings = true }
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Thought reset", systemImage: "leaf") { showReset = true }
                     }
@@ -93,6 +105,8 @@ struct TodayView: View {
             .sheet(isPresented: $showBreathing) { BreathingView() }
             .fullScreenCover(isPresented: $showReset) { ThoughtResetView() }
             .sheet(isPresented: $showCareer) { CareerReflectionView() }
+            .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(item: $savedGood) { entry in GoodMomentSheet(entry: entry) }
         }
     }
 
@@ -101,8 +115,30 @@ struct TodayView: View {
     private var homeStep: some View {
         VStack(spacing: 18) {
             Spacer(minLength: 12)
-            OrbView(palette: orbPalette, interactive: true)
+            if showValues {
+                ValuesBloom(values: values, palette: orbPalette) {
+                    withAnimation(.calm) { showValues = false }
+                }
+                .frame(height: 330)
+                .transition(.opacity)
+            } else {
+                // Hold the orb and it divides into your values.
+                OrbView(palette: orbPalette, interactive: true, onHold: {
+                    withAnimation(.calm) { showValues = true }
+                })
                 .frame(width: 260, height: 260)
+                .transition(.opacity)
+                .overlay {
+                    // The orb itself is hidden from VoiceOver, so this stands in for it.
+                    Color.clear
+                        .accessibilityElement()
+                        .accessibilityLabel("Show your values")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { withAnimation(.calm) { showValues = true } }
+                        .allowsHitTesting(false)
+                }
+            }
+            if !showValues {
             VStack(spacing: 10) {
                 Text(Greeting.now)
                     .font(.system(.largeTitle, design: .serif).weight(.semibold))
@@ -114,18 +150,31 @@ struct TodayView: View {
                     .lineSpacing(3)
                     .padding(.horizontal, 12)
             }
+            .transition(.opacity)
+            }
             Spacer(minLength: 12)
 
             // Shows up only when there's a tiny step to ask about.
             TinyStepFollowUp()
 
-            Button("Check in") { go(to: .choose) }
+            Button("Check in") {
+                good = false
+                go(to: .choose)
+            }
                 .buttonStyle(.paper)
 
-            Button("i'm spiraling") { showReset = true }
-                .font(.headline)
-                .frame(minHeight: 44)
-                .padding(.vertical, 6)
+            // Good moments are as easy to keep as hard ones are to work through.
+            HStack(spacing: 28) {
+                Button("something good", systemImage: "sun.max") {
+                    good = true
+                    go(to: .choose)
+                }
+                Button("i'm spiraling", systemImage: "wind") { showReset = true }
+            }
+            .font(.headline)
+            .labelStyle(.titleOnly)
+            .frame(minHeight: 44)
+            .padding(.vertical, 6)
 
             // Everything else stays tucked away until you want it.
             Menu {
@@ -148,8 +197,14 @@ struct TodayView: View {
     private var chooseStep: some View {
         ScrollView {
             VStack(spacing: 16) {
-                PaperHeading(title: "How do you want to start?",
-                             subtitle: "No right way to do this. Just get it out of your head.")
+                if good {
+                    OrbView(palette: orbPalette, warm: true)
+                        .frame(width: 80, height: 80)
+                        .padding(.vertical, 6)
+                }
+                PaperHeading(title: good ? "Something good" : "How do you want to start?",
+                             subtitle: good ? "Big or small, it counts. How do you want to keep it?"
+                                            : "No right way to do this. Just get it out of your head.")
                     .padding(.bottom, 8)
 
                 ForEach(EntryKind.allCases) { option in
@@ -186,14 +241,41 @@ struct TodayView: View {
 
     // MARK: - Step 2: capture
 
+    @ViewBuilder
     private var captureStep: some View {
+        if kind == .draw {
+            captureContent
+        } else {
+            // Writing and speaking scroll, so the keyboard never hides what you're typing.
+            ScrollView {
+                captureContent
+            }
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+        }
+    }
+
+    private var captureContent: some View {
         VStack(spacing: 20) {
             switch kind {
             case .write:
-                PaperHeading(title: "What's on your mind?", subtitle: "Write it the way you'd say it. Messy is fine.")
+                if good {
+                    OrbView(palette: orbPalette, warm: true)
+                        .frame(width: 70, height: 70)
+                        .padding(.top, 4)
+                }
+                PaperHeading(title: good ? "What went well?" : "What's on your mind?",
+                             subtitle: good ? "Even a little. Good moments count as much as hard ones."
+                                            : "Write it the way you'd say it. Messy is fine.")
+                SituationPrompts(text: $text, good: good)
                 JournalEditor(text: $text, placeholder: "Start anywhere…")
             case .speak:
-                PaperHeading(title: "Say it out loud", subtitle: "Transcribed on your phone. Fix any words after you stop.")
+                PaperHeading(title: good ? "Tell me what went well" : "Say it out loud",
+                             subtitle: "Transcribed on your phone. Fix any words after you stop.")
+                // The orb listens: it grows gently with your voice while recording.
+                OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting, level: recorder.level, warm: good)
+                    .frame(width: 130, height: 130)
+                    .padding(.vertical, 8)
                 SpeakControls(recorder: recorder, onStart: { textBeforeRecording = text })
                     .paperCard()
                 JournalEditor(text: $text, placeholder: "Your words will appear here…")
@@ -216,10 +298,13 @@ struct TodayView: View {
                 }
             }
 
-            Button("Next") { go(to: .loop) }
-                .buttonStyle(.paper)
-                .disabled(!hasContent)
-                .padding(.bottom, 12)
+            // A good moment doesn't need a loop, so it saves straight away.
+            Button(good ? "Keep it" : "Next") {
+                if good { save() } else { go(to: .loop) }
+            }
+            .buttonStyle(.paper)
+            .disabled(!hasContent)
+            .padding(.bottom, 12)
         }
     }
 
@@ -232,7 +317,27 @@ struct TodayView: View {
                              subtitle: "Naming the pattern makes it a little smaller. It's okay not to be sure.")
                     .padding(.bottom, 8)
 
+                // In case it turned out to be a good moment after all.
+                Button {
+                    withAnimation(.calm) {
+                        good.toggle()
+                        if good { loop = nil }
+                    }
+                } label: {
+                    HStack {
+                        Label("Actually, this was something good", systemImage: "sun.max")
+                            .font(.system(.headline, design: .serif))
+                        Spacer()
+                        Image(systemName: good ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(good ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+                    }
+                    .paperCard(padding: 16)
+                }
+                .buttonStyle(.plain)
+
                 LoopChoices(selection: $loop)
+                    .onChange(of: loop) { _, new in if new != nil { good = false } }
 
                 Button("Save entry", action: save)
                     .buttonStyle(.paper)
@@ -258,7 +363,8 @@ struct TodayView: View {
         // Insert first, then link relationships: SwiftData is happiest when both
         // sides of a relationship already belong to the same context.
         context.insert(entry)
-        entry.loop = loop
+        entry.loop = good ? nil : loop
+        entry.isGood = good
         if kind == .draw { entry.drawingBackground = canvasBackground.rawValue }
         try? context.save()
 
@@ -268,7 +374,13 @@ struct TodayView: View {
         drawing = PKDrawing()
         loop = nil
         step = .home
-        savedEntry = entry
+        // A good moment gets a warm "kept"; a hard one is offered a reframe.
+        if good {
+            savedGood = entry
+        } else {
+            savedEntry = entry
+        }
+        good = false
     }
 }
 
@@ -346,7 +458,7 @@ private struct JournalEditor: View {
                 .lineSpacing(5)
         }
         .font(.system(.body, design: .serif))
-        .frame(maxHeight: .infinity)
+        .frame(minHeight: 260)
         .paperCard(padding: 14)
     }
 }
@@ -458,6 +570,7 @@ private struct SpeakControls: View {
 /// it shows one of your past wins, to counter the habit of discounting them.
 struct ReframePromptView: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     let entry: Entry
 
     private enum Step { case ask, reframe, compassion, win }
@@ -470,9 +583,8 @@ struct ReframePromptView: View {
                 case .ask:
                     VStack(spacing: 18) {
                         Spacer()
-                        Image(systemName: "leaf")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.tint)
+                        OrbView(palette: orbPalette, state: .settling)
+                            .frame(width: 110, height: 110)
                         Text("Saved.")
                             .font(.system(.title, design: .serif).weight(.semibold))
                         Text("Getting it out counts. Want to look at it from another angle?")
@@ -506,6 +618,7 @@ struct ReframePromptView: View {
 /// Shown after a reframe or self-compassion break. Leads with a value, because
 /// your worth doesn't depend on past success. A past win is there if you want it.
 struct WinReminderView: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Query private var wins: [Win]
     @Query private var values: [PersonalValue]
     @Query private var reminders: [SavedReminder]
@@ -520,9 +633,9 @@ struct WinReminderView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
-                Image(systemName: "leaf")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.tint)
+                // The orb settles into a calm, steady shape while the message appears.
+                OrbView(palette: orbPalette, state: .settling)
+                    .frame(width: 120, height: 120)
                     .padding(.top, 32)
 
                 if let value {
@@ -642,5 +755,57 @@ struct TinyStepFollowUp: View {
     private func resolve(_ step: TinyStep, outcome: String) {
         withAnimation { step.outcome = outcome }
         try? context.save()
+    }
+}
+
+/// After saving a good moment: a settling orb, a warm word, and the option to
+/// keep it as a win too.
+private struct GoodMomentSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    let entry: Entry
+    /// After "keep it as a win too": a small golden orb floats off toward Anchors.
+    @State private var sendingToAnchors = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer()
+            Group {
+                if sendingToAnchors {
+                    PinchOffOrb(palette: orbPalette, dropColor: Color(hex: 0xF6C38B))
+                        .frame(width: 140, height: 140)
+                } else {
+                    OrbView(palette: orbPalette, state: .glowing, warm: true)
+                        .frame(width: 110, height: 110)
+                }
+            }
+            .frame(height: 140)
+            Text("Kept.")
+                .font(.system(.title, design: .serif).weight(.semibold))
+            Text("Noticing good moments is a skill, just like working through hard ones. This one's yours now.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Keep it as a win too") {
+                let words = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let title = words.isEmpty ? "A good moment" : String(words.prefix(140))
+                context.insert(Win(text: title))
+                try? context.save()
+                sendingToAnchors = true
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    dismiss()
+                }
+            }
+            .buttonStyle(.paper)
+            .disabled(sendingToAnchors)
+            Button("Just keep it here") { dismiss() }
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 8)
+        }
+        .padding(28)
+        .presentationDetents([.medium])
+        .presentationCornerRadius(28)
     }
 }
