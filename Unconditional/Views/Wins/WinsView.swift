@@ -2,9 +2,9 @@ import SwiftUI
 import SwiftData
 
 /// "Anchors": the things that hold your worth steady.
-/// Wins (what you did) and Values (what you stand for), side by side.
+/// Wins (what you did), Values (what you stand for), and Reminders (what you want to hear).
 struct WinsView: View {
-    private enum Page: String, CaseIterable { case wins = "Wins", values = "Values" }
+    private enum Page: String, CaseIterable { case wins = "Wins", values = "Values", reminders = "Reminders" }
     @State private var page: Page = .wins
 
     var body: some View {
@@ -20,6 +20,7 @@ struct WinsView: View {
                 switch page {
                 case .wins: WinsList()
                 case .values: ValuesList()
+                case .reminders: RemindersList()
                 }
             }
             .background(ThemeBackground())
@@ -104,5 +105,44 @@ struct WinsList: View {
         meaning = ""
         effortToOutcome = 0.5
         focused = false
+    }
+}
+
+/// Your encouragement library: short things you want to see when it's hard.
+struct RemindersList: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort: \SavedReminder.createdAt, order: .reverse) private var reminders: [SavedReminder]
+    @State private var newReminder = ""
+
+    var body: some View {
+        List {
+            Section {
+                TextField("e.g. I can feel uncertain and still take one step", text: $newReminder, axis: .vertical)
+                Button("Add reminder") {
+                    context.insert(SavedReminder(text: newReminder.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    try? context.save()
+                    newReminder = ""
+                }
+                .disabled(newReminder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } footer: {
+                Text("Write them in your own words, or save one from Thought Reset. They can show up after a reframe.")
+            }
+
+            if !reminders.isEmpty {
+                Section("Yours") {
+                    ForEach(reminders) { reminder in
+                        Text(reminder.text)
+                            .font(.system(.body, design: .serif))
+                            .padding(.vertical, 4)
+                    }
+                    .onDelete { offsets in
+                        offsets.forEach { context.delete(reminders[$0]) }
+                    }
+                }
+            }
+        }
+        .themedBackground()
+        .paperList()
+        .scrollDismissesKeyboard(.interactively)
     }
 }

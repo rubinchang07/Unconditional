@@ -27,6 +27,7 @@ struct TodayView: View {
     /// When set, the "reframe this?" sheet opens for that entry.
     @State private var savedEntry: Entry?
     @State private var showBreathing = false
+    @State private var showReset = false
 
     private var hasContent: Bool {
         if recorder.isRecording { return false }
@@ -59,6 +60,9 @@ struct TodayView: View {
             .navigationTitle(Date.now.formatted(.dateTime.weekday(.wide).month().day()))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Thought reset", systemImage: "leaf") { showReset = true }
+                }
                 if step != .choose {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Back", systemImage: "chevron.left") { go(to: Step(rawValue: step.rawValue - 1)!) }
@@ -76,6 +80,7 @@ struct TodayView: View {
                 ReframePromptView(entry: entry)
             }
             .sheet(isPresented: $showBreathing) { BreathingView() }
+            .fullScreenCover(isPresented: $showReset) { ThoughtResetView() }
         }
     }
 
@@ -86,6 +91,32 @@ struct TodayView: View {
             VStack(spacing: 16) {
                 PaperHeading(title: Greeting.now, subtitle: Greeting.dailyPrompt)
                     .padding(.bottom, 8)
+
+                // One tap to interrupt a spiral, before anything else.
+                Button {
+                    showReset = true
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "leaf")
+                            .font(.title3)
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(.tint, in: Circle())
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("I'm spiraling")
+                                .font(.system(.headline, design: .serif))
+                            Text("A quick thought reset, no writing needed")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(16)
+                    .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                TinyStepFollowUp()
 
                 ForEach(EntryKind.allCases) { option in
                     Button {
@@ -437,66 +468,144 @@ struct ReframePromptView: View {
     }
 }
 
-/// "Remember this?" One random past win, shown after a reframe.
+/// Shown after a reframe or self-compassion break. Leads with a value, because
+/// your worth doesn't depend on past success. A past win is there if you want it.
 struct WinReminderView: View {
     @Query private var wins: [Win]
     @Query private var values: [PersonalValue]
-    @State private var value: PersonalValue?
+    @Query private var reminders: [SavedReminder]
     let onDone: () -> Void
 
-    /// Picked once when the view appears, so it doesn't change on every redraw.
+    /// Picked once when the view appears, so they don't change on every redraw.
+    @State private var value: PersonalValue?
+    @State private var reminder: SavedReminder?
     @State private var win: Win?
+    @State private var showWin = false
 
     var body: some View {
-        VStack(spacing: 22) {
-            Spacer()
-            Image(systemName: "star")
-                .font(.system(size: 40))
-                .foregroundStyle(.tint)
+        ScrollView {
+            VStack(spacing: 22) {
+                Image(systemName: "leaf")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.tint)
+                    .padding(.top, 32)
 
-            if let win {
-                Text("Remember this?")
-                    .font(.system(.title, design: .serif).weight(.semibold))
-                VStack(spacing: 8) {
-                    Text(win.text)
-                        .font(.system(.title3, design: .serif))
-                    if !win.meaning.isEmpty {
-                        Text(win.meaning)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(win.createdAt, format: .dateTime.month().day())
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .paperCard()
-                Text("One hard moment doesn't erase this. Both are true.")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
                 if let value {
-                    Text("And you still care about **\(value.name)**, whatever today brought.")
+                    Text("Whatever today brought")
+                        .font(.system(.title, design: .serif).weight(.semibold))
+                    VStack(spacing: 8) {
+                        Text("you still care about")
+                            .foregroundStyle(.secondary)
+                        Text(value.name)
+                            .font(.system(.title2, design: .serif).weight(.semibold))
+                            .foregroundStyle(.tint)
+                        if !value.meaning.isEmpty {
+                            Text(value.meaning)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .paperCard()
+                    Text("That's true on good days and hard ones. Your worth isn't something today could take away.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                } else if let reminder {
+                    Text("Something you wanted to remember")
+                        .font(.system(.title2, design: .serif).weight(.semibold))
+                        .multilineTextAlignment(.center)
+                    Text(reminder.text)
+                        .font(.system(.title3, design: .serif))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .paperCard()
+                } else {
+                    Text("Your worth isn't on the line here.")
+                        .font(.system(.title2, design: .serif).weight(.semibold))
+                        .multilineTextAlignment(.center)
+                    Text("You looked at a hard thought honestly. That's enough for now. If you'd like, add a few values in Anchors, and you'll see one here next time.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                 }
-            } else {
-                Text("Nice work.")
-                    .font(.system(.title, design: .serif).weight(.semibold))
-                Text("Next time something goes right, even something small, log it in Wins. You'll see it here after a reframe.")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-            }
 
-            Spacer()
-            Button("Done", action: onDone)
-                .buttonStyle(.paper)
+                // Wins are optional here: nice to remember, but not the reason you're okay.
+                if let win {
+                    if showWin {
+                        VStack(spacing: 6) {
+                            Text(win.text)
+                                .font(.system(.body, design: .serif))
+                            Text(win.createdAt, format: .dateTime.month().day())
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .paperCard(padding: 16)
+                        .transition(.opacity)
+                    } else {
+                        Button("Show me a past win too") { withAnimation { showWin = true } }
+                            .font(.subheadline)
+                    }
+                }
+
+                Button("Done", action: onDone)
+                    .buttonStyle(.paper)
+                    .padding(.top, 12)
+            }
+            .padding(28)
         }
-        .padding(28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .scrollIndicators(.hidden)
         .background(ThemeBackground())
         .onAppear {
-            win = wins.randomElement()
             value = values.randomElement()
+            reminder = reminders.randomElement()
+            win = wins.randomElement()
         }
+    }
+}
+
+/// Follows up on tiny steps: did you give it a go? Effort is what counts here.
+struct TinyStepFollowUp: View {
+    @Environment(\.modelContext) private var context
+    @Query(filter: #Predicate<TinyStep> { $0.outcome == nil }, sort: \TinyStep.createdAt)
+    private var steps: [TinyStep]
+
+    /// Only steps from more than an hour ago, so it doesn't ask right away.
+    private var due: TinyStep? {
+        steps.first { $0.isOpen && $0.createdAt < Date.now.addingTimeInterval(-3600) }
+    }
+
+    var body: some View {
+        if let step = due {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Earlier you picked a tiny step")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tint)
+                Text(step.text)
+                    .font(.system(.body, design: .serif))
+                Text("Did you give it a go? It doesn't matter how it went.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Button("I tried") { resolve(step, outcome: "tried") }
+                        .buttonStyle(.borderedProminent)
+                    Button("Not yet") {
+                        withAnimation { step.snoozedUntil = Calendar.current.startOfDay(for: .now).addingTimeInterval(86_400) }
+                        try? context.save()
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Let it go") { resolve(step, outcome: "letGo") }
+                        .buttonStyle(.bordered)
+                }
+                .font(.subheadline)
+            }
+            .paperCard(padding: 16)
+            .transition(.opacity)
+        }
+    }
+
+    private func resolve(_ step: TinyStep, outcome: String) {
+        withAnimation { step.outcome = outcome }
+        try? context.save()
     }
 }
