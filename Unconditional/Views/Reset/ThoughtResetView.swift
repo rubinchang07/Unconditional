@@ -10,6 +10,7 @@ import SwiftData
 struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Query(sort: \ResetThought.sortOrder) private var thoughts: [ResetThought]
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt == nil }) private var parked: [ParkedThought]
 
@@ -193,9 +194,8 @@ struct ThoughtResetView: View {
     private func closingStep(_ message: String) -> some View {
         VStack(spacing: 18) {
             Spacer()
-            Image(systemName: "leaf")
-                .font(.system(size: 40))
-                .foregroundStyle(.tint)
+            OrbView(palette: orbPalette, state: .settling)
+                .frame(width: 140, height: 140)
             Text(message)
                 .font(.system(.title3, design: .serif))
                 .multilineTextAlignment(.center)

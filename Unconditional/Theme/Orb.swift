@@ -29,6 +29,23 @@ extension Color {
     init(hex: UInt32) { self.init(uiColor: UIColor(hex: hex)) }
 }
 
+/// What the app is doing, which the orb reflects. It never claims to know how
+/// you feel. It only shows whether the app is resting, listening, breathing
+/// with you, or settling after you've looked at a thought.
+enum OrbState: Equatable {
+    case resting, listening, breathing, settling
+
+    /// How much the edge undulates, and how big the orb is.
+    func shape(level: Double) -> (wobble: Double, scale: Double) {
+        switch self {
+        case .resting: (0.8, 1)
+        case .listening: (1.4, 1 + 0.15 * level)
+        case .breathing: (0.5, 1)
+        case .settling: (0.3, 0.96)
+        }
+    }
+}
+
 /// A softly undulating orb, drawn every frame with Canvas.
 ///
 /// How it works: a circle's radius is nudged by a few sine waves of different
@@ -42,6 +59,9 @@ struct OrbView: View {
     /// When true, touching the orb pulls its edge toward your finger, like
     /// pressing into something soft. The orb itself stays where it is.
     var interactive = false
+    var state: OrbState = .resting
+    /// Voice loudness, 0 to 1, used while listening.
+    var level: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Where the finger is, in the orb's own frame. Kept after lifting so the
@@ -51,6 +71,11 @@ struct OrbView: View {
     /// When the finger lifted, so the pull can ease out with a little wobble.
     @State private var releasedAt: Date?
 
+    /// For easing between states over about a second, instead of jumping.
+    @State private var fromShape: (wobble: Double, scale: Double) = (0.8, 1)
+    @State private var changedAt = Date.distantPast
+    private static let transition = 1.2
+
     /// Extra room the canvas draws into beyond its frame. A Canvas clips to its
     /// bounds, so without this the blurred glow got cut off in a visible square.
     private let bleed: CGFloat = 90
@@ -59,9 +84,11 @@ struct OrbView: View {
         TimelineView(.animation(paused: reduceMotion)) { timeline in
             let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate * speed
             let amount = pullAmount(at: timeline.date)
+            let shape = currentShape(at: timeline.date, for: state)
+            let wobble = shape.wobble
             Canvas { context, size in
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let radius = (min(size.width, size.height) - bleed * 2) / 2 * 0.78
+                let radius = (min(size.width, size.height) - bleed * 2) / 2 * 0.78 * shape.scale
                 let colors = palette.colors
                 // The finger, moved into the canvas's coordinates (which include the bleed).
                 let pull = touch.map { Pull(point: CGPoint(x: $0.x + bleed, y: $0.y + bleed), amount: amount) }
@@ -69,7 +96,7 @@ struct OrbView: View {
                 // 1. A wide, very soft glow behind everything.
                 context.drawLayer { layer in
                     layer.addFilter(.blur(radius: radius * 0.22))
-                    layer.fill(Self.blob(center: center, radius: radius * 1.02, time: t * 0.7, seed: 1, pull: pull),
+                    layer.fill(Self.blob(center: center, radius: radius * 1.02, time: t * 0.7, seed: 1, pull: pull, wobble: wobble),
                                with: .color(colors[0].opacity(0.55)))
                 }
 
@@ -78,7 +105,7 @@ struct OrbView: View {
                 let offset = CGPoint(x: cos(angle) * radius, y: sin(angle) * radius)
                 context.drawLayer { layer in
                     layer.addFilter(.blur(radius: radius * 0.06))
-                    layer.fill(Self.blob(center: center, radius: radius * 0.9, time: t, seed: 2, pull: pull),
+                    layer.fill(Self.blob(center: center, radius: radius * 0.9, time: t, seed: 2, pull: pull, wobble: wobble),
                                with: .linearGradient(Gradient(colors: [colors[0], colors[1]]),
                                                      startPoint: CGPoint(x: center.x + offset.x, y: center.y + offset.y),
                                                      endPoint: CGPoint(x: center.x - offset.x, y: center.y - offset.y)))
@@ -89,7 +116,7 @@ struct OrbView: View {
                                     y: center.y + sin(t * 0.5) * radius * 0.2)
                 context.drawLayer { layer in
                     layer.addFilter(.blur(radius: radius * 0.14))
-                    layer.fill(Self.blob(center: drift, radius: radius * 0.45, time: t * 1.3, seed: 3, pull: pull.map { Pull(point: $0.point, amount: $0.amount * 0.6) }),
+                    layer.fill(Self.blob(center: drift, radius: radius * 0.45, time: t * 1.3, seed: 3, pull: pull.map { Pull(point: $0.point, amount: $0.amount * 0.6) }, wobble: wobble),
                                with: .color(colors[2].opacity(0.7)))
                 }
             }
@@ -112,6 +139,17 @@ struct OrbView: View {
             including: interactive ? .all : .none
         )
         .allowsHitTesting(interactive)
+        .onAppear {
+            // A settling orb arrives a little restless and calms down in front of you.
+            if state == .settling {
+                fromShape = OrbState.resting.shape(level: 0)
+                changedAt = .now
+            }
+        }
+        .onChange(of: state) { old, _ in
+            fromShape = currentShape(at: .now, for: old)
+            changedAt = .now
+        }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: touching) { _, new in new }
         .accessibilityHidden(true)
     }
@@ -126,6 +164,15 @@ struct OrbView: View {
         return exp(-elapsed * 3.5) * cos(elapsed * 9)
     }
 
+    /// The shape right now: eased from where the last state left off toward this one.
+    private func currentShape(at date: Date, for state: OrbState) -> (wobble: Double, scale: Double) {
+        let target = state.shape(level: level)
+        let progress = reduceMotion ? 1 : min(1, max(0, date.timeIntervalSince(changedAt) / Self.transition))
+        let eased = progress * progress * (3 - 2 * progress) // smoothstep
+        return (fromShape.wobble + (target.wobble - fromShape.wobble) * eased,
+                fromShape.scale + (target.scale - fromShape.scale) * eased)
+    }
+
     /// A finger pulling on the edge.
     struct Pull {
         var point: CGPoint
@@ -133,7 +180,7 @@ struct OrbView: View {
     }
 
     /// A closed wobbly circle. `seed` shifts the waves so each layer moves differently.
-    static func blob(center: CGPoint, radius: CGFloat, time: Double, seed: Double, pull: Pull? = nil) -> Path {
+    static func blob(center: CGPoint, radius: CGFloat, time: Double, seed: Double, pull: Pull? = nil, wobble amplitude: Double = 1) -> Path {
         var path = Path()
         let points = 120
 
@@ -152,10 +199,10 @@ struct OrbView: View {
 
         for i in 0...points {
             let theta = Double(i) / Double(points) * 2 * .pi
-            let wobble = 1
-                + 0.07 * sin(3 * theta + time * 0.9 + seed)
+            let wobble = 1 + amplitude * (
+                0.07 * sin(3 * theta + time * 0.9 + seed)
                 + 0.045 * sin(5 * theta - time * 1.2 + seed * 2)
-                + 0.03 * sin(2 * theta + time * 0.5 + seed * 3)
+                + 0.03 * sin(2 * theta + time * 0.5 + seed * 3))
             var delta = theta - pullAngle
             delta = atan2(sin(delta), cos(delta)) // wrap to -pi...pi
             let bulge = pullSize * exp(-(delta * delta) / (2 * 0.45 * 0.45))

@@ -23,7 +23,7 @@ struct BreathingView: View {
                 .contentTransition(.opacity)
 
             // The orb breathes with you: it grows as you breathe in and settles as you breathe out.
-            OrbView(palette: palette, speed: 0.5)
+            OrbView(palette: palette, speed: 0.5, state: .breathing)
                 .frame(width: 280, height: 280)
                 .scaleEffect(expanded ? 1.05 : 0.55)
                 // A soft tap each time the breath turns, so you can follow with your eyes closed.

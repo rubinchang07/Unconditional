@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Theme previews, daily reminder, and Face ID lock.
+/// Theme previews, daily reminder, and Face ID lock. Opens from the gear on Today.
 struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
     @AppStorage(Theme.storageKey) private var theme: Theme = .white
     @AppStorage(ReminderScheduler.enabledKey) private var reminderEnabled = false
     @AppStorage(ReminderScheduler.timeKey) private var reminderMinutes = ReminderScheduler.defaultMinutes
@@ -68,7 +69,10 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 6)
                     Toggle("Evening warmth after 9 PM", isOn: $eveningWarmth)
-                    Button("Replay the welcome tour") { hasSeenWelcome = false }
+                    Button("Replay the welcome tour") {
+                        dismiss()
+                        hasSeenWelcome = false
+                    }
                 } header: {
                     Text("Orb")
                 }
@@ -109,6 +113,11 @@ struct SettingsView: View {
             .navigationTitle("settings")
             .themedBackground()
             .paperList()
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
     }
 

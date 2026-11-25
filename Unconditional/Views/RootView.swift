@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Four tabs. Reframe isn't a tab: it opens as a step after saving an entry on Today.
+/// Three tabs: today, reflect, anchors. Settings opens from the gear on Today.
+/// Reframe isn't a tab: it opens as a step after saving an entry on Today.
 /// Also applies the chosen theme and the optional Face ID lock.
 struct RootView: View {
     @AppStorage(Theme.storageKey) private var theme: Theme = .white
@@ -15,13 +16,11 @@ struct RootView: View {
         ZStack {
             TabView {
                 TodayView()
-                    .tabItem { Label("today", systemImage: "sun.max") }
-                WinsView()
-                    .tabItem { Label("anchors", systemImage: "star") }
+                    .tabItem { Label("today", systemImage: "circle.circle") }
                 HistoryView()
-                    .tabItem { Label("history", systemImage: "clock") }
-                SettingsView()
-                    .tabItem { Label("settings", systemImage: "gearshape") }
+                    .tabItem { Label("reflect", systemImage: "book") }
+                WinsView()
+                    .tabItem { Label("anchors", systemImage: "heart") }
             }
 
             if !hasSeenWelcome {

@@ -44,7 +44,7 @@ struct HistoryView: View {
                     }
                 }
             }
-            .navigationTitle("history")
+            .navigationTitle("reflect")
             .themedBackground()
             .paperList()
         }

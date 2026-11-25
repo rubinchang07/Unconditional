@@ -31,6 +31,7 @@ struct TodayView: View {
     @State private var showBreathing = false
     @State private var showReset = false
     @State private var showCareer = false
+    @State private var showSettings = false
     @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
     private var hasContent: Bool {
@@ -69,7 +70,12 @@ struct TodayView: View {
             .navigationTitle(step == .home ? "" : Date.now.formatted(.dateTime.weekday(.wide).month().day()).lowercased())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if step != .home {
+                if step == .home {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Settings", systemImage: "gearshape") { showSettings = true }
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Thought reset", systemImage: "leaf") { showReset = true }
                     }
@@ -93,6 +99,7 @@ struct TodayView: View {
             .sheet(isPresented: $showBreathing) { BreathingView() }
             .fullScreenCover(isPresented: $showReset) { ThoughtResetView() }
             .sheet(isPresented: $showCareer) { CareerReflectionView() }
+            .sheet(isPresented: $showSettings) { SettingsView() }
         }
     }
 
@@ -191,9 +198,14 @@ struct TodayView: View {
             switch kind {
             case .write:
                 PaperHeading(title: "What's on your mind?", subtitle: "Write it the way you'd say it. Messy is fine.")
+                SituationPrompts(text: $text)
                 JournalEditor(text: $text, placeholder: "Start anywhere…")
             case .speak:
                 PaperHeading(title: "Say it out loud", subtitle: "Transcribed on your phone. Fix any words after you stop.")
+                // The orb listens: it grows gently with your voice while recording.
+                OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting, level: recorder.level)
+                    .frame(width: 130, height: 130)
+                    .padding(.vertical, 8)
                 SpeakControls(recorder: recorder, onStart: { textBeforeRecording = text })
                     .paperCard()
                 JournalEditor(text: $text, placeholder: "Your words will appear here…")
@@ -458,6 +470,7 @@ private struct SpeakControls: View {
 /// it shows one of your past wins, to counter the habit of discounting them.
 struct ReframePromptView: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     let entry: Entry
 
     private enum Step { case ask, reframe, compassion, win }
@@ -470,9 +483,8 @@ struct ReframePromptView: View {
                 case .ask:
                     VStack(spacing: 18) {
                         Spacer()
-                        Image(systemName: "leaf")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.tint)
+                        OrbView(palette: orbPalette, state: .settling)
+                            .frame(width: 110, height: 110)
                         Text("Saved.")
                             .font(.system(.title, design: .serif).weight(.semibold))
                         Text("Getting it out counts. Want to look at it from another angle?")
@@ -506,6 +518,7 @@ struct ReframePromptView: View {
 /// Shown after a reframe or self-compassion break. Leads with a value, because
 /// your worth doesn't depend on past success. A past win is there if you want it.
 struct WinReminderView: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Query private var wins: [Win]
     @Query private var values: [PersonalValue]
     @Query private var reminders: [SavedReminder]
@@ -520,9 +533,9 @@ struct WinReminderView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
-                Image(systemName: "leaf")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.tint)
+                // The orb settles into a calm, steady shape while the message appears.
+                OrbView(palette: orbPalette, state: .settling)
+                    .frame(width: 120, height: 120)
                     .padding(.top, 32)
 
                 if let value {

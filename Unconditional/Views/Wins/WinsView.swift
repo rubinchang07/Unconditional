@@ -37,7 +37,18 @@ struct WinsList: View {
 
     @State private var newWin = ""
     @State private var meaning = ""
-    @State private var effortToOutcome = 0.5
+    /// Two words you tap instead of a slider. Both, either, or neither.
+    @State private var tried = false
+    @State private var workedOut = false
+
+    /// Still stored on the same spectrum, so older wins and Patterns keep working.
+    private var effortToOutcome: Double {
+        switch (tried, workedOut) {
+        case (true, false): 0.1
+        case (false, true): 0.9
+        default: 0.5
+        }
+    }
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -47,18 +58,12 @@ struct WinsList: View {
                     .focused($focused)
                 TextField("What does this say about you? (optional)", text: $meaning, axis: .vertical)
                     .font(.callout)
-                VStack(alignment: .leading, spacing: 6) {
-                    Slider(value: $effortToOutcome, in: 0...1)
-                        .accessibilityLabel("Effort or outcome")
-                        .accessibilityValue(Win.effortLabel(for: effortToOutcome))
-                    HStack {
-                        Text("I tried")
-                        Spacer()
-                        Text("It worked out")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    WordChip(title: "I tried", isOn: $tried)
+                    WordChip(title: "It worked out", isOn: $workedOut)
+                    Spacer(minLength: 0)
                 }
+                .padding(.vertical, 2)
                 Button("Add win", action: add)
                     .disabled(newWin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             } footer: {
@@ -107,7 +112,8 @@ struct WinsList: View {
         try? context.save()
         newWin = ""
         meaning = ""
-        effortToOutcome = 0.5
+        tried = false
+        workedOut = false
         focused = false
     }
 }
@@ -152,5 +158,26 @@ struct RemindersList: View {
         .themedBackground()
         .paperList()
         .scrollDismissesKeyboard(.interactively)
+    }
+}
+
+/// A word you tap on or off. Softer than a slider for a quick note.
+struct WordChip: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            Text(title)
+                .font(.subheadline)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(isOn ? AnyShapeStyle(.tint.opacity(0.18)) : AnyShapeStyle(.secondary.opacity(0.08)), in: Capsule())
+                .overlay(Capsule().strokeBorder(.tint.opacity(isOn ? 0.5 : 0), lineWidth: 1))
+                .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: isOn)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }

@@ -189,11 +189,9 @@ struct LoopBubble: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
                     .minimumScaleFactor(0.8)
-                HStack(spacing: 2) {
-                    Text("\(count)").font(.caption.weight(.bold)).monospacedDigit()
-                    if let symbol = trendSymbol {
-                        Image(systemName: symbol).font(.caption2.weight(.bold))
-                    }
+                // Size says how often. Only a small arrow, no count, so it never reads as a score.
+                if let symbol = trendSymbol {
+                    Image(systemName: symbol).font(.caption2.weight(.bold))
                 }
             }
             .foregroundStyle(.white)
@@ -304,14 +302,29 @@ struct ValueRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(.tint.opacity(0.15), lineWidth: 5)
+            Circle().stroke(.tint.opacity(0.15), lineWidth: max(3, size * 0.14))
             Circle()
                 .trim(from: 0, to: CGFloat(min(max(amount, 0), 10) / 10))
-                .stroke(.tint, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .stroke(.tint, style: StrokeStyle(lineWidth: max(3, size * 0.14), lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
         .frame(width: size, height: size)
         .animation(.spring(duration: 0.5), value: amount)
         .accessibilityLabel("Lived lately: \(Int(amount)) out of 10")
+    }
+}
+
+/// A small ring with a word beside it, for looking back at a "how much" answer.
+struct LabeledRing: View {
+    let amount: Double // 0 to 10
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ValueRing(amount: amount, size: 18)
+            Text(label).font(.caption).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(Int(amount)) out of 10")
     }
 }

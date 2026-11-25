@@ -194,9 +194,13 @@ struct CareerHistoryView: View {
                         if !reflection.interesting.isEmpty {
                             Text("Interesting: \(reflection.interesting)").font(.callout)
                         }
-                        Text("Enjoyed \(Int(reflection.enjoyment)) · Discouraged \(Int(reflection.discouragement)) · Urge to quit \(Int(reflection.urgeToQuit))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        // Rings rather than numbers, so looking back doesn't feel like a report card.
+                        HStack(spacing: 16) {
+                            LabeledRing(amount: reflection.enjoyment, label: "enjoyed")
+                            LabeledRing(amount: reflection.discouragement, label: "discouraged")
+                            LabeledRing(amount: reflection.urgeToQuit, label: "urge to quit")
+                        }
+                        .padding(.top, 4)
                     }
                     .padding(.vertical, 2)
                     .gentleRemove { context.delete(reflection) }
@@ -248,14 +252,7 @@ struct CareerSummary: View {
 
     private func meter(_ title: String, value: Double) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text(value.formatted(.number.precision(.fractionLength(1))))
-                    .font(.system(.body, design: .serif).weight(.semibold))
-                    .foregroundStyle(.tint)
-                    .monospacedDigit()
-            }
+            Text(title)
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule().fill(.tint.opacity(0.15))

@@ -64,9 +64,7 @@ struct ParkedReviewView: View {
                     ForEach(reviewed) { thought in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(thought.text)
-                            Text("Urgency at review: \(Int(thought.urgencyAtReview)) of 10")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            LabeledRing(amount: thought.urgencyAtReview, label: "how urgent it felt later")
                             if !thought.reviewNote.isEmpty {
                                 Text(thought.reviewNote)
                                     .font(.callout)
