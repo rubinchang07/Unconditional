@@ -53,16 +53,14 @@ struct AnchorsView: View {
                             // The bed reaches under the waterfall, so the falls land in it.
                             Riverbed(color: palette.colors[0])
                                 .padding(.leading, -(Self.streamX + 22))
-                                .padding(.trailing, -4)
+                                .padding(.trailing, -20)
+                                .padding(.top, -Riverbed.fadeIn)
+                                .padding(.bottom, -60)
                         }
                 }
                 .padding(.leading, Self.streamX + 22)
                 .padding(.trailing, 20)
                 .padding(.bottom, 60)
-                .background(alignment: .topLeading) {
-                    Stream(scroll: scroll, color: palette.colors[0])
-                        .allowsHitTesting(false)
-                }
             }
             .onScrollGeometryChange(for: ScrollState.self) { geometry in
                 ScrollState(offset: geometry.contentOffset.y + geometry.contentInsets.top,
@@ -72,7 +70,16 @@ struct AnchorsView: View {
                 scroll = new
                 surfacePull(new.offset)
             }
-            .background { depthBackground.ignoresSafeArea() }
+            .background {
+                ZStack(alignment: .topLeading) {
+                    depthBackground
+                    // The falls stay fixed on screen while the page scrolls over them,
+                    // so scrolling never speeds the water up. Only depth slows it.
+                    Stream(depth: scroll.depth, color: palette.colors[0])
+                        .allowsHitTesting(false)
+                }
+                .ignoresSafeArea()
+            }
             .overlay(alignment: .top) { bubbleView }
             .overlay { fallingDrop }
             .navigationTitle("anchors")
@@ -324,7 +331,8 @@ struct DropCard<Content: View>: View {
 /// page, melted together, with bright streaks sliding down them. Scrolling
 /// nudges them along a little; deeper down, everything slows.
 private struct Stream: View {
-    let scroll: AnchorsView.ScrollState
+    /// 0 at the surface, 1 at the riverbed.
+    let depth: Double
     let color: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -356,11 +364,10 @@ private struct Stream: View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
             let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
-                // Only draw what's on screen, plus a little either side.
-                let top = max(0, scroll.offset - 80)
-                let bottom = min(size.height, scroll.offset + scroll.viewport + 80)
-                guard bottom > top else { return }
-                let calm = 1 - 0.6 * scroll.depth
+                // Drawn in screen space: from the top of the screen to the bottom.
+                let top: CGFloat = 0
+                let bottom: CGFloat = size.height
+                let calm = 1 - 0.6 * depth
                 let x = AnchorsView.streamX
 
                 func strandX(_ strand: Int, _ y: CGFloat) -> CGFloat {
@@ -388,24 +395,18 @@ private struct Stream: View {
                 }
 
                 // Bright streaks sliding down, like light catching falling water.
-                // Scrolling only nudges them a little, so they never rush.
-                let height = max(size.height, 1)
+                // Their speed depends only on time and depth, never on scrolling.
+                let loop: Double = Double(size.height) + 40
                 for streak in Self.streaks {
-                    let travel: Double = streak.start + t * streak.speed * calm + Double(scroll.offset) * 0.12
-                    let fall: Double = travel.truncatingRemainder(dividingBy: Double(height))
-                    // Repeat down the whole page, one copy per screen height.
-                    var y = CGFloat(fall) - height
-                    while y < bottom {
-                        if y + streak.length > top {
-                            let sx = strandX(streak.strand, y)
-                            let rect = CGRect(x: sx - 1.2, y: y, width: 2.4, height: streak.length)
-                            ctx.fill(Capsule().path(in: rect),
-                                     with: .linearGradient(Gradient(colors: [.white.opacity(0), .white.opacity(0.85)]),
-                                                           startPoint: CGPoint(x: sx, y: y),
-                                                           endPoint: CGPoint(x: sx, y: y + streak.length)))
-                        }
-                        y += max(scroll.viewport, 400)
-                    }
+                    let travel: Double = streak.start + t * streak.speed * calm
+                    let fall: Double = travel.truncatingRemainder(dividingBy: loop)
+                    let y: CGFloat = CGFloat(fall) - 40
+                    let sx = strandX(streak.strand, y)
+                    let rect = CGRect(x: sx - 1.2, y: y, width: 2.4, height: streak.length)
+                    ctx.fill(Capsule().path(in: rect),
+                             with: .linearGradient(Gradient(colors: [.white.opacity(0), .white.opacity(0.85)]),
+                                                   startPoint: CGPoint(x: sx, y: y),
+                                                   endPoint: CGPoint(x: sx, y: y + streak.length)))
                 }
             }
         }
@@ -418,6 +419,9 @@ private struct Riverbed: View {
     let color: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// How far above the values layer the bed starts fading in.
+    static let fadeIn: CGFloat = 120
+
     private static let sand = Color(hex: 0xE3D3B4)
     private static let stone = Color(hex: 0xB9B2A6)
 
@@ -425,14 +429,16 @@ private struct Riverbed: View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
             let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
-                let bed = Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 30)
-                ctx.clip(to: bed)
+                let bed = Path(CGRect(origin: .zero, size: size))
+                let fade: CGFloat = Self.fadeIn / max(size.height, 1)
 
-                // Water deepening into sand.
+                // The water above flows straight into the bed: it starts fully
+                // clear, gathers the same tint as the deep water, then turns to sand.
                 ctx.fill(bed, with: .linearGradient(
-                    Gradient(stops: [.init(color: color.opacity(0.18), location: 0),
-                                     .init(color: color.opacity(0.28), location: 0.45),
-                                     .init(color: Self.sand.opacity(0.75), location: 0.85),
+                    Gradient(stops: [.init(color: color.opacity(0), location: 0),
+                                     .init(color: color.opacity(0.16), location: fade),
+                                     .init(color: color.opacity(0.26), location: fade + (1 - fade) * 0.4),
+                                     .init(color: Self.sand.opacity(0.7), location: fade + (1 - fade) * 0.85),
                                      .init(color: Self.sand, location: 1)]),
                     startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
 
@@ -451,7 +457,7 @@ private struct Riverbed: View {
                 }
 
                 // Where the waterfall lands: rings spreading out from the splash.
-                let splash = CGPoint(x: AnchorsView.streamX, y: 16)
+                let splash = CGPoint(x: AnchorsView.streamX, y: Self.fadeIn + 6)
                 for i in 0..<3 {
                     let phase = (t * 0.5 + Double(i) / 3).truncatingRemainder(dividingBy: 1)
                     let r = CGFloat(8 + phase * 46)
