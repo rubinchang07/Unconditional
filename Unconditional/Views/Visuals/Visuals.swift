@@ -181,8 +181,7 @@ struct LoopBubble: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(color.opacity(0.85).gradient)
-                .shadow(color: color.opacity(0.35), radius: 8, y: 3)
+            MiniOrb(color: color, seed: Double(name.count))
             VStack(spacing: 2) {
                 Text(name)
                     .font(.caption2.weight(.semibold))

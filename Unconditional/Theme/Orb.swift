@@ -62,6 +62,10 @@ struct OrbView: View {
     var state: OrbState = .resting
     /// Voice loudness, 0 to 1, used while listening.
     var level: Double = 0
+    /// Change this number to make the orb ripple once, as if something soft landed in it.
+    var ripple: Int = 0
+    /// Called when you press and hold the orb.
+    var onHold: (() -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Where the finger is, in the orb's own frame. Kept after lifting so the
@@ -75,6 +79,8 @@ struct OrbView: View {
     @State private var fromShape: (wobble: Double, scale: Double) = (0.8, 1)
     @State private var changedAt = Date.distantPast
     private static let transition = 1.2
+    @State private var rippledAt = Date.distantPast
+    @State private var holdTask: Task<Void, Never>?
 
     /// Extra room the canvas draws into beyond its frame. A Canvas clips to its
     /// bounds, so without this the blurred glow got cut off in a visible square.
@@ -86,9 +92,10 @@ struct OrbView: View {
             let amount = pullAmount(at: timeline.date)
             let shape = currentShape(at: timeline.date, for: state)
             let wobble = shape.wobble
+            let rippleScale = rippleAmount(at: timeline.date)
             Canvas { context, size in
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let radius = (min(size.width, size.height) - bleed * 2) / 2 * 0.78 * shape.scale
+                let radius = (min(size.width, size.height) - bleed * 2) / 2 * 0.78 * shape.scale * rippleScale
                 let colors = palette.colors
                 // The finger, moved into the canvas's coordinates (which include the bleed).
                 let pull = touch.map { Pull(point: CGPoint(x: $0.x + bleed, y: $0.y + bleed), amount: amount) }
@@ -120,6 +127,9 @@ struct OrbView: View {
                                with: .color(colors[2].opacity(0.7)))
                 }
             }
+            // The colors drift very slightly with the time of day: a touch cooler
+            // in the morning, warmer at night. Subtle enough to notice only over time.
+            .hueRotation(.degrees(Self.timeOfDayShift(timeline.date)))
             // Negative padding lets the canvas spill past the frame, so the glow
             // fades into the background with no edge, while layout stays the same size.
             .padding(-bleed)
@@ -130,11 +140,15 @@ struct OrbView: View {
                 .onChanged { value in
                     touch = value.location
                     releasedAt = nil
-                    if !touching { touching = true }
+                    if !touching {
+                        touching = true
+                        startHoldTimer(from: value.startLocation)
+                    }
                 }
                 .onEnded { _ in
                     touching = false
                     releasedAt = .now
+                    holdTask?.cancel()
                 },
             including: interactive ? .all : .none
         )
@@ -146,6 +160,7 @@ struct OrbView: View {
                 changedAt = .now
             }
         }
+        .onChange(of: ripple) { _, _ in rippledAt = .now }
         .onChange(of: state) { old, _ in
             fromShape = currentShape(at: .now, for: old)
             changedAt = .now
@@ -162,6 +177,36 @@ struct OrbView: View {
         let elapsed = date.timeIntervalSince(releasedAt)
         if reduceMotion || elapsed > 1.6 { return 0 }
         return exp(-elapsed * 3.5) * cos(elapsed * 9)
+    }
+
+    /// After half a second of holding fairly still, calls `onHold`.
+    private func startHoldTimer(from start: CGPoint) {
+        guard let onHold else { return }
+        holdTask?.cancel()
+        holdTask = Task {
+            try? await Task.sleep(for: .seconds(0.5))
+            guard !Task.isCancelled, touching, let touch,
+                  hypot(touch.x - start.x, touch.y - start.y) < 30 else { return }
+            onHold()
+        }
+    }
+
+    /// A single soft ripple: a little swell that settles over about a second and a half.
+    private func rippleAmount(at date: Date) -> CGFloat {
+        let e = date.timeIntervalSince(rippledAt)
+        guard e >= 0, e < 1.6, !reduceMotion else { return 1 }
+        return 1 + CGFloat(0.08 * exp(-e * 3) * sin(e * 11))
+    }
+
+    /// Degrees of hue shift for the hour: cooler mornings, warmer evenings.
+    static func timeOfDayShift(_ date: Date) -> Double {
+        let hour = Calendar.current.component(.hour, from: date)
+        switch hour {
+        case 5..<11: return 6
+        case 11..<17: return 0
+        case 17..<21: return -7
+        default: return -12
+        }
     }
 
     /// The shape right now: eased from where the last state left off toward this one.

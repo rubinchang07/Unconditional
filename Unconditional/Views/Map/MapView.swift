@@ -189,10 +189,8 @@ private struct MapWeb: View {
                 ForEach(Array(loops.enumerated()), id: \.element.id) { index, loop in
                     Button { onSelect(loop) } label: {
                         VStack(spacing: 4) {
-                            Circle()
-                                .fill(color(loop).gradient)
-                                .frame(width: dotSize(loop), height: dotSize(loop))
-                                .shadow(color: color(loop).opacity(0.4), radius: 6)
+                            MiniOrb(color: color(loop), seed: Double(index))
+                                .frame(width: dotSize(loop) + 6, height: dotSize(loop) + 6)
                             Text(loop.name)
                                 .font(.caption2)
                                 .multilineTextAlignment(.center)

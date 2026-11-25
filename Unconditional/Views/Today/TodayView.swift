@@ -32,6 +32,8 @@ struct TodayView: View {
     @State private var showReset = false
     @State private var showCareer = false
     @State private var showSettings = false
+    @State private var showValues = false
+    @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
     @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
     private var hasContent: Bool {
@@ -108,8 +110,30 @@ struct TodayView: View {
     private var homeStep: some View {
         VStack(spacing: 18) {
             Spacer(minLength: 12)
-            OrbView(palette: orbPalette, interactive: true)
+            if showValues {
+                ValuesBloom(values: values, palette: orbPalette) {
+                    withAnimation(.calm) { showValues = false }
+                }
+                .frame(height: 330)
+                .transition(.opacity)
+            } else {
+                // Hold the orb and it divides into your values.
+                OrbView(palette: orbPalette, interactive: true, onHold: {
+                    withAnimation(.calm) { showValues = true }
+                })
                 .frame(width: 260, height: 260)
+                .transition(.opacity)
+                .overlay {
+                    // The orb itself is hidden from VoiceOver, so this stands in for it.
+                    Color.clear
+                        .accessibilityElement()
+                        .accessibilityLabel("Show your values")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { withAnimation(.calm) { showValues = true } }
+                        .allowsHitTesting(false)
+                }
+            }
+            if !showValues {
             VStack(spacing: 10) {
                 Text(Greeting.now)
                     .font(.system(.largeTitle, design: .serif).weight(.semibold))
@@ -120,6 +144,8 @@ struct TodayView: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
                     .padding(.horizontal, 12)
+            }
+            .transition(.opacity)
             }
             Spacer(minLength: 12)
 
