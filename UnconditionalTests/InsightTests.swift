@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import SwiftData
+import SwiftUI
 @testable import Unconditional
 
 /// The plain-language summary that Insights opens on.
