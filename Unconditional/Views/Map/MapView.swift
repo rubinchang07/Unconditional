@@ -210,9 +210,11 @@ private struct MapWeb: View {
                                     dragging = (value.persistentModelID, drag.translation)
                                 }
                                 .onEnded { drag in
-                                    let p = positions[index]
+                                    // Start from where it sat before the drag (positions[index]
+                                    // already includes the drag, so adding it again made it jump).
+                                    let p = place(value, auto: auto[index], center: center, outer: outer, includingDrag: false)
                                     let end = CGPoint(x: p.x + drag.translation.width, y: p.y + drag.translation.height)
-                                    let spot = MapLayout.clamp(end, center: center, limit: outer * 0.82)
+                                    let spot = MapLayout.clamp(end, center: center, limit: outer * MapLayout.dragLimit)
                                     value.mapX = Double((spot.x - center.x) / outer)
                                     value.mapY = Double((spot.y - center.y) / outer)
                                     dragging = nil
@@ -248,14 +250,17 @@ private struct MapWeb: View {
 
     /// Where a value is drawn: where you put it, or where the map placed it,
     /// plus any drag in progress.
-    private func place(_ value: PersonalValue, auto: CGPoint, center: CGPoint, outer: CGFloat) -> CGPoint {
+    private func place(_ value: PersonalValue, auto: CGPoint, center: CGPoint, outer: CGFloat,
+                       includingDrag: Bool = true) -> CGPoint {
         var p = auto
         if let x = value.mapX, let y = value.mapY {
             p = CGPoint(x: center.x + CGFloat(x) * outer, y: center.y + CGFloat(y) * outer)
         }
-        if let dragging, dragging.id == value.persistentModelID {
+        if includingDrag, let dragging, dragging.id == value.persistentModelID {
             p.x += dragging.offset.width
             p.y += dragging.offset.height
+            // Held inside the map while dragging, so letting go never makes it jump.
+            p = MapLayout.clamp(p, center: center, limit: outer * MapLayout.dragLimit)
         }
         return p
     }
@@ -280,6 +285,8 @@ enum MapLayout {
     /// Room a value label needs around it.
     static let labelWidth: CGFloat = 92
     static let labelHeight: CGFloat = 30
+    /// How far from the middle you can drag a value, as a share of the map's radius.
+    static let dragLimit: CGFloat = 0.82
 
     static func spread(values: [PersonalValue], loops: [Loop], links: [MapLink],
                        center: CGPoint, outer: CGFloat) -> [CGPoint] {
