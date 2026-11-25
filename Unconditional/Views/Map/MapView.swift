@@ -15,6 +15,8 @@ struct MapView: View {
     @Query private var entries: [Entry]
     @AppStorage("mapRoot") private var root = ""
     @State private var selected: Loop?
+    /// Show every loop, not just the ones that fit comfortably.
+    @State private var showAllLoops = false
 
     /// Entries needed before the map has enough to go on.
     static let entriesNeeded = 5
@@ -28,10 +30,21 @@ struct MapView: View {
                                 message: "After \(left) more check-in\(left == 1 ? "" : "s"), you'll start to see which loops travel together.")
                         .padding(.top, 40)
                 } else {
-                    MapWeb(loops: loops, values: linkedValues, links: links.filter(\.isConfirmed),
+                    let shown = showAllLoops ? loops : MapLayout.visibleLoops(loops, links: links)
+                    MapWeb(loops: shown, values: linkedValues, links: links.filter(\.isConfirmed),
                            color: color(for:), onSelect: { selected = $0 })
                         .aspectRatio(1, contentMode: .fit)
                         .paperCard()
+
+                    // Quieter loops are one tap away, so the map never gets crowded.
+                    if loops.count > MapLayout.loopLimit, shown.count < loops.count || showAllLoops {
+                        let hidden = loops.count - MapLayout.visibleLoops(loops, links: links).count
+                        Button(showAllLoops ? "show fewer loops" : "+\(hidden) quieter \(hidden == 1 ? "loop" : "loops")") {
+                            withAnimation(.calm) { showAllLoops.toggle() }
+                        }
+                        .font(.footnote)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
 
                     HStack(alignment: .top) {
                         Text("Tap a loop to see its core belief and the words you use. Drag a value to move it.")
@@ -285,6 +298,24 @@ enum MapLayout {
     /// Room a value label needs around it.
     static let labelWidth: CGFloat = 92
     static let labelHeight: CGFloat = 30
+    /// About how many loop labels fit around the ring on an iPhone.
+    static let loopLimit = 8
+
+    /// The loops to show: every loop you've linked to something (so a connection
+    /// never disappears), then the ones that came up most in the last three months,
+    /// up to `loopLimit`. Kept in your own order.
+    static func visibleLoops(_ loops: [Loop], links: [MapLink], now: Date = .now) -> [Loop] {
+        guard loops.count > loopLimit else { return loops }
+        let confirmed = links.filter(\.isConfirmed)
+        let linked = loops.filter { loop in confirmed.contains { $0.loopA == loop || $0.loopB == loop } }
+        let since = now.addingTimeInterval(-90 * 86_400)
+        func recent(_ loop: Loop) -> Int { loop.entries.filter { $0.createdAt >= since }.count }
+        let others = loops.filter { !linked.contains($0) }
+            .sorted { recent($0) == recent($1) ? $0.sortOrder < $1.sortOrder : recent($0) > recent($1) }
+        let chosen = linked + others.prefix(max(loopLimit - linked.count, 0))
+        return loops.filter { chosen.contains($0) }
+    }
+
     /// How far from the middle you can drag a value, as a share of the map's radius.
     static let dragLimit: CGFloat = 0.82
 

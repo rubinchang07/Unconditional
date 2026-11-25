@@ -153,3 +153,54 @@ struct MapLayoutTests {
         #expect(MapLayout.clamp(CGPoint(x: 120, y: 100), center: center, limit: 80) == CGPoint(x: 120, y: 100))
     }
 }
+
+/// Which loops fit on the map.
+@MainActor
+struct VisibleLoopsTests {
+    let container: ModelContainer
+    var context: ModelContext { container.mainContext }
+
+    init() throws {
+        container = try AppSchema.inMemoryContainer()
+    }
+
+    private func loops(_ count: Int) -> [Loop] {
+        (0..<count).map { i in
+            let loop = Loop(name: "Loop \(i)", coreBelief: "", pattern: "", sortOrder: i)
+            context.insert(loop)
+            return loop
+        }
+    }
+
+    @Test("A few loops all show")
+    func fewLoops() {
+        let all = loops(5)
+        #expect(MapLayout.visibleLoops(all, links: []) == all)
+    }
+
+    @Test("With many loops, the busiest show, in your order")
+    func busiest() {
+        let all = loops(10)
+        for loop in all.suffix(2) {
+            let entry = Entry(kind: .write, text: "…")
+            context.insert(entry)
+            entry.loop = loop
+        }
+        let shown = MapLayout.visibleLoops(all, links: [])
+        #expect(shown.count == MapLayout.loopLimit)
+        #expect(shown.contains(all[9]) && shown.contains(all[8]))
+        #expect(shown.map(\.sortOrder) == shown.map(\.sortOrder).sorted())
+    }
+
+    @Test("A loop you linked always shows, even if it's quiet")
+    func linkedStays() {
+        let all = loops(10)
+        let link = MapLink()
+        context.insert(link)
+        link.loopA = all[9]
+        link.loopB = all[8]
+        let shown = MapLayout.visibleLoops(all, links: [link])
+        #expect(shown.contains(all[9]) && shown.contains(all[8]))
+        #expect(shown.count == MapLayout.loopLimit)
+    }
+}
