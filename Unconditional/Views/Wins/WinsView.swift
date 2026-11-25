@@ -24,7 +24,7 @@ struct WinsView: View {
                 }
             }
             .background(ThemeBackground())
-            .navigationTitle(page.rawValue)
+            .navigationTitle(page.rawValue.lowercased())
             .keyboardDoneButton()
         }
     }
@@ -65,6 +65,12 @@ struct WinsList: View {
                 Text("You tend to discount successes. Logging them is a way of keeping score fairly. Effort counts, even when the outcome isn't there yet.")
             }
 
+            if wins.isEmpty {
+                GentleEmpty(symbol: "star", title: "Your wins will gather here",
+                            message: "Small ones count. So does trying. Nothing has to be impressive to belong here.")
+                    .listRowBackground(Color.clear)
+            }
+
             if !wins.isEmpty {
                 Section("\(wins.count) logged") {
                     ForEach(wins) { win in
@@ -84,9 +90,7 @@ struct WinsList: View {
                             .foregroundStyle(.tertiary)
                         }
                         .padding(.vertical, 2)
-                    }
-                    .onDelete { offsets in
-                        offsets.forEach { context.delete(wins[$0]) }
+                        .gentleRemove { context.delete(win) }
                     }
                 }
             }
@@ -128,15 +132,19 @@ struct RemindersList: View {
                 Text("Write them in your own words, or save one from Thought Reset. They can show up after a reframe.")
             }
 
+            if reminders.isEmpty {
+                GentleEmpty(symbol: "bookmark", title: "Words for hard moments",
+                            message: "Things you'd want to hear when it's a lot. Write your own, or save one from a thought reset.")
+                    .listRowBackground(Color.clear)
+            }
+
             if !reminders.isEmpty {
                 Section("Yours") {
                     ForEach(reminders) { reminder in
                         Text(reminder.text)
                             .font(.system(.body, design: .serif))
                             .padding(.vertical, 4)
-                    }
-                    .onDelete { offsets in
-                        offsets.forEach { context.delete(reminders[$0]) }
+                            .gentleRemove { context.delete(reminder) }
                     }
                 }
             }

@@ -151,7 +151,7 @@ struct InkPalette: View {
     @Binding var selection: InkChoice
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 4) {
             ForEach(InkChoice.allCases) { choice in
                 Button {
                     selection = choice
@@ -166,7 +166,7 @@ struct InkPalette: View {
                                 .padding(4)
                         }
                     }
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
                     .overlay(
                         Circle().strokeBorder(selection == choice ? Color.primary.opacity(0.6) : .clear, lineWidth: 2)
                     )
@@ -196,7 +196,7 @@ struct BrushBar: View {
                         } label: {
                             Image(systemName: brush.symbol)
                                 .font(.system(size: 17))
-                                .frame(width: 40, height: 36)
+                                .frame(width: 44, height: 44)
                                 .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                                 .background(isSelected ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(.clear),
                                             in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -225,8 +225,8 @@ struct BackgroundPicker: View {
     @Binding var selection: CanvasBackground
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text("Paper")
+        HStack(spacing: 2) {
+            Text("paper")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ForEach(CanvasBackground.allCases) { option in
@@ -236,6 +236,8 @@ struct BackgroundPicker: View {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(option.color)
                         .frame(width: 30, height: 30)
+                        .frame(width: 40, height: 44)
+                        .contentShape(Rectangle())
                         .overlay(
                             RoundedRectangle(cornerRadius: 7, style: .continuous)
                                 .strokeBorder(selection == option ? Color.primary.opacity(0.6) : Color.secondary.opacity(0.25),

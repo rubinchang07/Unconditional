@@ -12,7 +12,7 @@ struct OnboardingView: View {
     }
 
     private let pages: [Page] = [
-        Page(title: "Unconditional",
+        Page(title: "unconditional.",
              body: "A quiet place to work through hard thoughts, one day at a time. Your worth isn't something you have to earn here."),
         Page(title: "Get it out",
              body: "Write, speak, or draw whatever's on your mind. Messy is fine. There's no right way to do this."),
@@ -35,7 +35,7 @@ struct OnboardingView: View {
             HStack {
                 Spacer()
                 if index < pages.count - 1 {
-                    Button("Skip", action: onFinish)
+                    Button("skip", action: onFinish)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -54,6 +54,7 @@ struct OnboardingView: View {
                     VStack(spacing: 16) {
                         Text(pages[i].title)
                             .font(.system(.largeTitle, design: .serif).weight(.semibold))
+                            .softCase()
                             .multilineTextAlignment(.center)
                         Text(pages[i].body)
                             .font(.body)

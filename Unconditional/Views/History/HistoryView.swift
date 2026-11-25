@@ -59,13 +59,15 @@ struct HistoryView: View {
                         } label: {
                             EntryRow(entry: entry)
                         }
+                        .gentleRemove { context.delete(entry) }
                     }
-                    .onDelete { offsets in
-                        offsets.forEach { context.delete(entries[$0]) }
+                    if entries.isEmpty {
+                        GentleEmpty(symbol: "leaf", title: "Nothing here yet",
+                                    message: "Whenever you check in, it'll be kept here. There's no schedule to keep up with.")
                     }
                 }
             }
-            .navigationTitle("History")
+            .navigationTitle("history")
             .themedBackground()
             .paperList()
         }

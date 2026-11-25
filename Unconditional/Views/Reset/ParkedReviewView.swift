@@ -77,7 +77,7 @@ struct ParkedReviewView: View {
                 }
             }
         }
-        .navigationTitle("Weekly review")
+        .navigationTitle("weekly review")
         .navigationBarTitleDisplayMode(.inline)
         .themedBackground()
         .paperList()

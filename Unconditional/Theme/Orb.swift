@@ -41,12 +41,16 @@ struct OrbView: View {
     var speed: Double = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Extra room the canvas draws into beyond its frame. A Canvas clips to its
+    /// bounds, so without this the blurred glow got cut off in a visible square.
+    private let bleed: CGFloat = 90
+
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { timeline in
             let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate * speed
             Canvas { context, size in
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let radius = min(size.width, size.height) / 2 * 0.78
+                let radius = (min(size.width, size.height) - bleed * 2) / 2 * 0.78
                 let colors = palette.colors
 
                 // 1. A wide, very soft glow behind everything.
@@ -76,7 +80,11 @@ struct OrbView: View {
                                with: .color(colors[2].opacity(0.7)))
                 }
             }
+            // Negative padding lets the canvas spill past the frame, so the glow
+            // fades into the background with no edge, while layout stays the same size.
+            .padding(-bleed)
         }
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 

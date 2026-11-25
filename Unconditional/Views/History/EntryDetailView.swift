@@ -49,7 +49,7 @@ struct EntryDetailView: View {
                 }
             }
         }
-        .navigationTitle("Entry")
+        .navigationTitle("entry")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Self-compassion", systemImage: "heart") { editingCompassion = true }

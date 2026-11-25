@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage(AppLock.enabledKey) private var lockEnabled = false
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
+    @AppStorage("eveningWarmth") private var eveningWarmth = true
 
     @State private var notificationsDenied = false
 
@@ -50,6 +51,7 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 6)
+                    Toggle("Evening warmth after 9 PM", isOn: $eveningWarmth)
                     Button("Replay the welcome tour") { hasSeenWelcome = false }
                 } header: {
                     Text("Orb")
@@ -88,7 +90,7 @@ struct SettingsView: View {
                     Text("Locks the journal whenever you leave the app. Falls back to your passcode if Face ID fails.")
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle("settings")
             .themedBackground()
             .paperList()
         }

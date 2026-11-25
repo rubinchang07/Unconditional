@@ -57,14 +57,15 @@ struct TodayView: View {
                     }
                 }
                 .id(step)
-                .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                // A soft fade with a slight lift: calmer than sliding sideways.
+                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)),
                                         removal: .opacity))
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .frame(maxHeight: .infinity, alignment: .top)
             .background(ThemeBackground())
-            .navigationTitle(step == .home ? "" : Date.now.formatted(.dateTime.weekday(.wide).month().day()))
+            .navigationTitle(step == .home ? "" : Date.now.formatted(.dateTime.weekday(.wide).month().day()).lowercased())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if step != .home {
@@ -104,6 +105,7 @@ struct TodayView: View {
             VStack(spacing: 10) {
                 Text(Greeting.now)
                     .font(.system(.largeTitle, design: .serif).weight(.semibold))
+                    .softCase()
                 Text(Greeting.dailyPrompt)
                     .font(.body)
                     .foregroundStyle(.secondary)
@@ -119,8 +121,9 @@ struct TodayView: View {
             Button("Check in") { go(to: .choose) }
                 .buttonStyle(.paper)
 
-            Button("I'm spiraling") { showReset = true }
+            Button("i'm spiraling") { showReset = true }
                 .font(.headline)
+                .frame(minHeight: 44)
                 .padding(.vertical, 6)
 
             // Everything else stays tucked away until you want it.
@@ -128,9 +131,10 @@ struct TodayView: View {
                 Button("Breathe for a minute", systemImage: "wind") { showBreathing = true }
                 Button("Career check-in", systemImage: "briefcase") { showCareer = true }
             } label: {
-                Label("More", systemImage: "ellipsis.circle")
+                Label("more", systemImage: "ellipsis.circle")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .frame(minHeight: 44)
             }
             .padding(.bottom, 12)
         }
@@ -203,7 +207,8 @@ struct TodayView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
                 if !drawing.strokes.isEmpty {
-                    Button("Clear drawing", role: .destructive) { drawing = PKDrawing() }
+                    Button("clear drawing") { withAnimation(.calm) { drawing = PKDrawing() } }
+                        .foregroundStyle(.secondary)
                         .font(.footnote)
                 }
             }
@@ -238,7 +243,7 @@ struct TodayView: View {
     // MARK: - Actions
 
     private func go(to newStep: Step) {
-        withAnimation(.easeInOut(duration: 0.35)) { step = newStep }
+        withAnimation(.calm) { step = newStep }
     }
 
     private func save() {
@@ -404,7 +409,7 @@ private struct SpeakControls: View {
                     .font(.system(size: 30))
                     .foregroundStyle(.white)
                     .frame(width: 80, height: 80)
-                    .background(Circle().fill(recorder.isRecording ? AnyShapeStyle(Color.red.opacity(0.75)) : AnyShapeStyle(.tint)))
+                    .background(Circle().fill(recorder.isRecording ? AnyShapeStyle(.tint.opacity(0.6)) : AnyShapeStyle(.tint)))
                     .symbolEffect(.pulse, isActive: recorder.isRecording)
             }
             .buttonStyle(.plain)
@@ -417,7 +422,7 @@ private struct SpeakControls: View {
             if let message = recorder.errorMessage {
                 Text(message)
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
         }

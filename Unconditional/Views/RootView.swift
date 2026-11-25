@@ -9,18 +9,19 @@ struct RootView: View {
     @State private var isUnlocked = false
     @State private var isAuthenticating = false
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
+    @AppStorage("eveningWarmth") private var eveningWarmth = true
 
     var body: some View {
         ZStack {
             TabView {
                 TodayView()
-                    .tabItem { Label("Today", systemImage: "sun.max") }
+                    .tabItem { Label("today", systemImage: "sun.max") }
                 WinsView()
-                    .tabItem { Label("Anchors", systemImage: "star") }
+                    .tabItem { Label("anchors", systemImage: "star") }
                 HistoryView()
-                    .tabItem { Label("History", systemImage: "clock") }
+                    .tabItem { Label("history", systemImage: "clock") }
                 SettingsView()
-                    .tabItem { Label("Settings", systemImage: "gearshape") }
+                    .tabItem { Label("settings", systemImage: "gearshape") }
             }
 
             if !hasSeenWelcome {
@@ -33,6 +34,23 @@ struct RootView: View {
                 LockScreen(theme: theme, unlock: unlock)
                     .transition(.opacity)
                     .zIndex(2)
+            }
+        }
+        // Evening warmth: after 9 PM a faint amber layer sits over everything,
+        // a little like Night Shift, since evenings are when loops tend to show up.
+        .overlay {
+            if eveningWarmth {
+                TimelineView(.periodic(from: .now, by: 60)) { timeline in
+                    let hour = Calendar.current.component(.hour, from: timeline.date)
+                    let isEvening = hour >= 21 || hour < 5
+                    Color(hex: 0xFFB070)
+                        .opacity(isEvening ? 0.07 : 0)
+                        .blendMode(.multiply)
+                        .animation(.easeInOut(duration: 3), value: isEvening)
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
         // `.tint` colors every button, toggle, and link below it.

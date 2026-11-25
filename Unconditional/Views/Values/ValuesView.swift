@@ -38,9 +38,7 @@ struct ValuesList: View {
                             }
                             .padding(.vertical, 2)
                         }
-                    }
-                    .onDelete { offsets in
-                        offsets.forEach { context.delete(values[$0]) }
+                        .gentleRemove { context.delete(value) }
                     }
                 }
             }

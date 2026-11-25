@@ -39,7 +39,7 @@ struct SelfCompassionView: View {
                 Text("What would you offer a friend feeling this way? You can offer it to yourself too.")
             }
         }
-        .navigationTitle("Self-compassion")
+        .navigationTitle("self-compassion")
         .navigationBarTitleDisplayMode(.inline)
         .themedBackground()
         .paperList()

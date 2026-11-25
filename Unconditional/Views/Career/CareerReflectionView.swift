@@ -27,7 +27,7 @@ struct CareerReflectionView: View {
                     form
                 }
             }
-            .navigationTitle("Career check-in")
+            .navigationTitle("career check-in")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if !saved {
@@ -199,15 +199,17 @@ struct CareerHistoryView: View {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 2)
+                    .gentleRemove { context.delete(reflection) }
                 } header: {
                     Text(reflection.createdAt, format: .dateTime.weekday().month().day())
                 }
             }
-            .onDelete { offsets in
-                offsets.forEach { context.delete(reflections[$0]) }
+            if reflections.isEmpty {
+                GentleEmpty(symbol: "briefcase", title: "No check-ins yet",
+                            message: "After studying or applying, a minute here can help you see what you're learning, not just what's hard.")
             }
         }
-        .navigationTitle("Career")
+        .navigationTitle("career")
         .themedBackground()
         .paperList()
         .sheet(isPresented: $showNew) { CareerReflectionView() }
