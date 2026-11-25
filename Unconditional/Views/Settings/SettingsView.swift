@@ -1,4 +1,6 @@
 import SwiftUI
+import SwiftData
+import UniformTypeIdentifiers
 
 /// Theme previews, daily reminder, and Face ID lock. Opens from the gear on Today.
 struct SettingsView: View {
@@ -12,7 +14,12 @@ struct SettingsView: View {
     @AppStorage("eveningWarmth") private var eveningWarmth = true
     @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
+    @Environment(\.modelContext) private var context
     @State private var notificationsDenied = false
+    @State private var exportDocument: ExportDocument?
+    @State private var showingExporter = false
+    @State private var showingImporter = false
+    @State private var dataMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -104,6 +111,33 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Button {
+                        do {
+                            exportDocument = ExportDocument(data: try DataTransfer.encode(DataTransfer.snapshot(from: context)))
+                            showingExporter = true
+                        } catch {
+                            dataMessage = "Couldn't make the export. Nothing was changed."
+                        }
+                    } label: {
+                        Label("Export everything", systemImage: "square.and.arrow.up")
+                    }
+                    Button {
+                        showingImporter = true
+                    } label: {
+                        Label("Restore from a file", systemImage: "square.and.arrow.down")
+                    }
+                    if let dataMessage {
+                        Text(dataMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Your data")
+                } footer: {
+                    Text("Your journal lives only on this phone. Export saves all of it to one file you control. Restoring adds what's in a file and skips anything you already have, so nothing is overwritten.")
+                }
+
+                Section {
                     Toggle("Require Face ID", isOn: lockBinding)
                 } header: {
                     Text("Privacy")
@@ -119,6 +153,29 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .fileExporter(isPresented: $showingExporter, document: exportDocument, contentType: .json,
+                          defaultFilename: "Unconditional-\(Date.now.formatted(.iso8601.year().month().day()))") { result in
+                if case .success = result { dataMessage = "Exported. Keep the file somewhere private." }
+            }
+            .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in
+                restore(result)
+            }
+        }
+    }
+
+    private func restore(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        // Files picked from outside the app need permission to be read.
+        let allowed = url.startAccessingSecurityScopedResource()
+        defer { if allowed { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let snapshot = try DataTransfer.decode(Data(contentsOf: url))
+            let summary = DataTransfer.restore(snapshot, into: context)
+            dataMessage = summary.added == 0
+                ? "Everything in that file is already here."
+                : "Restored \(summary.added) \(summary.added == 1 ? "item" : "items"). \(summary.skipped) were already here."
+        } catch {
+            dataMessage = "That file couldn't be read. It may not be an Unconditional export."
         }
     }
 
@@ -213,5 +270,22 @@ private struct ThemePreview: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(theme.name) theme")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// Wraps the export so the system "Save to Files" sheet can write it.
+/// `nonisolated` because the system reads and writes files off the main thread.
+nonisolated struct ExportDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
