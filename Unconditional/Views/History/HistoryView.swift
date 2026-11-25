@@ -12,6 +12,14 @@ struct HistoryView: View {
         NavigationStack {
             List {
                 Section {
+                    NavigationLink {
+                        PatternsView()
+                    } label: {
+                        Label("Patterns over time", systemImage: "chart.line.uptrend.xyaxis")
+                    }
+                }
+
+                Section {
                     // One row per loop: name, count, and a soft bar showing its share.
                     // Simpler and calmer than a full chart, and the bar sits right under its label.
                     ForEach(loops) { loop in
