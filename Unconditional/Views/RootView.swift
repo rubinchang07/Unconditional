@@ -19,7 +19,7 @@ struct RootView: View {
                     .tabItem { Label("today", systemImage: "circle.circle") }
                 HistoryView()
                     .tabItem { Label("reflect", systemImage: "book") }
-                WinsView()
+                AnchorsView()
                     .tabItem { Label("anchors", systemImage: "heart") }
             }
 

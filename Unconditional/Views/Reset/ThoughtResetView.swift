@@ -264,7 +264,10 @@ struct ThoughtResetView: View {
 /// Rewrite a perspective so it sounds like you.
 private struct PerspectiveEditor: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @Bindable var thought: ResetThought
+    /// What it said before you started, so a real rewrite can be kept in Anchors.
+    @State private var original = ""
 
     var body: some View {
         Form {
@@ -276,9 +279,10 @@ private struct PerspectiveEditor: View {
             } header: {
                 Text("A different perspective")
             } footer: {
-                Text("Write what you'd want to hear in that moment. It doesn't have to be positive, just kind and fair.")
+                Text("Write what you'd want to hear in that moment. It doesn't have to be positive, just kind and fair. Your rewrite is also kept in Anchors.")
             }
         }
+        .onAppear { if original.isEmpty { original = thought.perspective } }
         .navigationTitle("edit")
         .navigationBarTitleDisplayMode(.inline)
         .themedBackground()
@@ -286,8 +290,22 @@ private struct PerspectiveEditor: View {
         .keyboardDoneButton()
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }
+                Button("Done") {
+                    keepRewrite()
+                    dismiss()
+                }
             }
         }
+    }
+
+    /// A perspective you rewrote in your own words becomes one of your
+    /// "words to come back to" in Anchors.
+    private func keepRewrite() {
+        let text = thought.perspective.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text != original else { return }
+        let existing = (try? context.fetch(FetchDescriptor<SavedReminder>())) ?? []
+        guard !existing.contains(where: { $0.text == text }) else { return }
+        context.insert(SavedReminder(text: text))
+        try? context.save()
     }
 }
