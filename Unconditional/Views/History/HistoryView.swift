@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import Charts
 
 /// Past entries, plus how often each loop shows up.
 struct HistoryView: View {
@@ -12,26 +11,18 @@ struct HistoryView: View {
         NavigationStack {
             List {
                 Section("Loops") {
-                    if entries.isEmpty {
-                        Text("Your patterns will show up here as you write.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Chart(loops) { loop in
-                            BarMark(
-                                x: .value("Entries", loop.entries.count),
-                                y: .value("Loop", loop.name)
-                            )
-                            .foregroundStyle(.tint)
-                            .cornerRadius(6)
-                        }
-                        .frame(height: 220)
-                    }
+                    // One row per loop: name, count, and a soft bar showing its share.
+                    // Simpler and calmer than a full chart, and the bar sits right under its label.
                     ForEach(loops) { loop in
                         NavigationLink {
                             LoopEditView(loop: loop)
                         } label: {
-                            LabeledContent(loop.name, value: "\(loop.entries.count)")
+                            LoopRow(loop: loop, maxCount: maxLoopCount)
                         }
+                    }
+                } footer: {
+                    if entries.isEmpty {
+                        Text("Your patterns will show up here as you write.")
                     }
                 }
 
@@ -51,6 +42,43 @@ struct HistoryView: View {
             .navigationTitle("History")
             .themedBackground()
         }
+    }
+
+    private var maxLoopCount: Int {
+        loops.map(\.entries.count).max() ?? 0
+    }
+}
+
+private struct LoopRow: View {
+    let loop: Loop
+    let maxCount: Int
+
+    private var fraction: Double {
+        maxCount == 0 ? 0 : Double(loop.entries.count) / Double(maxCount)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(loop.name)
+                Spacer()
+                Text("\(loop.entries.count)")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            // A track with a filled portion, like a gentle progress bar.
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.tint.opacity(0.15))
+                    Capsule()
+                        .fill(.tint)
+                        .frame(width: max(fraction == 0 ? 0 : 8, proxy.size.width * fraction))
+                }
+            }
+            .frame(height: 6)
+            .animation(.easeOut, value: fraction)
+        }
+        .padding(.vertical, 4)
     }
 }
 

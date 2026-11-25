@@ -10,6 +10,7 @@ struct TodayView: View {
     @State private var kind: EntryKind = .write
     @State private var text = ""
     @State private var drawing = PKDrawing()
+    @State private var ink: InkChoice = .ink
     @State private var loop: Loop?
 
     @State private var recorder = VoiceRecorder()
@@ -57,7 +58,8 @@ struct TodayView: View {
                     }
                 case .draw:
                     Section("Draw it") {
-                        DrawingCanvas(drawing: $drawing)
+                        InkPalette(selection: $ink)
+                        DrawingCanvas(drawing: $drawing, ink: ink)
                             .frame(height: 320)
                             .listRowInsets(EdgeInsets())
                         Button("Clear", role: .destructive) { drawing = PKDrawing() }
@@ -150,6 +152,9 @@ private struct SpeakControls: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
+        // List row separators normally start where the row's text starts. Since this
+        // text is centered, that put the line 2/3 across. Pin it to the left edge instead.
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
     }
 }
 
