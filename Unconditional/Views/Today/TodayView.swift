@@ -43,15 +43,15 @@ struct TodayView: View {
     /// The color to go back to after the eraser.
     @State private var lastInk: InkChoice = .ink
     @State private var showInkPicker = false
-    /// The page doesn't scroll under your finger while drawing. It only moves
-    /// with the small handle on the canvas's edge.
-    @State private var pagePosition = ScrollPosition(edge: .top)
-    @State private var page = PageMetrics()
+    /// The drawing page doesn't scroll under your finger. It only moves with the
+    /// small handle on the canvas's edge, so we move it ourselves rather than
+    /// using a scroll view (which kept competing with the pen).
+    @State private var drawOffset: CGFloat = 0
+    @State private var drawContentHeight: CGFloat = 0
+    @State private var drawVisibleHeight: CGFloat = 600
     @State private var handleStart: CGFloat?
     /// The opening: 0 nothing, 1 the orb swells in, 2 the greeting, 3 everything else.
     @State private var introStage = Intro.played ? 3 : 0
-    /// The day the full opening last played. After that, the day's launches just fade in.
-    @AppStorage("introDay") private var introDay = ""
     @Environment(\.accessibilityReduceMotion) private var introReduceMotion
     /// Becomes true the first time you hold the orb, and the hint under it goes away for good.
     @AppStorage("hasHeldOrb") private var hasHeldOrb = false
@@ -255,13 +255,6 @@ struct TodayView: View {
             introStage = 3
             return
         }
-        // The full swell once a day. Later the same day, everything simply fades in.
-        let today = Date.now.formatted(.iso8601.year().month().day())
-        if introDay == today {
-            withAnimation(.easeOut(duration: 0.6)) { introStage = 3 }
-            return
-        }
-        introDay = today
         try? await Task.sleep(for: .milliseconds(400))
         guard introStage < 1 else { return }
         withAnimation(.spring(duration: 2.8, bounce: 0.4)) { introStage = 1 }
@@ -323,28 +316,19 @@ struct TodayView: View {
     // MARK: - Step 2: capture
 
     private var captureStep: some View {
-        // Everything scrolls, so the keyboard never hides your words. When drawing,
-        // the page stays put under your strokes and only the handle moves it.
+        Group {
+            if kind == .draw {
+                drawPage
+            } else {
+                // Everything scrolls, so the keyboard never hides your words.
+                ScrollView {
+                    captureContent
+                }
+                .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.interactively)
+            }
+        }
         // Save sits in a bar of its own, above the tab bar, so it's always in reach.
-        ScrollView {
-            captureContent
-        }
-        .scrollPosition($pagePosition)
-        .onScrollGeometryChange(for: PageMetrics.self) { geo in
-            PageMetrics(offset: geo.contentOffset.y,
-                        minOffset: -geo.contentInsets.top,
-                        maxOffset: max(-geo.contentInsets.top,
-                                       geo.contentSize.height + geo.contentInsets.bottom - geo.containerSize.height),
-                        visibleHeight: geo.containerSize.height - geo.contentInsets.top - geo.contentInsets.bottom)
-        } action: { _, new in
-            page = new
-        }
-        .scrollIndicators(.hidden)
-        .scrollDismissesKeyboard(.interactively)
-        .scrollDisabled(kind == .draw)
-        .overlay(alignment: .topTrailing) {
-            if kind == .draw && page.span > 1 { pageHandle }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
     }
 
@@ -359,44 +343,65 @@ struct TodayView: View {
 
     // MARK: Drawing
 
+    /// The drawing page: no scroll view at all, so every touch on the canvas is a stroke.
+    /// The handle slides the whole page up to reach the loop chips below.
+    private var drawPage: some View {
+        GeometryReader { proxy in
+            captureContent
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { drawContentHeight = $0 }
+                .offset(y: -min(drawOffset, maxDrawOffset))
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                .onAppear { drawVisibleHeight = proxy.size.height }
+                .onChange(of: proxy.size.height) { _, height in drawVisibleHeight = height }
+        }
+        // Hide what slides above the top, but let the canvas shadow spill sideways.
+        .mask(Rectangle().padding(.horizontal, -20).padding(.bottom, -40))
+        .overlay(alignment: .topTrailing) {
+            if maxDrawOffset > 1 { pageHandle }
+        }
+    }
+
+    private var maxDrawOffset: CGFloat { max(0, drawContentHeight - drawVisibleHeight) }
+
     /// Most of the screen, leaving room to glimpse what's below.
-    private var canvasHeight: CGFloat { max(300, page.visibleHeight * 0.82) }
+    private var canvasHeight: CGFloat { max(300, drawVisibleHeight * 0.82) }
     private let handleLength: CGFloat = 54
     private let handleInset: CGFloat = 18
 
-    /// A short vertical bar on the canvas's right edge. Hold and move it to scroll the
+    /// A short vertical bar on the canvas's right edge. Hold and move it to slide the
     /// page; drawing anywhere else on the canvas never moves the page.
-    /// It's pinned to the screen like a scroll bar, so it stays under your finger.
+    /// It stays put on screen like a scroll bar, so it stays under your finger.
     private var pageHandle: some View {
         let track = max(1, canvasHeight - 2 * handleInset - handleLength)
-        let fraction = min(max((page.offset - page.minOffset) / page.span, 0), 1)
+        let fraction = min(max(drawOffset / maxDrawOffset, 0), 1)
         let held = handleStart != nil
         return Capsule()
-            .fill(.secondary.opacity(held ? 0.8 : 0.45))
+            .fill(.secondary.opacity(held ? 0.8 : 0.5))
             .frame(width: held ? 8 : 6, height: handleLength)
-            .frame(width: 40, height: handleLength + 24) // a bigger, invisible target for your thumb
+            .frame(width: 44, height: handleLength + 28) // a bigger, invisible target for your thumb
             .contentShape(Rectangle())
-            .padding(.top, handleInset - 12 + fraction * track)
-            .padding(.trailing, 2)
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { drag in
-                        let start = handleStart ?? page.offset
+                        let start = handleStart ?? drawOffset
                         if handleStart == nil { handleStart = start }
-                        let target = start + drag.translation.height * page.span / track
-                        pagePosition.scrollTo(y: min(max(target, page.minOffset), page.maxOffset))
+                        let target = start + drag.translation.height * maxDrawOffset / track
+                        drawOffset = min(max(target, 0), maxDrawOffset)
                     }
                     .onEnded { _ in
-                        withAnimation(.calm) { handleStart = nil }
+                        handleStart = nil
                     }
             )
+            .padding(.top, handleInset - 14 + fraction * track)
+            .padding(.trailing, 2)
             .animation(.calm, value: held)
+            .sensoryFeedback(.selection, trigger: held)
             .accessibilityElement()
             .accessibilityLabel("Scroll page")
             .accessibilityHint("Swipe up or down to move the page without drawing.")
             .accessibilityAdjustableAction { direction in
                 let step: CGFloat = direction == .increment ? 160 : -160
-                pagePosition.scrollTo(y: min(max(page.offset + step, page.minOffset), page.maxOffset))
+                withAnimation(.calm) { drawOffset = min(max(drawOffset + step, 0), maxDrawOffset) }
             }
     }
 
@@ -577,15 +582,6 @@ private extension EntryKind {
         case .draw: "When words aren't there yet"
         }
     }
-}
-
-/// How far the capture page has scrolled, for the drawing page's handle.
-struct PageMetrics: Equatable {
-    var offset: CGFloat = 0
-    var minOffset: CGFloat = 0
-    var maxOffset: CGFloat = 0
-    var visibleHeight: CGFloat = 600
-    var span: CGFloat { maxOffset - minOffset }
 }
 
 /// The theme's background fading in from clear, behind the Save bar,

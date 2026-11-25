@@ -169,6 +169,9 @@ private struct MapWeb: View {
     @State private var dragging: (id: PersistentIdentifier, offset: CGSize)?
     /// The loop or value you tapped. Its connections stay lit and the rest fades back.
     @State private var focus: PersistentIdentifier?
+    /// Where the map placed values when a drag began. Reused for every frame of the
+    /// drag, so moving one value doesn't redo the whole layout 60 times a second.
+    @State private var frozenLayout: [CGPoint]?
 
     /// Everything directly connected to the focus, including the focus itself.
     private var lit: Set<PersistentIdentifier> {
@@ -200,7 +203,8 @@ private struct MapWeb: View {
             let size = proxy.size
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             let outer = min(size.width, size.height) / 2 - 46
-            let auto = MapLayout.spread(values: values, loops: loops, links: links, center: center, outer: outer)
+            let auto = frozenLayout.flatMap { $0.count == values.count ? $0 : nil }
+                ?? MapLayout.spread(values: values, loops: loops, links: links, center: center, outer: outer)
             let positions = values.indices.map { place(values[$0], auto: auto[$0], center: center, outer: outer) }
 
             ZStack {
@@ -245,18 +249,31 @@ private struct MapWeb: View {
                         .padding(.vertical, 5)
                         .background(Paper.card, in: Capsule())
                         .overlay(Capsule().stroke(.tint.opacity(isDragging ? 0.8 : 0.35)))
-                        .scaleEffect(isDragging ? 1.12 : 1)
-                        .shadow(color: .black.opacity(isDragging ? 0.15 : 0), radius: 6, y: 3)
+                        // Only the lift is animated. Animating the whole label made its
+                        // position spring toward your finger, so it trailed behind.
+                        .animation(.spring(duration: 0.3)) {
+                            $0.scaleEffect(isDragging ? 1.12 : 1)
+                                .shadow(color: .black.opacity(isDragging ? 0.15 : 0), radius: 6, y: 3)
+                        }
                         .opacity(isDragging ? 1 : presence(value.persistentModelID))
                         .position(positions[index])
-                        .onTapGesture { toggleFocus(value.persistentModelID) }
-                        // Drag a value to wherever it reads best. The spot is remembered.
+                        // One gesture for both: a touch that barely moves is a tap (focus),
+                        // anything more is a drag. Separate tap and drag gestures made the
+                        // drag wait to start, so the label lagged behind your finger.
                         .gesture(
-                            DragGesture(minimumDistance: 3)
+                            DragGesture(minimumDistance: 0)
                                 .onChanged { drag in
+                                    let moved = hypot(drag.translation.width, drag.translation.height)
+                                    guard moved > 4 || dragging != nil else { return }
+                                    if frozenLayout == nil { frozenLayout = auto }
                                     dragging = (value.persistentModelID, drag.translation)
                                 }
                                 .onEnded { drag in
+                                    defer { dragging = nil; frozenLayout = nil }
+                                    guard dragging != nil else {
+                                        toggleFocus(value.persistentModelID)
+                                        return
+                                    }
                                     // Start from where it sat before the drag (positions[index]
                                     // already includes the drag, so adding it again made it jump).
                                     let p = place(value, auto: auto[index], center: center, outer: outer, includingDrag: false)
@@ -264,14 +281,13 @@ private struct MapWeb: View {
                                     let spot = MapLayout.clamp(end, center: center, limit: outer * MapLayout.dragLimit)
                                     value.mapX = Double((spot.x - center.x) / outer)
                                     value.mapY = Double((spot.y - center.y) / outer)
-                                    dragging = nil
                                 }
                         )
                         .zIndex(isDragging ? 1 : 0)
-                        .animation(.spring(duration: 0.3), value: isDragging)
                         .sensoryFeedback(.selection, trigger: isDragging)
                         .accessibilityAddTraits(focus == value.persistentModelID ? [.isButton, .isSelected] : .isButton)
                         .accessibilityHint("Tap to light up its connections. Drag to move it on your map.")
+                        .accessibilityAction { toggleFocus(value.persistentModelID) }
                 }
 
                 ForEach(Array(loops.enumerated()), id: \.element.id) { index, loop in
