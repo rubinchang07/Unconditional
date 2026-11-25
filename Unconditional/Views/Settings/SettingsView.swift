@@ -2,10 +2,12 @@ import SwiftUI
 
 /// Theme previews, daily reminder, and Face ID lock.
 struct SettingsView: View {
-    @AppStorage(Theme.storageKey) private var theme: Theme = .sage
+    @AppStorage(Theme.storageKey) private var theme: Theme = .white
     @AppStorage(ReminderScheduler.enabledKey) private var reminderEnabled = false
     @AppStorage(ReminderScheduler.timeKey) private var reminderMinutes = ReminderScheduler.defaultMinutes
     @AppStorage(AppLock.enabledKey) private var lockEnabled = false
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
 
     @State private var notificationsDenied = false
 
@@ -25,6 +27,32 @@ struct SettingsView: View {
                     Text(theme.mood)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    HStack(spacing: 16) {
+                        ForEach(OrbPalette.allCases) { option in
+                            Button {
+                                withAnimation { orbPalette = option }
+                            } label: {
+                                VStack(spacing: 8) {
+                                    OrbView(palette: option, speed: 0.6)
+                                        .frame(width: 110, height: 110)
+                                    Label(option.name, systemImage: option == orbPalette ? "checkmark.circle.fill" : "circle")
+                                        .font(.footnote.weight(option == orbPalette ? .semibold : .regular))
+                                        .foregroundStyle(option == orbPalette ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(option.name) orb")
+                            .accessibilityAddTraits(option == orbPalette ? [.isButton, .isSelected] : .isButton)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                    Button("Replay the welcome tour") { hasSeenWelcome = false }
+                } header: {
+                    Text("Orb")
                 }
 
                 Section {

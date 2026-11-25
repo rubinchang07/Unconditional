@@ -3,6 +3,8 @@
 A private iOS journal for working through self-doubt one day at a time. Write or draw, reframe the thought, and log small wins. Built with SwiftUI, SwiftData, PencilKit, and the Speech framework.
 
 ## Screens
+- **Welcome tour**: on first launch, an animated orb and one idea per screen, so the app introduces itself step by step instead of all at once. Replay it from Settings.
+- **Home**: a white screen with the orb, a greeting, a daily prompt, and one main action, "Check in". "I'm spiraling" sits just below it, and everything else is under "More".
 - **Today**: choose Write, Speak, or Draw, get the thought out, tag which loop it belongs to. Speak transcribes your voice on-device. Saving offers an optional reframe.
 - **Reframe** (a step, not a tab): a CBT thought record with what happened, the belief underneath, evidence for and against, a kinder read, and one small step. Afterwards it shows one of your past wins.
 - **Wins**: quick-add small successes and see the running list.

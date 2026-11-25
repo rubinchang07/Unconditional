@@ -3,11 +3,12 @@ import SwiftUI
 /// Four tabs. Reframe isn't a tab: it opens as a step after saving an entry on Today.
 /// Also applies the chosen theme and the optional Face ID lock.
 struct RootView: View {
-    @AppStorage(Theme.storageKey) private var theme: Theme = .sage
+    @AppStorage(Theme.storageKey) private var theme: Theme = .white
     @AppStorage(AppLock.enabledKey) private var lockEnabled = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var isUnlocked = false
     @State private var isAuthenticating = false
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
 
     var body: some View {
         ZStack {
@@ -22,9 +23,16 @@ struct RootView: View {
                     .tabItem { Label("Settings", systemImage: "gearshape") }
             }
 
+            if !hasSeenWelcome {
+                OnboardingView { withAnimation(.easeInOut(duration: 0.6)) { hasSeenWelcome = true } }
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+
             if lockEnabled && !isUnlocked {
                 LockScreen(theme: theme, unlock: unlock)
                     .transition(.opacity)
+                    .zIndex(2)
             }
         }
         // `.tint` colors every button, toggle, and link below it.

@@ -3,6 +3,7 @@ import SwiftData
 import PencilKit
 
 /// The daily flow, one calm step per screen:
+/// 0. home: the orb, a greeting, and one main action ("Check in")
 /// 1. choose how to start (Write, Speak, Draw)
 /// 2. get it out
 /// 3. name the loop and save
@@ -10,8 +11,9 @@ import PencilKit
 struct TodayView: View {
     @Environment(\.modelContext) private var context
 
-    private enum Step: Int, CaseIterable { case choose, capture, loop }
-    @State private var step: Step = .choose
+    private enum Step: Int, CaseIterable { case home, choose, capture, loop }
+    @State private var step: Step = .home
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
 
     @State private var kind: EntryKind = .write
     @State private var text = ""
@@ -40,11 +42,15 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                StepDots(count: Step.allCases.count, current: step.rawValue)
+                if step != .home {
+                    // Dots for the three check-in steps (home doesn't count).
+                    StepDots(count: Step.allCases.count - 1, current: step.rawValue - 1)
+                }
 
                 // Each step slides in; `.id` tells SwiftUI it's a new view so the transition runs.
                 Group {
                     switch step {
+                    case .home: homeStep
                     case .choose: chooseStep
                     case .capture: captureStep
                     case .loop: loopStep
@@ -58,13 +64,15 @@ struct TodayView: View {
             .padding(.top, 8)
             .frame(maxHeight: .infinity, alignment: .top)
             .background(ThemeBackground())
-            .navigationTitle(Date.now.formatted(.dateTime.weekday(.wide).month().day()))
+            .navigationTitle(step == .home ? "" : Date.now.formatted(.dateTime.weekday(.wide).month().day()))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Thought reset", systemImage: "leaf") { showReset = true }
+                if step != .home {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Thought reset", systemImage: "leaf") { showReset = true }
+                    }
                 }
-                if step != .choose {
+                if step != .home {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Back", systemImage: "chevron.left") { go(to: Step(rawValue: step.rawValue - 1)!) }
                     }
@@ -86,60 +94,56 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - Step 1: choose
+    // MARK: - Home: one calm screen, one main action
+
+    private var homeStep: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 12)
+            OrbView(palette: orbPalette)
+                .frame(width: 260, height: 260)
+            VStack(spacing: 10) {
+                Text(Greeting.now)
+                    .font(.system(.largeTitle, design: .serif).weight(.semibold))
+                Text(Greeting.dailyPrompt)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 12)
+            }
+            Spacer(minLength: 12)
+
+            // Shows up only when there's a tiny step to ask about.
+            TinyStepFollowUp()
+
+            Button("Check in") { go(to: .choose) }
+                .buttonStyle(.paper)
+
+            Button("I'm spiraling") { showReset = true }
+                .font(.headline)
+                .padding(.vertical, 6)
+
+            // Everything else stays tucked away until you want it.
+            Menu {
+                Button("Breathe for a minute", systemImage: "wind") { showBreathing = true }
+                Button("Career check-in", systemImage: "briefcase") { showCareer = true }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 12)
+        }
+    }
+
+    // MARK: - Step 1: choose how to start
 
     private var chooseStep: some View {
         ScrollView {
             VStack(spacing: 16) {
-                PaperHeading(title: Greeting.now, subtitle: Greeting.dailyPrompt)
+                PaperHeading(title: "How do you want to start?",
+                             subtitle: "No right way to do this. Just get it out of your head.")
                     .padding(.bottom, 8)
-
-                // One tap to interrupt a spiral, before anything else.
-                Button {
-                    showReset = true
-                } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: "leaf")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(.tint, in: Circle())
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("I'm spiraling")
-                                .font(.system(.headline, design: .serif))
-                            Text("A quick thought reset, no writing needed")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(16)
-                    .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
-                }
-                .buttonStyle(.plain)
-
-                TinyStepFollowUp()
-
-                Button {
-                    showCareer = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "briefcase")
-                            .foregroundStyle(.tint)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Career check-in")
-                                .font(.system(.subheadline, design: .serif).weight(.semibold))
-                            Text("After studying, applying, or a setback")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.tertiary)
-                    }
-                    .paperCard(padding: 14)
-                }
-                .buttonStyle(.plain)
 
                 ForEach(EntryKind.allCases) { option in
                     Button {
@@ -167,27 +171,6 @@ struct TodayView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                Button {
-                    showBreathing = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "wind")
-                            .foregroundStyle(.tint)
-                        Text("Feeling a lot right now? Breathe for a minute first.")
-                            .font(.subheadline)
-                            .multilineTextAlignment(.leading)
-                        Spacer()
-                    }
-                    .padding(14)
-                    .background(.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .buttonStyle(.plain)
-
-                Text("No right way to do this. Just get it out of your head.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
             }
             .padding(.bottom, 24)
         }
@@ -276,7 +259,7 @@ struct TodayView: View {
         textBeforeRecording = ""
         drawing = PKDrawing()
         loop = nil
-        step = .choose
+        step = .home
         savedEntry = entry
     }
 }
