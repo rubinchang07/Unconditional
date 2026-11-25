@@ -55,7 +55,10 @@ struct AnchorsView: View {
                                 .padding(.leading, -(Self.streamX + 22))
                                 .padding(.trailing, -20)
                                 .padding(.top, -Riverbed.fadeIn)
-                                .padding(.bottom, -60)
+                                // Reaches well past the end of the page, so the sand
+                                // fills the screen to the very bottom, even when you
+                                // bounce past the end.
+                                .padding(.bottom, -600)
                         }
                 }
                 .padding(.leading, Self.streamX + 22)
@@ -395,10 +398,12 @@ private struct Stream: View {
                 }
 
                 // Bright streaks sliding down, like light catching falling water.
-                // Their speed depends only on time and depth, never on scrolling.
+                // Their speed depends only on time, never on scrolling.
                 let loop: Double = Double(size.height) + 40
                 for streak in Self.streaks {
-                    let travel: Double = streak.start + t * streak.speed * calm
+                    // Speed is fixed. (Multiplying the clock by something that changes
+                    // while you scroll made the drops jump, since the clock is a huge number.)
+                    let travel: Double = streak.start + t * streak.speed * 0.6
                     let fall: Double = travel.truncatingRemainder(dividingBy: loop)
                     let y: CGFloat = CGFloat(fall) - 40
                     let sx = strandX(streak.strand, y)
