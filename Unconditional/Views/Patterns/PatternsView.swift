@@ -19,7 +19,7 @@ struct PatternsView: View {
         var days: Int { rawValue }
     }
     @State private var span: Span = .fourWeeks
-    @AppStorage(Theme.storageKey) private var theme: Theme = .white
+    @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
     private var start: Date { Date.now.addingTimeInterval(-Double(span.days) * 86_400) }
     private var previousStart: Date { start.addingTimeInterval(-Double(span.days) * 86_400) }
@@ -47,10 +47,24 @@ struct PatternsView: View {
                 reframeSection
                 timeOfDaySection
                 stepsAndWinsSection
-                careerSection
+                if careerEnabled { careerSection }
+            }
+
+            Section {
+                NavigationLink {
+                    ParkedReviewView()
+                } label: {
+                    Label("Weekly review", systemImage: "tray")
+                }
+                if careerEnabled {
+                    NavigationLink {
+                        CareerHistoryView()
+                    } label: {
+                        Label("Career reflections", systemImage: "briefcase")
+                    }
+                }
             }
         }
-        .navigationTitle("patterns")
         .themedBackground()
         .paperList()
         .animation(.calm, value: span)
@@ -59,34 +73,8 @@ struct PatternsView: View {
     // MARK: - Loops by week
 
     /// Soft colors for the loops, in their order. "Not sure yet" is grey.
-    private static let loopColors: [Color] = [
-        Color(hex: 0xE9785E), Color(hex: 0x9B86C4), Color(hex: 0x6FA3CC), Color(hex: 0xE8B07E), Color(hex: 0x7FA383),
-    ]
+    private static let loopColors: [Color] = Loop.palette.map { Color(hex: $0) }
     private static let unsure = "Not sure yet"
-
-    private struct LoopWeek: Identifiable {
-        let week: Date
-        let loop: String
-        let count: Int
-        var id: String { "\(week.timeIntervalSince1970)-\(loop)" }
-    }
-
-    private var loopWeeks: [LoopWeek] {
-        var counts: [Date: [String: Int]] = [:]
-        for entry in entries where inSpan(entry.createdAt) {
-            let week = Calendar.current.dateInterval(of: .weekOfYear, for: entry.createdAt)?.start ?? entry.createdAt
-            counts[week, default: [:]][entry.loop?.name ?? Self.unsure, default: 0] += 1
-        }
-        return counts.flatMap { week, byLoop in
-            byLoop.map { LoopWeek(week: week, loop: $0.key, count: $0.value) }
-        }
-        .sorted { $0.week < $1.week }
-    }
-
-    private var loopDomain: [String] { loops.map(\.name) + [Self.unsure] }
-    private var loopRange: [Color] {
-        loops.indices.map { Self.loopColors[$0 % Self.loopColors.count] } + [Color.secondary.opacity(0.4)]
-    }
 
     /// "Falling behind came up less often than the 4 weeks before (3, down from 7)."
     private var loopComparisons: [String] {
@@ -103,27 +91,42 @@ struct PatternsView: View {
     }
 
     private var loopsSection: some View {
-        Section {
-            Chart(loopWeeks) { point in
-                BarMark(x: .value("Week", point.week, unit: .weekOfYear),
-                        y: .value("Entries", point.count))
-                    .foregroundStyle(by: .value("Loop", point.loop))
-                    .cornerRadius(4)
-            }
-            .chartForegroundStyleScale(domain: loopDomain, range: loopRange)
-            .chartLegend(position: .bottom, alignment: .leading, spacing: 12)
-            .chartYAxis { AxisMarks(values: .automatic(desiredCount: 3)) }
-            .frame(height: 220)
-            .padding(.vertical, 8)
+        let counted = loops.map { loop in
+            (loop: loop,
+             now: loop.entries.filter { inSpan($0.createdAt) }.count,
+             before: loop.entries.filter { $0.createdAt >= previousStart && $0.createdAt < start }.count)
+        }
+        .filter { $0.now > 0 }
+        .sorted { $0.now > $1.now }
+        let maxCount = counted.map(\.now).max() ?? 0
 
-            ForEach(loopComparisons, id: \.self) { line in
-                Text(line).font(.callout)
+        return Section {
+            if counted.isEmpty {
+                Text("No loops named in this time. That's fine too.")
+                    .foregroundStyle(.secondary)
+            } else {
+                BubbleCluster {
+                    ForEach(counted.indices, id: \.self) { index in
+                        let item = counted[index]
+                        LoopBubble(name: item.loop.name, count: item.now, previous: item.before,
+                                   maxCount: maxCount, color: color(for: item.loop))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .accessibilityElement(children: .contain)
+                .accessibilityHint(loopComparisons.joined(separator: " "))
             }
         } header: {
-            Text("Loops by week")
+            Text("Loops")
         } footer: {
-            Text("Compared with the \(span.label) before. More often isn't failure. It might just mean you noticed it more.")
+            Text("Bigger means it came up more. Arrows compare with the \(span.label) before. More often might just mean you noticed it more.")
         }
+    }
+
+    private func color(for loop: Loop) -> Color {
+        let index = loops.firstIndex(of: loop) ?? 0
+        return Self.loopColors[index % Self.loopColors.count]
     }
 
     // MARK: - Reframes over time
@@ -137,13 +140,6 @@ struct PatternsView: View {
 
     private var spanReframes: [Reframe] { reframes.filter { inSpan($0.createdAt) } }
 
-    private var distressPoints: [RatingPoint] {
-        spanReframes.flatMap {
-            [RatingPoint(date: $0.createdAt, value: $0.distressBefore, series: "Before"),
-             RatingPoint(date: $0.createdAt, value: $0.distressAfter, series: "After")]
-        }
-    }
-
     @ViewBuilder
     private var reframeSection: some View {
         let items = spanReframes
@@ -154,30 +150,13 @@ struct PatternsView: View {
             let beliefAfter = items.map(\.beliefAfter).reduce(0, +) / Double(items.count)
 
             Section {
-                if items.count >= 2 {
-                    Chart(distressPoints) { point in
-                        LineMark(x: .value("Day", point.date, unit: .day),
-                                 y: .value("Distress", point.value))
-                            .foregroundStyle(by: .value("When", point.series))
-                            .interpolationMethod(.catmullRom)
-                        PointMark(x: .value("Day", point.date, unit: .day),
-                                  y: .value("Distress", point.value))
-                            .foregroundStyle(by: .value("When", point.series))
-                            .symbolSize(30)
-                    }
-                    .chartForegroundStyleScale(domain: ["Before", "After"],
-                                               range: [Color.secondary.opacity(0.5), theme.accent])
-                    .chartYScale(domain: 0...10)
-                    .chartYAxis { AxisMarks(values: [0, 5, 10]) }
-                    .frame(height: 180)
-                    .padding(.vertical, 8)
-                }
-                Text("Across \(items.count) reframe\(items.count == 1 ? "" : "s"), distress went from \(one(before)) to \(one(after)) on average, and belief in the thought from \(Int(beliefBefore.rounded()))% to \(Int(beliefAfter.rounded()))%.")
-                    .font(.callout)
+                DistressOrbs(before: before, after: after)
+                BeliefBars(before: beliefBefore, after: beliefAfter)
+                    .padding(.vertical, 6)
             } header: {
-                Text("Distress, before and after reframing")
+                Text("When you reframe")
             } footer: {
-                Text("Some days a reframe shifts a lot, some days barely. Both are normal.")
+                Text("Averages across \(items.count) reframe\(items.count == 1 ? "" : "s"). Some days a reframe shifts a lot, some days barely. Both are normal.")
             }
         }
     }
@@ -200,21 +179,30 @@ struct PatternsView: View {
     @ViewBuilder
     private var timeOfDaySection: some View {
         let spanEntries = entries.filter { inSpan($0.createdAt) }
+        let hours = (0..<24).map { hour in
+            spanEntries.filter { Calendar.current.component(.hour, from: $0.createdAt) == hour }.count
+        }
         let counts = Dictionary(grouping: spanEntries) { DayPart(hour: Calendar.current.component(.hour, from: $0.createdAt)) }
             .mapValues(\.count)
-        let maxCount = counts.values.max() ?? 0
-        if let busiest = counts.max(by: { $0.value < $1.value })?.key, maxCount > 0 {
+        if let busiest = counts.max(by: { $0.value < $1.value })?.key {
             Section {
-                ForEach(DayPart.allCases, id: \.self) { part in
-                    SoftBar(title: part.rawValue, count: counts[part] ?? 0, maxCount: maxCount)
+                ZStack {
+                    ClockDial(hours: hours)
+                    VStack(spacing: 2) {
+                        Text("mostly").font(.caption).foregroundStyle(.secondary)
+                        Text(busiest.rawValue.lowercased())
+                            .font(.system(.title3, design: .serif).weight(.semibold))
+                    }
                 }
-                Text(busiest == .lateNight
-                     ? "Most check-ins happened late at night. Loops often get louder when you're tired, so be gentle with what feels true at that hour."
-                     : "Most check-ins happened in the \(busiest.rawValue.lowercased()).")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                .frame(maxWidth: 240)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
             } header: {
                 Text("When you check in")
+            } footer: {
+                if busiest == .lateNight {
+                    Text("Loops often get louder when you're tired, so be gentle with what feels true at that hour.")
+                }
             }
         }
     }
@@ -278,32 +266,5 @@ struct PatternsView: View {
 
     private func one(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(1)))
-    }
-}
-
-/// A label, a count, and a soft bar. Calmer than a full chart for a few rows.
-struct SoftBar: View {
-    let title: String
-    let count: Int
-    let maxCount: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text("\(count)").foregroundStyle(.secondary).monospacedDigit()
-            }
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.tint.opacity(0.15))
-                    Capsule().fill(.tint)
-                        .frame(width: maxCount == 0 ? 0 : proxy.size.width * CGFloat(count) / CGFloat(maxCount))
-                }
-            }
-            .frame(height: 6)
-        }
-        .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
     }
 }

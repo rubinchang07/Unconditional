@@ -1,7 +1,11 @@
 import Foundation
 import SwiftData
 
-/// Inserts the five starting loops the first time the app runs.
+/// The original five loops and their Thought Reset starters.
+///
+/// New installs no longer get these automatically: you choose your own loops
+/// in the welcome tour (see `LoopStarter`). This only fills in Thought Reset
+/// for older installs whose loops came from here.
 enum LoopSeeder {
     static let defaults: [(name: String, pattern: String, coreBelief: String)] = [
         ("Self-worth and failure",
@@ -59,22 +63,16 @@ enum LoopSeeder {
     /// Only seeds what's missing, so your edits are never overwritten.
     @MainActor
     static func seedIfNeeded(_ context: ModelContext) {
-        let loopCount = (try? context.fetchCount(FetchDescriptor<Loop>())) ?? 0
-        if loopCount == 0 {
-            for (index, item) in defaults.enumerated() {
-                context.insert(Loop(name: item.name, coreBelief: item.coreBelief, pattern: item.pattern, sortOrder: index))
-            }
-        }
-
-        // Thought Reset arrived in a later version, so it seeds separately.
+        // Thought Reset arrived after the original loops, so older installs get
+        // their starter thoughts here. Only loops that match an original are used.
+        let originals = Set(defaults.map(\.name))
         let thoughtCount = (try? context.fetchCount(FetchDescriptor<ResetThought>())) ?? 0
         if thoughtCount == 0 {
             let loops = (try? context.fetch(FetchDescriptor<Loop>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
             var order = 0
             for loop in loops {
-                // Match by original position, so a loop you renamed still gets its thoughts.
-                let key = defaults.indices.contains(loop.sortOrder) ? defaults[loop.sortOrder].name : loop.name
-                for item in resetThoughts[key] ?? [] {
+                guard originals.contains(loop.name) else { continue }
+                for item in resetThoughts[loop.name] ?? [] {
                     let thought = ResetThought(text: item.thought, perspective: item.perspective, sortOrder: order)
                     context.insert(thought)
                     thought.loop = loop

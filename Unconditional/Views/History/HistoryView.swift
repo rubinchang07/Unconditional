@@ -1,63 +1,32 @@
 import SwiftUI
 import SwiftData
 
-/// Past entries, plus how often each loop shows up.
+/// Past entries as a calendar of dots and a list, with Insights one tap away.
 struct HistoryView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Entry.createdAt, order: .reverse) private var entries: [Entry]
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
-    @Query private var reframes: [Reframe]
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     NavigationLink {
-                        PatternsView()
+                        InsightsView()
                     } label: {
-                        Label("Patterns over time", systemImage: "chart.line.uptrend.xyaxis")
+                        Label("Insights", systemImage: "chart.line.uptrend.xyaxis")
+                            .font(.headline)
+                            .padding(.vertical, 6)
                     }
-                }
-
-                Section {
-                    // One row per loop: name, count, and a soft bar showing its share.
-                    // Simpler and calmer than a full chart, and the bar sits right under its label.
-                    ForEach(loops) { loop in
-                        NavigationLink {
-                            LoopEditView(loop: loop)
-                        } label: {
-                            LoopRow(loop: loop, maxCount: maxLoopCount)
-                        }
-                    }
-                } header: {
-                    Text("Loops")
                 } footer: {
-                    if entries.isEmpty {
-                        Text("Your patterns will show up here as you write.")
-                    }
-                }
-
-                if !reframes.isEmpty {
-                    Section {
-                        ReframeShift(reframes: reframes)
-                    } header: {
-                        Text("When you reframe")
-                    } footer: {
-                        Text("Averages across \(reframes.count) reframe\(reframes.count == 1 ? "" : "s"). Small shifts add up.")
-                    }
+                    Text("Patterns over time, your map, and your weekly review.")
                 }
 
                 Section {
-                    NavigationLink {
-                        CareerHistoryView()
-                    } label: {
-                        Label("Career reflections", systemImage: "briefcase")
-                    }
-                    NavigationLink {
-                        ParkedReviewView()
-                    } label: {
-                        Label("Weekly review", systemImage: "tray")
-                    }
+                    CalendarDots(days: dayColors)
+                        .padding(.vertical, 6)
+                } footer: {
+                    Text("One dot for each day you checked in, colored by loop.")
                 }
 
                 Section("Entries") {
@@ -81,41 +50,20 @@ struct HistoryView: View {
         }
     }
 
-    private var maxLoopCount: Int {
-        loops.map(\.entries.count).max() ?? 0
-    }
-}
-
-private struct LoopRow: View {
-    let loop: Loop
-    let maxCount: Int
-
-    private var fraction: Double {
-        maxCount == 0 ? 0 : Double(loop.entries.count) / Double(maxCount)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(loop.name)
-                Spacer()
-                Text("\(loop.entries.count)")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+    /// The colors of the loops you wrote about each day. Unnamed entries are grey.
+    private var dayColors: [Date: [Color]] {
+        var result: [Date: [Color]] = [:]
+        for entry in entries {
+            let day = Calendar.current.startOfDay(for: entry.createdAt)
+            let color: Color
+            if let loop = entry.loop, let index = loops.firstIndex(of: loop) {
+                color = Color(hex: Loop.palette[index % Loop.palette.count])
+            } else {
+                color = Color.secondary.opacity(0.5)
             }
-            // A track with a filled portion, like a gentle progress bar.
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.tint.opacity(0.15))
-                    Capsule()
-                        .fill(.tint)
-                        .frame(width: max(fraction == 0 ? 0 : 8, proxy.size.width * fraction))
-                }
-            }
-            .frame(height: 6)
-            .animation(.easeOut, value: fraction)
+            if !(result[day]?.contains(color) ?? false) { result[day, default: []].append(color) }
         }
-        .padding(.vertical, 4)
+        return result
     }
 }
 
@@ -157,48 +105,24 @@ struct LoopEditView: View {
     var body: some View {
         Form {
             Section("Name") { TextField("Name", text: $loop.name) }
-            Section("Pattern") { TextField("Pattern", text: $loop.pattern, axis: .vertical) }
-            Section("Core belief") { TextField("Core belief", text: $loop.coreBelief, axis: .vertical) }
+            Section {
+                TextField("The belief that keeps it going", text: $loop.coreBelief, axis: .vertical)
+            } header: {
+                Text("Core belief")
+            } footer: {
+                Text("For example: \"If I struggle, it means I'm not good enough.\" Optional, and you can change it as you understand it better.")
+            }
+            Section {
+                TextField("Optional", text: $loop.pattern, axis: .vertical)
+            } header: {
+                Text("How it tends to go")
+            } footer: {
+                Text("The steps it usually follows, like \"comparison, then urgency, then freezing up\".")
+            }
         }
         .navigationTitle(loop.name)
         .themedBackground()
         .keyboardDoneButton()
         .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-/// Average distress and belief, before vs after reframing.
-private struct ReframeShift: View {
-    let reframes: [Reframe]
-
-    private func average(_ values: [Double]) -> Double {
-        values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
-    }
-
-    var body: some View {
-        let distressBefore = average(reframes.map(\.distressBefore))
-        let distressAfter = average(reframes.map(\.distressAfter))
-        let beliefBefore = average(reframes.map(\.beliefBefore))
-        let beliefAfter = average(reframes.map(\.beliefAfter))
-
-        VStack(alignment: .leading, spacing: 12) {
-            row("Distress", before: distressBefore.formatted(.number.precision(.fractionLength(1))),
-                after: distressAfter.formatted(.number.precision(.fractionLength(1))))
-            row("Believed the thought", before: "\(Int(beliefBefore.rounded()))%", after: "\(Int(beliefAfter.rounded()))%")
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func row(_ title: String, before: String, after: String) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(before).foregroundStyle(.secondary)
-            Image(systemName: "arrow.right").font(.caption).foregroundStyle(.tertiary)
-            Text(after)
-                .font(.system(.body, design: .serif).weight(.semibold))
-                .foregroundStyle(.tint)
-        }
-        .monospacedDigit()
     }
 }

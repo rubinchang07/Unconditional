@@ -3,19 +3,19 @@
 A private iOS journal for working through self-doubt one day at a time. Write or draw, reframe the thought, and log small wins. Built with SwiftUI, SwiftData, PencilKit, and the Speech framework.
 
 ## Screens
-- **Welcome tour**: on first launch, an animated orb and one idea per screen, so the app introduces itself step by step instead of all at once. Replay it from Settings.
+- **Welcome tour**: on first launch, an animated orb and one idea per screen. One step asks which thoughts you tend to get stuck on: pick from general starters (not good enough, comparing myself, worrying about the future, people-pleasing, overthinking decisions, wasted effort, love and belonging) or name your own. Replay it from Settings.
 - **Home**: a white screen with the orb, a greeting, a daily prompt, and one main action, "Check in". "I'm spiraling" sits just below it, and everything else is under "More".
-- **Today**: choose Write, Speak, or Draw, get the thought out, tag which loop it belongs to. Speak transcribes your voice on-device. Saving offers an optional reframe.
-- **Reframe** (a step, not a tab): a CBT thought record with what happened, the belief underneath, evidence for and against, a kinder read, and one small step. Afterwards it shows one of your past wins.
-- **Wins**: quick-add small successes and see the running list.
-- **History**: past entries, how often each loop shows up, and editing the loops themselves.
-- **Thought Reset** ("I'm spiraling"): one tap from Today. Pick the thought closest to yours, read a perspective you can rewrite, then let it be, save it as a reminder, park it for a weekly review, or choose one tiny step. Tiny steps get a gentle "did you try it?" follow-up, never "did it work?".
-- **Career check-in**: after studying, applying, an interview, or a setback. Note what you learned and what was interesting, rate enjoyment, discouragement, and any urge to quit, and place that urge on a slider from "I don't like the work" to "I feel discouraged". History shows plain-language averages, and the weekly review shows what you learned and enjoyed this week alongside parked doubts.
-- **Anchors**: Wins (each placed on an effort-to-outcome spectrum), Values (what matters regardless of outcomes), and Reminders (your own encouragement library).
+- **Today**: choose Write, Speak, or Draw, get the thought out, tag which loop it belongs to (or name a new one right there). Speak transcribes your voice on-device. Saving offers an optional reframe.
+- **Reframe** (a step, not a tab): three short steps. The thought and how strongly you believe it, another way to see it (with what happened, evidence for and against, and a small step tucked under "Go deeper"), and how it feels now, shown as two orbs that shrink with your distress. A self-compassion break is optional at the end.
+- **History**: a calendar with one dot per day, colored by loop, then your entries. Insights is one tap away.
+- **Thought Reset** ("I'm spiraling"): one tap from Today. Pick the thought closest to yours, read a perspective you can rewrite, then let it be, park it for the weekly review, or breathe.
+- **Career check-in** (optional, turn on in Settings): after studying, applying, an interview, or a setback. Note what you learned and what was interesting, rate enjoyment, discouragement, and any urge to quit, and place that urge on a slider from "I don't like the work" to "I feel discouraged".
+- **Anchors**: Wins (each placed on an effort-to-outcome spectrum), Values (each with a ring showing how much you've lived it lately), and Reminders (your own encouragement library).
 - **Values first**: after a reframe, the app leads with something you care about rather than a past success. Worth isn't earned by wins, so the win is optional.
-- **Support tools**: a one-minute breathing exercise, a self-compassion break, before/after distress and belief sliders on every reframe, and a support page with crisis lines.
-- **Patterns over time** (History): loops by week compared with the weeks before, distress before and after reframing, when check-ins tend to happen, tiny steps tried, and career enjoyment versus discouragement. These are descriptive only, never a score.
-- **Settings**: pick a theme (Sage, Dusk, Sky) from live previews, set a daily reminder, and turn on Face ID lock.
+- **Support tools**: a one-minute breathing exercise, a self-compassion break, and a support page with crisis lines.
+- **Insights** (History): two tabs. **Patterns** shows loops as bubbles sized by how often they came up (with arrows comparing to the weeks before), before-and-after orbs for reframes, a 24-hour clock dial of when you check in, tiny steps and wins, and career enjoyment versus discouragement. The weekly review and career reflections sit at the bottom. Everything is descriptive, never a score.
+  - **Your map**: a soft web with your values in the middle and loops around them. The app suggests links between loops that show up on the same day, and you confirm them with a "how connected" slider or turn them down. Each loop shows its core belief, the words you keep using (found on device with Apple's NaturalLanguage framework), and sliders for how much it touches each value. You can write a guess at a shared root belief. The app never decides the root for you.
+- **Settings**: your loops (add, rename, reorder, remove), career check-ins on or off, theme and orb, a daily reminder, and Face ID lock.
 
 ## Data model (SwiftData)
 | Model | Holds | Relationships |

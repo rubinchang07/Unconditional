@@ -26,14 +26,18 @@ struct ValuesList: View {
                         NavigationLink {
                             ValueDetailView(value: value)
                         } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(value.name)
-                                    .font(.system(.headline, design: .serif))
-                                if !value.meaning.isEmpty {
-                                    Text(value.meaning)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(2)
+                            HStack(spacing: 14) {
+                                // Fills to show how much you've lived it lately.
+                                ValueRing(amount: value.livedLately)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(value.name)
+                                        .font(.system(.headline, design: .serif))
+                                    if !value.meaning.isEmpty {
+                                        Text(value.meaning)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
                                 }
                             }
                             .padding(.vertical, 2)

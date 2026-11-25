@@ -9,12 +9,28 @@ struct SettingsView: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
     @AppStorage("eveningWarmth") private var eveningWarmth = true
+    @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
     @State private var notificationsDenied = false
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    NavigationLink {
+                        LoopsManagerView()
+                    } label: {
+                        Label("Your loops", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    Toggle(isOn: $careerEnabled) {
+                        Label("Career check-ins", systemImage: "briefcase")
+                    }
+                } header: {
+                    Text("Your journal")
+                } footer: {
+                    Text("Career check-ins add a short reflection after studying, applying, or interviewing. Turn them on if that's part of what you're working through.")
+                }
+
                 Section("Theme") {
                     HStack(spacing: 12) {
                         ForEach(Theme.allCases) { option in

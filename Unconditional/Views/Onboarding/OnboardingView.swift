@@ -1,15 +1,22 @@
 import SwiftUI
+import SwiftData
 
 /// The welcome tour: one idea per screen, so nothing arrives all at once.
 /// Shown on first launch, and again any time from Settings.
 struct OnboardingView: View {
     @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    @Environment(\.modelContext) private var context
+    @Query private var loops: [Loop]
     let onFinish: () -> Void
 
     private struct Page {
         let title: String
         let body: String
+        var picksLoops = false
     }
+
+    @State private var pickedStarters: Set<LoopStarter> = []
+    @State private var customLoops: [String] = []
 
     private let pages: [Page] = [
         Page(title: "unconditional.",
@@ -18,6 +25,9 @@ struct OnboardingView: View {
              body: "Write, speak, or draw whatever's on your mind. Messy is fine. There's no right way to do this."),
         Page(title: "Name the pattern",
              body: "Notice which loop a thought belongs to. Naming it makes it a little smaller, and over time you'll see how it shifts."),
+        Page(title: "Your loops",
+             body: "Which thoughts do you tend to get stuck on? Pick any that fit, or name your own. You can change them any time in Settings.",
+             picksLoops: true),
         Page(title: "Look again, gently",
              body: "Reframe a thought, or just be kind to yourself about it. Not every thought needs to be analyzed. Some can simply be let be."),
         Page(title: "When it's a lot",
@@ -35,7 +45,7 @@ struct OnboardingView: View {
             HStack {
                 Spacer()
                 if index < pages.count - 1 {
-                    Button("skip", action: onFinish)
+                    Button("skip", action: finish)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -44,13 +54,15 @@ struct OnboardingView: View {
 
             // The orb stays put while the words change around it,
             // so moving between screens feels continuous.
-            OrbView(palette: palette, speed: 0.8)
-                .frame(width: 280, height: 280)
+            // On the loops page the orb shrinks to make room for the choices.
+            OrbView(palette: palette, speed: 0.8, interactive: true)
+                .frame(width: onLoopsPage ? 110 : 280, height: onLoopsPage ? 110 : 280)
                 .scaleEffect(index == 0 ? 1 : 0.85)
                 .animation(.easeInOut(duration: 0.8), value: index)
 
             TabView(selection: $index) {
                 ForEach(pages.indices, id: \.self) { i in
+                    ScrollView {
                     VStack(spacing: 16) {
                         Text(pages[i].title)
                             .font(.system(.largeTitle, design: .serif).weight(.semibold))
@@ -61,10 +73,20 @@ struct OnboardingView: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .lineSpacing(4)
+                        if pages[i].picksLoops {
+                            if loops.isEmpty {
+                                LoopChooser(picked: $pickedStarters, custom: $customLoops)
+                                    .padding(.top, 4)
+                            } else {
+                                Text("You have \(loops.count) loop\(loops.count == 1 ? "" : "s") already.")
+                                    .font(.callout.weight(.semibold))
+                            }
+                        }
                     }
-                    .padding(.horizontal, 32)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.horizontal, pages[i].picksLoops ? 20 : 32)
                     .padding(.top, 24)
+                    }
+                    .scrollIndicators(.hidden)
                     .tag(i)
                 }
             }
@@ -84,7 +106,7 @@ struct OnboardingView: View {
 
             Button(index == pages.count - 1 ? "Begin" : "Next") {
                 if index == pages.count - 1 {
-                    onFinish()
+                    finish()
                 } else {
                     withAnimation(.easeInOut) { index += 1 }
                 }
@@ -94,5 +116,16 @@ struct OnboardingView: View {
             .padding(.bottom, 24)
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.6), value: onLoopsPage)
+    }
+
+    private var onLoopsPage: Bool { pages[index].picksLoops }
+
+    /// Saves the loops you picked, then closes the tour.
+    private func finish() {
+        if !pickedStarters.isEmpty || !customLoops.isEmpty {
+            LoopStarter.add(starters: Array(pickedStarters), custom: customLoops, to: context)
+        }
+        onFinish()
     }
 }

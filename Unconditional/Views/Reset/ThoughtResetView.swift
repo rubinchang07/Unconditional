@@ -5,7 +5,7 @@ import SwiftData
 /// without writing a full entry.
 ///
 /// Tap the thought closest to yours, read a gentler perspective, then pick
-/// whatever helps: let it be, save the reminder, park it, or take a tiny step.
+/// one of three: let it be, park it for later, or breathe.
 /// Not every thought needs to be analyzed. Acknowledging it is enough.
 struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
@@ -19,8 +19,6 @@ struct ThoughtResetView: View {
     @State private var chosen: ResetThought?
     @State private var customThought = ""
     @State private var editingPerspective = false
-    @State private var tinyStep = ""
-    @State private var showTinyStep = false
     @State private var showBreathing = false
     @State private var showReview = false
 
@@ -155,36 +153,14 @@ struct ThoughtResetView: View {
                 }
                 .buttonStyle(.paper)
 
-                VStack(spacing: 0) {
-                    actionRow("Save this as a reminder", symbol: "bookmark") {
-                        context.insert(SavedReminder(text: perspective))
-                        try? context.save()
-                        finish("Saved to Anchors → Reminders. It'll be there when you need it.")
-                    }
-                    Divider().padding(.leading, 44)
-                    actionRow("Park it for my weekly review", symbol: "tray.and.arrow.down") {
+                HStack(spacing: 12) {
+                    choice("Park it for later", symbol: "tray.and.arrow.down") {
                         context.insert(ParkedThought(text: thoughtText))
                         try? context.save()
                         finish("Parked. You can look at it calmly later, not in the middle of a spiral.")
                     }
-                    Divider().padding(.leading, 44)
-                    actionRow("Choose one tiny step", symbol: "shoe.2") {
-                        withAnimation { showTinyStep.toggle() }
-                    }
-                    if showTinyStep {
-                        HStack {
-                            TextField("Something under 15 minutes", text: $tinyStep)
-                                .onSubmit(saveTinyStep)
-                            Button("Add", action: saveTinyStep)
-                                .disabled(tinyStep.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                        .padding(.vertical, 10)
-                        .padding(.leading, 44)
-                    }
-                    Divider().padding(.leading, 44)
-                    actionRow("Breathe for a minute", symbol: "wind") { showBreathing = true }
+                    choice("Breathe", symbol: "wind") { showBreathing = true }
                 }
-                .paperCard(padding: 8)
 
                 Text("Every option is optional. Doing none of them is fine too.")
                     .font(.footnote)
@@ -195,18 +171,19 @@ struct ThoughtResetView: View {
         .scrollIndicators(.hidden)
     }
 
-    private func actionRow(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+    /// A square card with an icon, so the two extra choices read at a glance.
+    private func choice(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 14) {
+            VStack(spacing: 10) {
                 Image(systemName: symbol)
+                    .font(.title2)
                     .foregroundStyle(.tint)
-                    .frame(width: 22)
                 Text(title)
-                Spacer()
+                    .font(.subheadline)
+                    .multilineTextAlignment(.center)
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, minHeight: 96)
+            .paperCard(padding: 12)
         }
         .buttonStyle(.plain)
     }
@@ -228,8 +205,6 @@ struct ThoughtResetView: View {
             Button("Reset another thought") {
                 chosen = nil
                 customThought = ""
-                tinyStep = ""
-                showTinyStep = false
                 go(.pick)
             }
             .padding(.bottom, 12)
@@ -246,14 +221,6 @@ struct ThoughtResetView: View {
         guard !customThought.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         chosen = nil
         go(.perspective)
-    }
-
-    private func saveTinyStep() {
-        let text = tinyStep.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        context.insert(TinyStep(text: text))
-        try? context.save()
-        finish("“\(text)”\n\nLater, I'll ask if you gave it a go. Not whether it went well, just whether you tried.")
     }
 
     private func finish(_ message: String) {

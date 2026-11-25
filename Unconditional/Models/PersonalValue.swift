@@ -15,6 +15,10 @@ final class PersonalValue {
     var livedLately: Double = 5
     var createdAt: Date
 
+    /// Map links from loops to this value. Deleting the value removes them.
+    @Relationship(deleteRule: .cascade, inverse: \MapLink.value)
+    var mapLinks: [MapLink] = []
+
     init(name: String, meaning: String = "", createdAt: Date = .now) {
         self.name = name
         self.meaning = meaning

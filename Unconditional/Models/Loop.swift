@@ -20,6 +20,12 @@ final class Loop {
     @Relationship(deleteRule: .nullify, inverse: \Entry.loop)
     var entries: [Entry] = []
 
+    /// Map links that start or end at this loop. Deleting the loop removes them.
+    @Relationship(deleteRule: .cascade, inverse: \MapLink.loopA)
+    var linksFrom: [MapLink] = []
+    @Relationship(deleteRule: .cascade, inverse: \MapLink.loopB)
+    var linksTo: [MapLink] = []
+
     init(name: String, coreBelief: String, pattern: String, sortOrder: Int) {
         self.name = name
         self.coreBelief = coreBelief

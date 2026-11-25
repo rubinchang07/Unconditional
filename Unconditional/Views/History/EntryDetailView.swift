@@ -35,14 +35,17 @@ struct EntryDetailView: View {
 
             Section("Reframe") {
                 if let reframe = entry.reframe {
-                    LabeledText(title: "Distress", value: "\(Int(reframe.distressBefore)) → \(Int(reframe.distressAfter)) out of 10")
-                    LabeledText(title: "Believed the thought", value: "\(Int(reframe.beliefBefore))% → \(Int(reframe.beliefAfter))%")
-                    LabeledText(title: "What happened", value: reframe.trigger)
-                    LabeledText(title: "The belief underneath", value: reframe.coreBelief)
-                    LabeledText(title: "Evidence for", value: reframe.evidenceFor)
-                    LabeledText(title: "Evidence against", value: reframe.evidenceAgainst)
-                    LabeledText(title: "A kinder read", value: reframe.kinderRead)
-                    LabeledText(title: "One small step", value: reframe.smallStep)
+                    DistressOrbs(before: reframe.distressBefore, after: reframe.distressAfter, maxSize: 90)
+                    BeliefBars(before: reframe.beliefBefore, after: reframe.beliefAfter)
+                        .padding(.vertical, 4)
+                    LabeledText(title: "The thought", value: reframe.coreBelief)
+                    LabeledText(title: "Another way to see it", value: reframe.kinderRead)
+                    // The deeper fields only show when you filled them in.
+                    ForEach([("What happened", reframe.trigger), ("Evidence for", reframe.evidenceFor),
+                             ("Evidence against", reframe.evidenceAgainst), ("One small step", reframe.smallStep)]
+                        .filter { !$0.1.isEmpty }, id: \.0) { item in
+                        LabeledText(title: item.0, value: item.1)
+                    }
                     Button("Edit reframe") { editingReframe = true }
                 } else {
                     Button("Reframe this thought") { editingReframe = true }
