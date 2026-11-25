@@ -46,7 +46,7 @@ struct LoopStarter: Identifiable, Hashable {
     @MainActor
     static func add(starters: [LoopStarter], custom: [String], to context: ModelContext) {
         let existing = (try? context.fetch(FetchDescriptor<Loop>())) ?? []
-        let taken = Set(existing.map { $0.name.lowercased() })
+        var taken = Set(existing.map { $0.name.lowercased() })
         var order = (existing.map(\.sortOrder).max() ?? -1) + 1
         let thoughtOrder = ((try? context.fetchCount(FetchDescriptor<ResetThought>())) ?? 0)
 
@@ -59,12 +59,14 @@ struct LoopStarter: Identifiable, Hashable {
             let thought = ResetThought(text: starter.thought, perspective: starter.perspective, sortOrder: thoughtOrder + offset)
             context.insert(thought)
             thought.loop = loop
+            taken.insert(starter.name.lowercased())
             order += 1
         }
         for name in custom {
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, !taken.contains(trimmed.lowercased()) else { continue }
             context.insert(Loop(name: trimmed, coreBelief: "", pattern: "", sortOrder: order))
+            taken.insert(trimmed.lowercased())
             order += 1
         }
         try? context.save()
