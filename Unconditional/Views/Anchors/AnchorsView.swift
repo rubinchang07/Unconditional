@@ -332,9 +332,25 @@ private struct Stream: View {
     private static let strands: [(dx: CGFloat, width: CGFloat, phase: Double)] = [
         (-6, 4, 0), (0, 6, 1.7), (6, 3.5, 3.1), (11, 2, 4.4),
     ]
-    /// Falling streaks: which strand, speed, length, and a starting offset.
-    private static let streaks: [(strand: Int, speed: Double, length: CGFloat, start: Double)] =
-        (0..<14).map { i in (strand: i % 4, speed: 40 + Double((i * 37) % 30), length: 16 + CGFloat((i * 13) % 20), start: Double(i) * 97) }
+    /// A bright streak sliding down one strand.
+    private struct Streak {
+        let strand: Int
+        let speed: Double
+        let length: CGFloat
+        let start: Double
+    }
+
+    /// Fourteen streaks with varied speeds and lengths, the same every time.
+    private static let streaks: [Streak] = {
+        var result: [Streak] = []
+        for i in 0..<14 {
+            let speed: Double = 40 + Double((i * 37) % 30)
+            let length: CGFloat = 16 + CGFloat((i * 13) % 20)
+            let start: Double = Double(i) * 97
+            result.append(Streak(strand: i % 4, speed: speed, length: length, start: start))
+        }
+        return result
+    }()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
@@ -349,7 +365,8 @@ private struct Stream: View {
 
                 func strandX(_ strand: Int, _ y: CGFloat) -> CGFloat {
                     let s = Self.strands[strand]
-                    return x + s.dx + CGFloat(sin(Double(y) / 110 + t * 0.5 + s.phase) * 3 * calm)
+                    let wave: Double = sin(Double(y) / 110 + t * 0.5 + s.phase) * 3 * calm
+                    return x + s.dx + CGFloat(wave)
                 }
 
                 // The body of the falls: strands melted into one soft sheet of water.
@@ -374,8 +391,8 @@ private struct Stream: View {
                 // Scrolling only nudges them a little, so they never rush.
                 let height = max(size.height, 1)
                 for streak in Self.streaks {
-                    let fall = (streak.start + t * streak.speed * calm + Double(scroll.offset) * 0.12)
-                        .truncatingRemainder(dividingBy: Double(height))
+                    let travel: Double = streak.start + t * streak.speed * calm + Double(scroll.offset) * 0.12
+                    let fall: Double = travel.truncatingRemainder(dividingBy: Double(height))
                     // Repeat down the whole page, one copy per screen height.
                     var y = CGFloat(fall) - height
                     while y < bottom {
@@ -423,8 +440,11 @@ private struct Riverbed: View {
                 ctx.drawLayer { layer in
                     layer.addFilter(.blur(radius: 18))
                     for i in 0..<5 {
-                        let fx = (sin(t * 0.25 + Double(i) * 1.9) * 0.5 + 0.5) * Double(size.width)
-                        let fy = (cos(t * 0.2 + Double(i) * 1.3) * 0.25 + 0.3) * Double(size.height)
+                        let k = Double(i)
+                        let sx: Double = sin(t * 0.25 + k * 1.9) * 0.5 + 0.5
+                        let sy: Double = cos(t * 0.2 + k * 1.3) * 0.25 + 0.3
+                        let fx: Double = sx * Double(size.width)
+                        let fy: Double = sy * Double(size.height)
                         layer.fill(Ellipse().path(in: CGRect(x: fx - 50, y: fy - 14, width: 100, height: 28)),
                                    with: .color(.white.opacity(0.35)))
                     }
@@ -441,9 +461,11 @@ private struct Riverbed: View {
 
                 // Pebbles along the bottom: the same layout every time.
                 for i in 0..<26 {
-                    let px = CGFloat((Double(i) * 0.618).truncatingRemainder(dividingBy: 1)) * size.width
-                    let py = size.height - 10 - CGFloat((Double(i * 7) * 0.31).truncatingRemainder(dividingBy: 1)) * 34
-                    let w = 9 + CGFloat(i % 4) * 4
+                    let fx: Double = (Double(i) * 0.618).truncatingRemainder(dividingBy: 1)
+                    let fy: Double = (Double(i * 7) * 0.31).truncatingRemainder(dividingBy: 1)
+                    let px: CGFloat = CGFloat(fx) * size.width
+                    let py: CGFloat = size.height - 10 - CGFloat(fy) * 34
+                    let w: CGFloat = 9 + CGFloat(i % 4) * 4
                     let rect = CGRect(x: px - w / 2, y: py - w * 0.3, width: w, height: w * 0.6)
                     ctx.fill(Ellipse().path(in: rect), with: .color(Self.stone.opacity(0.35 + Double(i % 3) * 0.12)))
                 }

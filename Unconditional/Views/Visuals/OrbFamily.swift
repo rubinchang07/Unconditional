@@ -183,7 +183,9 @@ struct ValuesBloom: View {
 
     private func position(_ index: Int, center: CGPoint, size: CGSize, p: Double, t: Double) -> CGPoint {
         let n = max(values.count, 1)
-        let angle = -Double.pi / 2 + 2 * Double.pi * Double(index) / Double(n) + sin(t * 0.2 + Double(index)) * 0.04
+        let slot: Double = 2 * Double.pi * Double(index) / Double(n)
+        let sway: Double = sin(t * 0.2 + Double(index)) * 0.04
+        let angle: Double = slot - Double.pi / 2 + sway
         let distance = baseRadius(size) * 1.25 * CGFloat(p)
         return CGPoint(x: center.x + distance * cos(angle), y: center.y + distance * sin(angle))
     }
@@ -258,8 +260,10 @@ struct FloatingOrbs: View {
             GeometryReader { proxy in
                 ForEach(0..<min(count, 12), id: \.self) { i in
                     let seed = Double(i) * 1.7
-                    let x = proxy.size.width * CGFloat((Double(i) + 0.5) / Double(min(count, 12)))
-                    let y = proxy.size.height / 2 + CGFloat(sin(t * 0.5 + seed)) * proxy.size.height * 0.22
+                    let slot: Double = (Double(i) + 0.5) / Double(min(count, 12))
+                    let x: CGFloat = proxy.size.width * CGFloat(slot)
+                    let bob: CGFloat = CGFloat(sin(t * 0.5 + seed))
+                    let y: CGFloat = proxy.size.height / 2 + bob * proxy.size.height * 0.22
                     MiniOrb(color: palette.colors[i % 3], seed: seed)
                         .frame(width: 30 + CGFloat(i % 3) * 6, height: 30 + CGFloat(i % 3) * 6)
                         .position(x: x, y: y)
@@ -310,9 +314,10 @@ struct CheckInConstellation: View {
         let calendar = Calendar.current
         let dayNumber = calendar.component(.day, from: day)
         let daysInMonth = calendar.range(of: .day, in: .month, for: day)?.count ?? 30
-        let x = 16 + (size.width - 32) * CGFloat(dayNumber - 1) / CGFloat(max(daysInMonth - 1, 1))
-        let wave = sin(Double(dayNumber) * 2.39996) * 0.5 + 0.5 // the golden angle, for an even scatter
-        let y = 20 + (size.height - 40) * CGFloat(wave)
+        let across: CGFloat = CGFloat(dayNumber - 1) / CGFloat(max(daysInMonth - 1, 1))
+        let x: CGFloat = 16 + (size.width - 32) * across
+        let wave: Double = sin(Double(dayNumber) * 2.39996) * 0.5 + 0.5 // the golden angle, for an even scatter
+        let y: CGFloat = 20 + (size.height - 40) * CGFloat(wave)
         return CGPoint(x: x, y: y)
     }
 }
