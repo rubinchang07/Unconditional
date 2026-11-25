@@ -10,7 +10,7 @@ struct HistoryView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Loops") {
+                Section {
                     // One row per loop: name, count, and a soft bar showing its share.
                     // Simpler and calmer than a full chart, and the bar sits right under its label.
                     ForEach(loops) { loop in
@@ -20,6 +20,8 @@ struct HistoryView: View {
                             LoopRow(loop: loop, maxCount: maxLoopCount)
                         }
                     }
+                } header: {
+                    Text("Loops")
                 } footer: {
                     if entries.isEmpty {
                         Text("Your patterns will show up here as you write.")
