@@ -21,9 +21,6 @@ struct AnchorsView: View {
     @State private var adding = false
     /// A new anchor falling from the surface to its layer.
     @State private var droppedAt: Date?
-    /// A reminder rising as a bubble after pulling down at the surface.
-    @State private var bubble: SavedReminder?
-    @State private var pulled = false
     /// Where the falls land, in screen coordinates, so the water stops there.
     @State private var splashY: CGFloat = .infinity
 
@@ -76,7 +73,6 @@ struct AnchorsView: View {
                             viewport: geometry.containerSize.height)
             } action: { _, new in
                 scroll = new
-                surfacePull(new.offset)
             }
             .background {
                 ZStack(alignment: .topLeading) {
@@ -92,7 +88,6 @@ struct AnchorsView: View {
                 }
                 .ignoresSafeArea()
             }
-            .overlay(alignment: .top) { bubbleView }
             .overlay { fallingDrop }
             .navigationTitle("anchors")
             .toolbar {
@@ -105,7 +100,6 @@ struct AnchorsView: View {
                     if !reduceMotion { droppedAt = .now }
                 }
             }
-            .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: pulled) { _, new in new }
         }
     }
 
@@ -126,9 +120,6 @@ struct AnchorsView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("The deeper you go, the steadier it gets.")
                 .font(.system(.title3, design: .serif))
-            Text("Pull down at the surface for something you wanted to remember.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
         .padding(.top, 8)
     }
@@ -226,40 +217,6 @@ struct AnchorsView: View {
     /// Every value is the same size. What you care about doesn't shrink in a hard week.
     /// How much you've lived it lately shows only when you open one, as a ring.
     private func orbSize(_ value: PersonalValue) -> CGFloat { 62 }
-
-    // MARK: - Pull at the surface for a bubble
-
-    private func surfacePull(_ offset: CGFloat) {
-        if offset < -90, !pulled, let reminder = reminders.randomElement() {
-            pulled = true
-            withAnimation(.spring(duration: 0.8)) { bubble = reminder }
-            Task {
-                try? await Task.sleep(for: .seconds(6))
-                withAnimation(.easeOut(duration: 0.8)) { bubble = nil }
-            }
-        } else if offset > -10, pulled {
-            pulled = false
-        }
-    }
-
-    @ViewBuilder
-    private var bubbleView: some View {
-        if let bubble {
-            Text(bubble.text)
-                .font(.system(.body, design: .serif))
-                .multilineTextAlignment(.center)
-                .padding(20)
-                .background {
-                    Capsule().fill(.ultraThinMaterial)
-                    Capsule().fill(palette.colors[0].opacity(0.12))
-                }
-                .padding(.horizontal, 30)
-                .padding(.top, 8)
-                .onTapGesture { withAnimation(.easeOut) { self.bubble = nil } }
-                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.6)),
-                                        removal: .opacity.combined(with: .offset(y: -40))))
-        }
-    }
 
     // MARK: - A new anchor falls in
 

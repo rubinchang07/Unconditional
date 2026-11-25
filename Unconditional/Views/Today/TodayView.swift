@@ -37,6 +37,10 @@ struct TodayView: View {
     @State private var showSettings = false
     @State private var showValues = false
     @State private var saveFailed = false
+    @State private var showDrawingTools = false
+    /// The opening: 0 nothing, 1 the orb swells in, 2 the greeting, 3 everything else.
+    @State private var introStage = Intro.played ? 3 : 0
+    @Environment(\.accessibilityReduceMotion) private var introReduceMotion
     /// Becomes true the first time you hold the orb, and the hint under it goes away for good.
     @AppStorage("hasHeldOrb") private var hasHeldOrb = false
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
@@ -131,6 +135,9 @@ struct TodayView: View {
                 // Hold the orb and it divides into your values.
                 OrbView(palette: orbPalette, interactive: true, onHold: openValues)
                 .frame(width: 260, height: 260)
+                // Opening: the orb swells in past its size, then settles back.
+                .scaleEffect(introStage >= 1 ? 1 : 0.35)
+                .opacity(introStage >= 1 ? 1 : 0)
                 .transition(.opacity)
                 .overlay {
                     // The orb itself is hidden from VoiceOver, so this stands in for it.
@@ -164,9 +171,12 @@ struct TodayView: View {
                     .padding(.horizontal, 12)
             }
             .transition(.opacity)
+            .opacity(introStage >= 2 ? 1 : 0)
+            .offset(y: introStage >= 2 ? 0 : 10)
             }
             Spacer(minLength: 12)
 
+            VStack(spacing: 18) {
             // Shows up only when there's a tiny step to ask about.
             TinyStepFollowUp()
 
@@ -202,7 +212,28 @@ struct TodayView: View {
                     .frame(minHeight: 44)
             }
             .padding(.bottom, 12)
+            }
+            .opacity(introStage >= 3 ? 1 : 0)
+            .offset(y: introStage >= 3 ? 0 : 14)
+            .allowsHitTesting(introStage >= 3)
         }
+        .task { await playIntro() }
+    }
+
+    /// Plays once per launch: the orb swells in alone, then the words, then the choices.
+    private func playIntro() async {
+        guard introStage < 3 else { return }
+        Intro.played = true
+        if introReduceMotion {
+            introStage = 3
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(250))
+        withAnimation(.spring(duration: 1.3, bounce: 0.45)) { introStage = 1 }
+        try? await Task.sleep(for: .milliseconds(1100))
+        withAnimation(.easeOut(duration: 0.7)) { introStage = 2 }
+        try? await Task.sleep(for: .milliseconds(450))
+        withAnimation(.easeOut(duration: 0.7)) { introStage = 3 }
     }
 
     // MARK: - Step 1: choose how to start
@@ -294,14 +325,27 @@ struct TodayView: View {
                 JournalEditor(text: $text, placeholder: "Your words will appear here…")
                     .disabled(recorder.isRecording)
             case .draw:
-                PaperHeading(title: "Draw it", subtitle: "Shapes, scribbles, a face. Whatever it feels like.")
-                VStack(spacing: 12) {
+                // Colors stay in reach; brushes and paper tuck away, so the canvas gets the room.
+                VStack(spacing: 8) {
                     InkPalette(selection: $tool.ink)
-                    BrushBar(tool: $tool)
-                    BackgroundPicker(selection: $canvasBackground)
+                    Button {
+                        withAnimation(.calm) { showDrawingTools.toggle() }
+                    } label: {
+                        Label(showDrawingTools ? "hide brushes and paper" : "brushes and paper",
+                              systemImage: showDrawingTools ? "chevron.up" : "chevron.down")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(minHeight: 32)
+                    }
+                    if showDrawingTools {
+                        BrushBar(tool: $tool)
+                        BackgroundPicker(selection: $canvasBackground)
+                    }
                 }
-                .paperCard(padding: 14)
+                .paperCard(padding: 12)
                 DrawingCanvas(drawing: $drawing, tool: tool, background: canvasBackground)
+                    .frame(minHeight: 340, maxHeight: .infinity)
+                    .layoutPriority(1)
                     .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
                 if !drawing.strokes.isEmpty {
@@ -313,7 +357,7 @@ struct TodayView: View {
 
             // Optional: which loop this belongs to, or that it was good after all.
             // Never required, so it never stands between you and saving.
-            LoopChips(loop: $loop, good: $good)
+            LoopChips(loop: $loop, good: $good, compact: kind == .draw)
 
             Button(good ? "Keep it" : "Save entry", action: save)
             .buttonStyle(.paper)
@@ -382,6 +426,11 @@ private extension EntryKind {
     }
 }
 
+/// Remembers that the opening has played, so switching tabs doesn't replay it.
+private enum Intro {
+    static var played = false
+}
+
 /// Time-of-day greeting and a gentle prompt that changes each day.
 enum Greeting {
     static var now: String {
@@ -396,7 +445,6 @@ enum Greeting {
         "What's taking up the most room in your head today?",
         "What felt heavy today, and what felt a little lighter?",
         "What would you want a friend to know about your day?",
-        "Is there something you're being hard on yourself about?",
         "What are you afraid it means? Let's look at it together.",
         "What did you do today that took effort, even if it didn't work?",
         "What's one thing that's true about you no matter how today went?",
@@ -457,6 +505,8 @@ private struct JournalEditor: View {
 private struct LoopChips: View {
     @Binding var loop: Loop?
     @Binding var good: Bool
+    /// One scrolling row instead of wrapping lines, so drawing keeps its space.
+    var compact = false
     @Environment(\.modelContext) private var context
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
     @State private var naming = false
@@ -465,28 +515,19 @@ private struct LoopChips: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(good ? "Kept as something good" : "Which loop is this? (optional)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            if !compact {
+                Text(good ? "Kept as something good" : "Which loop is this? (optional)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
-            ChipFlow {
-                if !good {
-                    ForEach(loops) { option in
-                        chip(option.name, isOn: loop == option) {
-                            loop = loop == option ? nil : option
-                        }
-                    }
+            if compact {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) { chips }
                 }
-                chip("something good", systemImage: "sun.max", isOn: good) {
-                    good.toggle()
-                    if good { loop = nil }
-                }
-                if !good && !naming {
-                    chip("new loop", systemImage: "plus", isOn: false) {
-                        naming = true
-                        nameFocused = true
-                    }
-                }
+                .scrollIndicators(.hidden)
+            } else {
+                ChipFlow { chips }
             }
 
             if naming && !good {
@@ -512,6 +553,27 @@ private struct LoopChips: View {
         .animation(.calm, value: loop)
         .animation(.calm, value: good)
         .animation(.calm, value: naming)
+    }
+
+    @ViewBuilder
+    private var chips: some View {
+        if !good {
+            ForEach(loops) { option in
+                chip(option.name, isOn: loop == option) {
+                    loop = loop == option ? nil : option
+                }
+            }
+        }
+        chip("something good", systemImage: "sun.max", isOn: good) {
+            good.toggle()
+            if good { loop = nil }
+        }
+        if !good && !naming {
+            chip("new loop", systemImage: "plus", isOn: false) {
+                naming = true
+                nameFocused = true
+            }
+        }
     }
 
     private func chip(_ title: String, systemImage: String? = nil, isOn: Bool, action: @escaping () -> Void) -> some View {
