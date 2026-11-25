@@ -39,7 +39,7 @@ extension Color {
 /// you feel. It only shows whether the app is resting, listening, breathing
 /// with you, or settling after you've looked at a thought.
 enum OrbState: Equatable {
-    case resting, listening, breathing, settling
+    case resting, listening, breathing, settling, glowing
 
     /// How much the edge undulates, and how big the orb is.
     func shape(level: Double) -> (wobble: Double, scale: Double) {
@@ -48,6 +48,8 @@ enum OrbState: Equatable {
         case .listening: (1.4, 1 + 0.15 * level)
         case .breathing: (0.5, 1)
         case .settling: (0.3, 0.96)
+        // Opening up after keeping something good: a touch fuller, still calm.
+        case .glowing: (0.7, 1.04)
         }
     }
 }
@@ -72,6 +74,8 @@ struct OrbView: View {
     var ripple: Int = 0
     /// Called when you press and hold the orb.
     var onHold: (() -> Void)? = nil
+    /// A little warmer and brighter, for the "something good" screens.
+    var warm = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Where the finger is, in the orb's own frame. Kept after lifting so the
@@ -99,6 +103,7 @@ struct OrbView: View {
             let shape = currentShape(at: timeline.date, for: state)
             let wobble = shape.wobble
             let rippleScale = rippleAmount(at: timeline.date)
+            let glow = glowAmount(at: timeline.date)
             Canvas { context, size in
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
                 let radius = (min(size.width, size.height) - bleed * 2) / 2 * 0.78 * shape.scale * rippleScale
@@ -124,18 +129,33 @@ struct OrbView: View {
                                                      endPoint: CGPoint(x: center.x - offset.x, y: center.y - offset.y)))
                 }
 
-                // 3. A drifting inner light.
+                // 3. A drifting inner light. When glowing, it swells and brightens.
                 let drift = CGPoint(x: center.x + cos(t * 0.4) * radius * 0.2,
                                     y: center.y + sin(t * 0.5) * radius * 0.2)
+                let lightSize: CGFloat = radius * 0.45 * CGFloat(1 + 0.45 * glow.light)
+                let lightOpacity: Double = min(1, 0.7 + 0.3 * glow.light)
                 context.drawLayer { layer in
                     layer.addFilter(.blur(radius: radius * 0.14))
-                    layer.fill(Self.blob(center: drift, radius: radius * 0.45, time: t * 1.3, seed: 3, pull: pull.map { Pull(point: $0.point, amount: $0.amount * 0.6) }, wobble: wobble),
-                               with: .color(colors[2].opacity(0.7)))
+                    layer.fill(Self.blob(center: drift, radius: lightSize, time: t * 1.3, seed: 3, pull: pull.map { Pull(point: $0.point, amount: $0.amount * 0.6) }, wobble: wobble),
+                               with: .color(colors[2].opacity(lightOpacity)))
+                }
+
+                // 4. When glowing: one soft halo spreads outward and fades, like
+                // sunlight breaking through for a moment.
+                if glow.halo > 0 {
+                    let haloRadius: CGFloat = radius * CGFloat(1 + 0.8 * glow.haloProgress)
+                    context.drawLayer { layer in
+                        layer.addFilter(.blur(radius: radius * 0.08))
+                        layer.stroke(Path(ellipseIn: CGRect(x: center.x - haloRadius, y: center.y - haloRadius,
+                                                            width: haloRadius * 2, height: haloRadius * 2)),
+                                     with: .color(colors[2].opacity(0.55 * glow.halo)), lineWidth: radius * 0.1)
+                    }
                 }
             }
             // The colors drift very slightly with the time of day: a touch cooler
             // in the morning, warmer at night. Subtle enough to notice only over time.
-            .hueRotation(.degrees(Self.timeOfDayShift(timeline.date)))
+            .hueRotation(.degrees(Self.timeOfDayShift(timeline.date) + (warm ? -10 : 0)))
+            .brightness(warm ? 0.04 : 0)
             // Negative padding lets the canvas spill past the frame, so the glow
             // fades into the background with no edge, while layout stays the same size.
             .padding(-bleed)
@@ -161,7 +181,7 @@ struct OrbView: View {
         .allowsHitTesting(interactive)
         .onAppear {
             // A settling orb arrives a little restless and calms down in front of you.
-            if state == .settling {
+            if state == .settling || state == .glowing {
                 fromShape = OrbState.resting.shape(level: 0)
                 changedAt = .now
             }
@@ -183,6 +203,20 @@ struct OrbView: View {
         let elapsed = date.timeIntervalSince(releasedAt)
         if reduceMotion || elapsed > 1.6 { return 0 }
         return exp(-elapsed * 3.5) * cos(elapsed * 9)
+    }
+
+    /// How bright the inner light is (0 to 1), and the halo's strength and spread.
+    /// The light swells over about a second and stays a little brighter; the
+    /// halo spreads once over two seconds and fades.
+    private func glowAmount(at date: Date) -> (light: Double, halo: Double, haloProgress: Double) {
+        guard state == .glowing else { return (0, 0, 0) }
+        if reduceMotion { return (0.5, 0, 0) }
+        let e = date.timeIntervalSince(changedAt)
+        let swell = Gooey.ease(e / 1.0)
+        let light = swell * (1 - 0.5 * Gooey.ease((e - 1.2) / 1.5))
+        let spread = min(1, max(0, (e - 0.3) / 2.0))
+        let halo = spread > 0 && spread < 1 ? sin(spread * Double.pi) : 0
+        return (light, halo, spread)
     }
 
     /// After half a second of holding fairly still, calls `onHold`.

@@ -197,6 +197,11 @@ struct TodayView: View {
     private var chooseStep: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if good {
+                    OrbView(palette: orbPalette, warm: true)
+                        .frame(width: 80, height: 80)
+                        .padding(.vertical, 6)
+                }
                 PaperHeading(title: good ? "Something good" : "How do you want to start?",
                              subtitle: good ? "Big or small, it counts. How do you want to keep it?"
                                             : "No right way to do this. Just get it out of your head.")
@@ -254,6 +259,11 @@ struct TodayView: View {
         VStack(spacing: 20) {
             switch kind {
             case .write:
+                if good {
+                    OrbView(palette: orbPalette, warm: true)
+                        .frame(width: 70, height: 70)
+                        .padding(.top, 4)
+                }
                 PaperHeading(title: good ? "What went well?" : "What's on your mind?",
                              subtitle: good ? "Even a little. Good moments count as much as hard ones."
                                             : "Write it the way you'd say it. Messy is fine.")
@@ -263,7 +273,7 @@ struct TodayView: View {
                 PaperHeading(title: good ? "Tell me what went well" : "Say it out loud",
                              subtitle: "Transcribed on your phone. Fix any words after you stop.")
                 // The orb listens: it grows gently with your voice while recording.
-                OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting, level: recorder.level)
+                OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting, level: recorder.level, warm: good)
                     .frame(width: 130, height: 130)
                     .padding(.vertical, 8)
                 SpeakControls(recorder: recorder, onStart: { textBeforeRecording = text })
@@ -755,12 +765,22 @@ private struct GoodMomentSheet: View {
     @Environment(\.modelContext) private var context
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     let entry: Entry
+    /// After "keep it as a win too": a small golden orb floats off toward Anchors.
+    @State private var sendingToAnchors = false
 
     var body: some View {
         VStack(spacing: 18) {
             Spacer()
-            OrbView(palette: orbPalette, state: .settling)
-                .frame(width: 110, height: 110)
+            Group {
+                if sendingToAnchors {
+                    PinchOffOrb(palette: orbPalette, dropColor: Color(hex: 0xF6C38B))
+                        .frame(width: 140, height: 140)
+                } else {
+                    OrbView(palette: orbPalette, state: .glowing, warm: true)
+                        .frame(width: 110, height: 110)
+                }
+            }
+            .frame(height: 140)
             Text("Kept.")
                 .font(.system(.title, design: .serif).weight(.semibold))
             Text("Noticing good moments is a skill, just like working through hard ones. This one's yours now.")
@@ -772,9 +792,14 @@ private struct GoodMomentSheet: View {
                 let title = words.isEmpty ? "A good moment" : String(words.prefix(140))
                 context.insert(Win(text: title))
                 try? context.save()
-                dismiss()
+                sendingToAnchors = true
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    dismiss()
+                }
             }
             .buttonStyle(.paper)
+            .disabled(sendingToAnchors)
             Button("Just keep it here") { dismiss() }
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 8)

@@ -221,6 +221,8 @@ struct ValuesBloom: View {
 /// and away, to wait for the weekly review.
 struct PinchOffOrb: View {
     let palette: OrbPalette
+    /// The color of the small orb that floats away. Defaults to the palette's light.
+    var dropColor: Color? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var start = Date.now
     private let bleed: CGFloat = 60
@@ -238,7 +240,7 @@ struct PinchOffOrb: View {
                 var blobs = [GooeyBlob(center: center, radius: r, color: palette.colors[1])]
                 if fade > 0 {
                     blobs.append(GooeyBlob(center: CGPoint(x: center.x + distance * cos(angle), y: center.y + distance * sin(angle)),
-                                           radius: r * 0.3 * CGFloat(fade), color: palette.colors[2]))
+                                           radius: r * 0.3 * CGFloat(fade), color: dropColor ?? palette.colors[2]))
                 }
                 Gooey.draw(blobs, in: ctx, base: palette.colors[0])
             }
