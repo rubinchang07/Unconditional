@@ -90,6 +90,8 @@ enum DataTransfer {
         var text: String
         var meaning: String
         var effortToOutcome: Double
+        /// Optional so older files still open.
+        var isPinned: Bool?
     }
 
     struct ValueRecord: Codable {
@@ -162,7 +164,8 @@ enum DataTransfer {
                         })
         }
         s.wins = all(Win.self).map {
-            WinRecord(createdAt: $0.createdAt, text: $0.text, meaning: $0.meaning, effortToOutcome: $0.effortToOutcome)
+            WinRecord(createdAt: $0.createdAt, text: $0.text, meaning: $0.meaning, effortToOutcome: $0.effortToOutcome,
+                      isPinned: $0.isPinned)
         }
         s.values = all(PersonalValue.self).map {
             ValueRecord(name: $0.name, meaning: $0.meaning, livedLately: $0.livedLately, createdAt: $0.createdAt)
@@ -267,7 +270,9 @@ enum DataTransfer {
         let winKeys = Set(all(Win.self).map { key($0.createdAt, $0.text) })
         for r in s.wins {
             if winKeys.contains(key(r.createdAt, r.text)) { summary.skipped += 1; continue }
-            context.insert(Win(text: r.text, meaning: r.meaning, effortToOutcome: r.effortToOutcome, createdAt: r.createdAt))
+            let win = Win(text: r.text, meaning: r.meaning, effortToOutcome: r.effortToOutcome, createdAt: r.createdAt)
+            win.isPinned = r.isPinned ?? false
+            context.insert(win)
             summary.added += 1
         }
 

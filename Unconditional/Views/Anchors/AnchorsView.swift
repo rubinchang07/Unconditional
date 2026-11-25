@@ -135,25 +135,25 @@ struct AnchorsView: View {
     // MARK: - Near the surface: wins
 
     private var winsLayer: some View {
-        Layer(title: "you kept showing up", subtitle: "Small things count. So does trying.") {
+        let split = Win.split(wins)
+        return Layer(title: "you kept showing up", subtitle: "Small things count. So does trying.") {
             if wins.isEmpty {
                 Text("Your wins will gather here.").foregroundStyle(.secondary)
             }
-            ForEach(wins) { win in
+            ForEach(split.surface) { win in
                 DropCard(color: palette.colors[2]) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(win.text)
-                        if !win.meaning.isEmpty {
-                            Text(win.meaning).font(.callout).foregroundStyle(.secondary)
-                        }
-                        Text(win.effortLabel.lowercased())
-                            .font(.caption)
-                            .foregroundStyle(.tint)
-                    }
+                    WinContent(win: win)
                 }
-                .contextMenu {
-                    Button("Remove", systemImage: "minus.circle") { withAnimation(.calm) { context.delete(win) } }
+                .contextMenu { WinMenu(win: win) }
+            }
+            // After about two weeks, wins settle here instead of crowding the top.
+            if !split.settled.isEmpty {
+                NavigationLink {
+                    KeptWinsView()
+                } label: {
+                    KeptStone(count: split.settled.count, color: palette.colors[2])
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -681,5 +681,123 @@ private struct PhotoSticker: View {
         .task(id: photo.persistentModelID) {
             image = UIImage(data: photo.imageData)
         }
+    }
+}
+
+// MARK: - Wins kept over time
+
+/// One win's words, shared by the surface cards and the kept list.
+private struct WinContent: View {
+    let win: Win
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(win.text)
+                Spacer(minLength: 8)
+                if win.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption)
+                        .foregroundStyle(.tint)
+                        .accessibilityLabel("Kept at the surface")
+                }
+            }
+            if !win.meaning.isEmpty {
+                Text(win.meaning).font(.callout).foregroundStyle(.secondary)
+            }
+            Text(win.effortLabel.lowercased())
+                .font(.caption)
+                .foregroundStyle(.tint)
+        }
+    }
+}
+
+/// Long-press actions for a win: keep it at the surface, let it settle, or remove it.
+private struct WinMenu: View {
+    @Environment(\.modelContext) private var context
+    let win: Win
+
+    var body: some View {
+        Button(win.isPinned ? "Let it settle" : "Keep at the surface",
+               systemImage: win.isPinned ? "pin.slash" : "pin") {
+            withAnimation(.calm) { win.isPinned.toggle() }
+        }
+        Button("Remove", systemImage: "minus.circle") { withAnimation(.calm) { context.delete(win) } }
+    }
+}
+
+/// A smooth stone resting just under the surface wins: everything older lives inside it.
+private struct KeptStone: View {
+    let count: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Ellipse()
+                    .fill(LinearGradient(colors: [color.opacity(0.55), color.opacity(0.25)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 46, height: 34)
+                Ellipse()
+                    .fill(.white.opacity(0.5))
+                    .frame(width: 16, height: 6)
+                    .offset(x: -8, y: -8)
+                    .blur(radius: 1.5)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("kept over time")
+                    .font(.system(.headline, design: .serif))
+                Text("\(count) earlier \(count == 1 ? "win" : "wins"), still true")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .background(.thinMaterial, in: Capsule())
+        .contentShape(Capsule())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Every win that has settled, by month. Nothing here ever disappears on its own.
+struct KeptWinsView: View {
+    @Query(sort: \Win.createdAt, order: .reverse) private var wins: [Win]
+
+    private var months: [(title: String, wins: [Win])] {
+        let settled = Win.split(wins).settled
+        let grouped = Dictionary(grouping: settled) {
+            Calendar.current.dateInterval(of: .month, for: $0.createdAt)?.start ?? $0.createdAt
+        }
+        return grouped.keys.sorted(by: >).map { start in
+            (start.formatted(.dateTime.month(.wide).year()).lowercased(), grouped[start] ?? [])
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Text("Wins settle here after about two weeks. They're still yours, and still true. Long-press one to keep it at the surface.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            }
+            ForEach(months, id: \.title) { month in
+                Section(month.title) {
+                    ForEach(month.wins) { win in
+                        WinContent(win: win)
+                            .padding(.vertical, 4)
+                            .contextMenu { WinMenu(win: win) }
+                    }
+                }
+            }
+        }
+        .themedBackground()
+        .paperList()
+        .navigationTitle("kept over time")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
