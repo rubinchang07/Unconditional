@@ -36,7 +36,7 @@ struct SupportView: View {
                 Text("Going further")
             }
         }
-        .navigationTitle("Support")
+        .navigationTitle("support")
         .themedBackground()
         .paperList()
     }

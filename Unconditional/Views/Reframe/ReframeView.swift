@@ -92,7 +92,7 @@ struct ReframeView: View {
                 Text("Even a small shift counts. A thought can go from 90% to 70% and that's real progress.")
             }
         }
-        .navigationTitle("Reframe")
+        .navigationTitle("reframe")
         .themedBackground()
         .paperList()
         .scrollDismissesKeyboard(.interactively)

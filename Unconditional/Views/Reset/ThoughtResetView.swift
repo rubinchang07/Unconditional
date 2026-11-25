@@ -39,7 +39,7 @@ struct ThoughtResetView: View {
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(ThemeBackground())
-            .navigationTitle("Thought reset")
+            .navigationTitle("thought reset")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -279,7 +279,7 @@ private struct PerspectiveEditor: View {
                 Text("Write what you'd want to hear in that moment. It doesn't have to be positive, just kind and fair.")
             }
         }
-        .navigationTitle("Edit")
+        .navigationTitle("edit")
         .navigationBarTitleDisplayMode(.inline)
         .themedBackground()
         .paperList()

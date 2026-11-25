@@ -3,6 +3,7 @@ import SwiftData
 import PencilKit
 
 /// The daily flow, one calm step per screen:
+/// 0. home: the orb, a greeting, and one main action ("Check in")
 /// 1. choose how to start (Write, Speak, Draw)
 /// 2. get it out
 /// 3. name the loop and save
@@ -10,8 +11,9 @@ import PencilKit
 struct TodayView: View {
     @Environment(\.modelContext) private var context
 
-    private enum Step: Int, CaseIterable { case choose, capture, loop }
-    @State private var step: Step = .choose
+    private enum Step: Int, CaseIterable { case home, choose, capture, loop }
+    @State private var step: Step = .home
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
 
     @State private var kind: EntryKind = .write
     @State private var text = ""
@@ -40,31 +42,38 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                StepDots(count: Step.allCases.count, current: step.rawValue)
+                if step != .home {
+                    // Dots for the three check-in steps (home doesn't count).
+                    StepDots(count: Step.allCases.count - 1, current: step.rawValue - 1)
+                }
 
                 // Each step slides in; `.id` tells SwiftUI it's a new view so the transition runs.
                 Group {
                     switch step {
+                    case .home: homeStep
                     case .choose: chooseStep
                     case .capture: captureStep
                     case .loop: loopStep
                     }
                 }
                 .id(step)
-                .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                // A soft fade with a slight lift: calmer than sliding sideways.
+                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)),
                                         removal: .opacity))
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .frame(maxHeight: .infinity, alignment: .top)
             .background(ThemeBackground())
-            .navigationTitle(Date.now.formatted(.dateTime.weekday(.wide).month().day()))
+            .navigationTitle(step == .home ? "" : Date.now.formatted(.dateTime.weekday(.wide).month().day()).lowercased())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Thought reset", systemImage: "leaf") { showReset = true }
+                if step != .home {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Thought reset", systemImage: "leaf") { showReset = true }
+                    }
                 }
-                if step != .choose {
+                if step != .home {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Back", systemImage: "chevron.left") { go(to: Step(rawValue: step.rawValue - 1)!) }
                     }
@@ -86,60 +95,59 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - Step 1: choose
+    // MARK: - Home: one calm screen, one main action
+
+    private var homeStep: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 12)
+            OrbView(palette: orbPalette)
+                .frame(width: 260, height: 260)
+            VStack(spacing: 10) {
+                Text(Greeting.now)
+                    .font(.system(.largeTitle, design: .serif).weight(.semibold))
+                    .softCase()
+                Text(Greeting.dailyPrompt)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 12)
+            }
+            Spacer(minLength: 12)
+
+            // Shows up only when there's a tiny step to ask about.
+            TinyStepFollowUp()
+
+            Button("Check in") { go(to: .choose) }
+                .buttonStyle(.paper)
+
+            Button("i'm spiraling") { showReset = true }
+                .font(.headline)
+                .frame(minHeight: 44)
+                .padding(.vertical, 6)
+
+            // Everything else stays tucked away until you want it.
+            Menu {
+                Button("Breathe for a minute", systemImage: "wind") { showBreathing = true }
+                Button("Career check-in", systemImage: "briefcase") { showCareer = true }
+            } label: {
+                Label("more", systemImage: "ellipsis.circle")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(minHeight: 44)
+            }
+            .padding(.bottom, 12)
+        }
+    }
+
+    // MARK: - Step 1: choose how to start
 
     private var chooseStep: some View {
         ScrollView {
             VStack(spacing: 16) {
-                PaperHeading(title: Greeting.now, subtitle: Greeting.dailyPrompt)
+                PaperHeading(title: "How do you want to start?",
+                             subtitle: "No right way to do this. Just get it out of your head.")
                     .padding(.bottom, 8)
-
-                // One tap to interrupt a spiral, before anything else.
-                Button {
-                    showReset = true
-                } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: "leaf")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(.tint, in: Circle())
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("I'm spiraling")
-                                .font(.system(.headline, design: .serif))
-                            Text("A quick thought reset, no writing needed")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(16)
-                    .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
-                }
-                .buttonStyle(.plain)
-
-                TinyStepFollowUp()
-
-                Button {
-                    showCareer = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "briefcase")
-                            .foregroundStyle(.tint)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Career check-in")
-                                .font(.system(.subheadline, design: .serif).weight(.semibold))
-                            Text("After studying, applying, or a setback")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.tertiary)
-                    }
-                    .paperCard(padding: 14)
-                }
-                .buttonStyle(.plain)
 
                 ForEach(EntryKind.allCases) { option in
                     Button {
@@ -167,27 +175,6 @@ struct TodayView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                Button {
-                    showBreathing = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "wind")
-                            .foregroundStyle(.tint)
-                        Text("Feeling a lot right now? Breathe for a minute first.")
-                            .font(.subheadline)
-                            .multilineTextAlignment(.leading)
-                        Spacer()
-                    }
-                    .padding(14)
-                    .background(.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .buttonStyle(.plain)
-
-                Text("No right way to do this. Just get it out of your head.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
             }
             .padding(.bottom, 24)
         }
@@ -220,7 +207,8 @@ struct TodayView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
                 if !drawing.strokes.isEmpty {
-                    Button("Clear drawing", role: .destructive) { drawing = PKDrawing() }
+                    Button("clear drawing") { withAnimation(.calm) { drawing = PKDrawing() } }
+                        .foregroundStyle(.secondary)
                         .font(.footnote)
                 }
             }
@@ -255,7 +243,7 @@ struct TodayView: View {
     // MARK: - Actions
 
     private func go(to newStep: Step) {
-        withAnimation(.easeInOut(duration: 0.35)) { step = newStep }
+        withAnimation(.calm) { step = newStep }
     }
 
     private func save() {
@@ -276,7 +264,7 @@ struct TodayView: View {
         textBeforeRecording = ""
         drawing = PKDrawing()
         loop = nil
-        step = .choose
+        step = .home
         savedEntry = entry
     }
 }
@@ -421,7 +409,7 @@ private struct SpeakControls: View {
                     .font(.system(size: 30))
                     .foregroundStyle(.white)
                     .frame(width: 80, height: 80)
-                    .background(Circle().fill(recorder.isRecording ? AnyShapeStyle(Color.red.opacity(0.75)) : AnyShapeStyle(.tint)))
+                    .background(Circle().fill(recorder.isRecording ? AnyShapeStyle(.tint.opacity(0.6)) : AnyShapeStyle(.tint)))
                     .symbolEffect(.pulse, isActive: recorder.isRecording)
             }
             .buttonStyle(.plain)
@@ -434,7 +422,7 @@ private struct SpeakControls: View {
             if let message = recorder.errorMessage {
                 Text(message)
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
         }

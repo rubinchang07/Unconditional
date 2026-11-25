@@ -4,7 +4,7 @@ import UIKit
 /// The three color themes. The choice is saved with `@AppStorage("theme")`,
 /// which writes to UserDefaults, so it survives app restarts.
 enum Theme: String, CaseIterable, Identifiable {
-    case sage, dusk, sky
+    case white, sage, dusk, sky
 
     static let storageKey = "theme"
 
@@ -12,6 +12,7 @@ enum Theme: String, CaseIterable, Identifiable {
 
     var name: String {
         switch self {
+        case .white: "White"
         case .sage: "Sage"
         case .dusk: "Dusk"
         case .sky: "Sky"
@@ -20,6 +21,7 @@ enum Theme: String, CaseIterable, Identifiable {
 
     var mood: String {
         switch self {
+        case .white: "Clean and quiet, so the orb can glow"
         case .sage: "Grounded, like a paper journal"
         case .dusk: "Soft and soothing, for evenings"
         case .sky: "Open and light"
@@ -29,6 +31,7 @@ enum Theme: String, CaseIterable, Identifiable {
     /// Buttons, toggles, chart bars, and links use this color.
     var accent: Color {
         switch self {
+        case .white: Color(light: 0x3E5C76, dark: 0x9DB8D2)
         case .sage: Color(light: 0x5F8466, dark: 0x93B496)
         case .dusk: Color(light: 0x8A6FB0, dark: 0xB9A2DB)
         case .sky: Color(light: 0x3F7FAE, dark: 0x7FB3DA)
@@ -38,6 +41,7 @@ enum Theme: String, CaseIterable, Identifiable {
     /// Two background colors. Sage and Sky are nearly flat; Dusk is a real gradient.
     var backgroundColors: [Color] {
         switch self {
+        case .white: [Color(light: 0xFFFFFF, dark: 0x000000), Color(light: 0xFFFFFF, dark: 0x000000)]
         case .sage: [Color(light: 0xF6F1E6, dark: 0x1B1E1A), Color(light: 0xEEF0E4, dark: 0x1F231E)]
         case .dusk: [Color(light: 0xE9E2F6, dark: 0x221D30), Color(light: 0xFAE4D8, dark: 0x30222A)]
         case .sky: [Color(light: 0xEAF3FB, dark: 0x131B24), Color(light: 0xF7FAFD, dark: 0x18222D)]
@@ -70,7 +74,7 @@ extension UIColor {
 
 /// The current theme's background, filling the whole screen.
 struct ThemeBackground: View {
-    @AppStorage(Theme.storageKey) private var theme: Theme = .sage
+    @AppStorage(Theme.storageKey) private var theme: Theme = .white
 
     var body: some View {
         theme.background.ignoresSafeArea()
@@ -79,7 +83,7 @@ struct ThemeBackground: View {
 
 /// Replaces the default grey List/Form background with the theme's background.
 struct ThemedBackground: ViewModifier {
-    @AppStorage(Theme.storageKey) private var theme: Theme = .sage
+    @AppStorage(Theme.storageKey) private var theme: Theme = .white
 
     func body(content: Content) -> some View {
         content

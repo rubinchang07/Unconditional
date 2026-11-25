@@ -49,6 +49,53 @@ extension View {
     }
 }
 
+extension View {
+    /// Swipe to remove, in a quiet grey instead of alarm red, and never with a full swipe
+    /// so nothing disappears by accident.
+    func gentleRemove(_ action: @escaping () -> Void) -> some View {
+        swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                withAnimation(.easeInOut) { action() }
+            } label: {
+                Label("remove", systemImage: "minus.circle")
+            }
+            .tint(Color(uiColor: .systemGray2))
+        }
+    }
+
+    /// Lowercase for short UI words (headings, buttons). Never used on what you write.
+    func softCase() -> some View { textCase(.lowercase) }
+}
+
+/// The calm animation used everywhere: slow, eased, never bouncy.
+extension Animation {
+    static let calm = Animation.easeInOut(duration: 0.45)
+}
+
+/// A kind message for screens with nothing on them yet.
+struct GentleEmpty: View {
+    let symbol: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.title)
+                .foregroundStyle(.tint.opacity(0.7))
+            Text(title)
+                .font(.system(.headline, design: .serif))
+                .softCase()
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+    }
+}
+
 /// A large serif heading with an optional softer line under it.
 struct PaperHeading: View {
     let title: String
@@ -58,6 +105,7 @@ struct PaperHeading: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(.title, design: .serif).weight(.semibold))
+                .softCase()
             if let subtitle {
                 Text(subtitle)
                     .font(.body)
@@ -76,9 +124,10 @@ struct PaperButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
+            .softCase()
             .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .padding(.vertical, 4)
             .background(.tint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
             .animation(.easeOut(duration: 0.2), value: configuration.isPressed)
