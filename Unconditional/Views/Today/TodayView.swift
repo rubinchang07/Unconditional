@@ -59,6 +59,7 @@ struct TodayView: View {
             }
             .navigationTitle(Date.now.formatted(.dateTime.weekday(.wide).month().day()))
             .scrollDismissesKeyboard(.interactively)
+            .keyboardDoneButton()
             .sheet(item: $savedEntry) { entry in
                 ReframePromptView(entry: entry)
             }

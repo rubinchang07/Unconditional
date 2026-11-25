@@ -92,6 +92,7 @@ struct LoopEditView: View {
             Section("Core belief") { TextField("Core belief", text: $loop.coreBelief, axis: .vertical) }
         }
         .navigationTitle(loop.name)
+        .keyboardDoneButton()
         .navigationBarTitleDisplayMode(.inline)
     }
 }

@@ -46,6 +46,8 @@ struct WinsView: View {
                 }
             }
             .navigationTitle("Wins")
+            .scrollDismissesKeyboard(.interactively)
+            .keyboardDoneButton()
         }
     }
 

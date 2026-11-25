@@ -44,6 +44,8 @@ struct ReframeView: View {
             }
         }
         .navigationTitle("Reframe")
+        .scrollDismissesKeyboard(.interactively)
+        .keyboardDoneButton()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
