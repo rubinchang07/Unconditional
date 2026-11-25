@@ -100,7 +100,7 @@ struct TodayView: View {
     private var homeStep: some View {
         VStack(spacing: 18) {
             Spacer(minLength: 12)
-            OrbView(palette: orbPalette)
+            OrbView(palette: orbPalette, interactive: true)
                 .frame(width: 260, height: 260)
             VStack(spacing: 10) {
                 Text(Greeting.now)

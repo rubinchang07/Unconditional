@@ -44,7 +44,7 @@ struct OnboardingView: View {
 
             // The orb stays put while the words change around it,
             // so moving between screens feels continuous.
-            OrbView(palette: palette, speed: 0.8)
+            OrbView(palette: palette, speed: 0.8, interactive: true)
                 .frame(width: 280, height: 280)
                 .scaleEffect(index == 0 ? 1 : 0.85)
                 .animation(.easeInOut(duration: 0.8), value: index)
