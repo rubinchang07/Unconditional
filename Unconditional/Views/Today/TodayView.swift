@@ -17,6 +17,7 @@ struct TodayView: View {
     @State private var text = ""
     @State private var drawing = PKDrawing()
     @State private var tool = DrawingTool()
+    @State private var canvasBackground: CanvasBackground = .paper
     @State private var loop: Loop?
 
     @State private var recorder = VoiceRecorder()
@@ -158,9 +159,10 @@ struct TodayView: View {
                 VStack(spacing: 12) {
                     InkPalette(selection: $tool.ink)
                     BrushBar(tool: $tool)
+                    BackgroundPicker(selection: $canvasBackground)
                 }
                 .paperCard(padding: 14)
-                DrawingCanvas(drawing: $drawing, tool: tool)
+                DrawingCanvas(drawing: $drawing, tool: tool, background: canvasBackground)
                     .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
                 if !drawing.strokes.isEmpty {
@@ -212,6 +214,7 @@ struct TodayView: View {
         // sides of a relationship already belong to the same context.
         context.insert(entry)
         entry.loop = loop
+        if kind == .draw { entry.drawingBackground = canvasBackground.rawValue }
         try? context.save()
 
         // Reset for next time, then offer the reframe step.

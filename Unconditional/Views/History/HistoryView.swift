@@ -102,7 +102,8 @@ struct EntryRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if entry.kind == .draw {
-                DrawingThumbnail(data: entry.drawingData)
+                DrawingThumbnail(data: entry.drawingData,
+                                 background: CanvasBackground(rawValue: entry.drawingBackground) ?? .paper)
                     .frame(width: 44, height: 44)
             } else {
                 Image(systemName: entry.kind.symbol)

@@ -43,6 +43,9 @@ final class Entry {
     @Attribute(.externalStorage)
     var drawingData: Data?
 
+    /// Which paper the drawing was made on (a `CanvasBackground` raw value).
+    var drawingBackground: String = "paper"
+
     /// Which loop this thought belongs to. Optional: you might not know yet.
     var loop: Loop?
 
