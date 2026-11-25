@@ -41,6 +41,7 @@ struct HistoryView: View {
             }
             .navigationTitle("History")
             .themedBackground()
+            .paperList()
         }
     }
 

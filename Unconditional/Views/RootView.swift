@@ -29,8 +29,6 @@ struct RootView: View {
         }
         // `.tint` colors every button, toggle, and link below it.
         .tint(theme.accent)
-        // Rounded system font everywhere: softer than the default.
-        .fontDesign(.rounded)
         .task { if lockEnabled { await unlock() } }
         .onChange(of: scenePhase) { _, phase in
             guard lockEnabled else { return }

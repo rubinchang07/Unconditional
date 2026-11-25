@@ -40,7 +40,7 @@ struct DrawingCanvas: UIViewRepresentable {
         canvas.drawing = drawing
         canvas.drawingPolicy = .anyInput // finger works too, not only Apple Pencil
         canvas.tool = ink.tool
-        canvas.backgroundColor = .secondarySystemBackground
+        canvas.backgroundColor = Paper.cardUIColor
         canvas.isUserInteractionEnabled = isEditable
         canvas.delegate = context.coordinator
         return canvas
