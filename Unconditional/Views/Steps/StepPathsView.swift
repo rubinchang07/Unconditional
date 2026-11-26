@@ -205,8 +205,13 @@ struct PathView: View {
                 }
                 .rotationEffect(.degrees(tilt))
                 .opacity(Footstep.softness(age: age))
-                .background {
-                    if fresh && !reduceMotion { SandPuff(trigger: pressCount) }
+                .overlay {
+                    if fresh && !reduceMotion {
+                        SandBurst(isLeft: isLeft)
+                            .frame(width: 200, height: 200)
+                            .allowsHitTesting(false)
+                            .id(pressCount)
+                    }
                 }
                 .offset(x: sway)
 
@@ -321,25 +326,80 @@ struct SandBackground: View {
     }
 }
 
-/// A few grains of sand kicked up when a print presses in.
-private struct SandPuff: View {
-    let trigger: Int
-    @State private var spread = false
+/// Sand kicked up as a foot presses in: grains spray out from the edges of the print,
+/// mostly from the toes and heel where a foot pushes hardest, arc up a little, fall
+/// back with gravity, and settle in a soft ring of displaced sand that fades.
+struct SandBurst: View {
+    var isLeft: Bool
+    @State private var start = Date.now
+    @State private var finished = false
+
+    private static let duration = 1.3
+
+    private struct Grain {
+        var origin: CGPoint      // where on the print's edge it starts, relative to the middle
+        var velocity: CGVector   // points per second
+        var size: CGFloat
+        var shade: Int           // 0 light, 1 mid, 2 dark sand
+        var delay: Double
+    }
+
+    /// Made once per burst, so each step's spray is a little different.
+    @State private var grains: [Grain] = SandBurst.makeGrains()
+
+    private static func makeGrains() -> [Grain] {
+        (0..<90).map { _ in
+            // Toes (top) and heel (bottom) throw the most sand.
+            let fromToes = Double.random(in: 0...1) < 0.45
+            let fromHeel = !fromToes && Double.random(in: 0...1) < 0.55
+            let angle: Double
+            if fromToes { angle = Double.random(in: -.pi * 0.95 ... -.pi * 0.05) }      // up and out
+            else if fromHeel { angle = Double.random(in: .pi * 0.1 ... .pi * 0.9) }       // down and out
+            else { angle = Bool.random() ? Double.random(in: -0.5...0.5) : Double.random(in: .pi - 0.5 ... .pi + 0.5) }
+            // Start on the edge of an ellipse about the size of the print.
+            let origin = CGPoint(x: cos(angle) * 13, y: sin(angle) * 28)
+            let speed = Double.random(in: 40...120)
+            return Grain(origin: origin,
+                         velocity: CGVector(dx: cos(angle) * speed, dy: sin(angle) * speed - Double.random(in: 30...80)),
+                         size: CGFloat.random(in: 1.2...3.2),
+                         shade: Int.random(in: 0...2),
+                         delay: Double.random(in: 0...0.12))
+        }
+    }
 
     var body: some View {
-        ZStack {
-            ForEach(0..<9, id: \.self) { i in
-                let angle = Double(i) / 9 * 2 * .pi
-                Circle()
-                    .fill(Sand.print)
-                    .frame(width: 3, height: 3)
-                    .offset(x: spread ? cos(angle) * 30 : 0, y: spread ? sin(angle) * 34 : 0)
-                    .opacity(spread ? 0 : 0.9)
+        if !finished {
+            TimelineView(.animation) { timeline in
+                let elapsed = timeline.date.timeIntervalSince(start)
+                Canvas { ctx, size in
+                    let mid = CGPoint(x: size.width / 2, y: size.height / 2)
+                    let shades = [Sand.rim, Sand.print, Sand.ink.opacity(0.55)]
+
+                    // Displaced sand: a soft ring pushed out around the print, fading.
+                    let ringProgress = min(elapsed / 0.5, 1)
+                    let ringFade = max(0, 1 - elapsed / Self.duration)
+                    let ring = CGRect(x: mid.x - 16 - 6 * ringProgress, y: mid.y - 32 - 8 * ringProgress,
+                                      width: 32 + 12 * ringProgress, height: 64 + 16 * ringProgress)
+                    ctx.stroke(Path(ellipseIn: ring), with: .color(Sand.rim.opacity(0.8 * ringFade)), lineWidth: 3)
+
+                    for grain in grains {
+                        let t = elapsed - grain.delay
+                        guard t > 0 else { continue }
+                        // Thrown, then pulled back down, slowing as it lands.
+                        let drag = 1 - min(t / Self.duration, 1) * 0.6
+                        let x = grain.origin.x + grain.velocity.dx * t * drag
+                        let y = grain.origin.y + grain.velocity.dy * t * drag + 160 * t * t
+                        let fade = max(0, 1 - t / (Self.duration - grain.delay))
+                        let r = grain.size / 2
+                        ctx.fill(Path(ellipseIn: CGRect(x: mid.x + x - r, y: mid.y + y - r, width: r * 2, height: r * 2)),
+                                 with: .color(shades[grain.shade].opacity(fade)))
+                    }
+                }
             }
-        }
-        .onChange(of: trigger, initial: true) { _, _ in
-            spread = false
-            withAnimation(.easeOut(duration: 0.7)) { spread = true }
+            .task {
+                try? await Task.sleep(for: .seconds(Self.duration + 0.1))
+                finished = true
+            }
         }
     }
 }
