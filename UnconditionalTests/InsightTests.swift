@@ -138,11 +138,56 @@ struct MapLayoutTests {
         #expect(points.count == values.count)
         for i in points.indices {
             for j in points.indices where j > i {
-                let apartX = abs(points[i].x - points[j].x) >= MapLayout.labelWidth - 1
+                let widths = MapLayout.valueSize(values[i].name).width + MapLayout.valueSize(values[j].name).width
+                let apartX = abs(points[i].x - points[j].x) >= widths / 2 - 1
                 let apartY = abs(points[i].y - points[j].y) >= MapLayout.labelHeight - 1
                 #expect(apartX || apartY, "Value \(i + 1) and \(j + 1) overlap")
             }
         }
+    }
+
+    @Test("Values keep clear of loop labels and of values you've moved")
+    func avoidsLoopsAndPlacedValues() throws {
+        let container = try AppSchema.inMemoryContainer()
+        let context = container.mainContext
+        let loops = ["Self-worth", "Career", "Falling behind"].enumerated().map { i, name in
+            let loop = Loop(name: name, coreBelief: "", pattern: "", sortOrder: i)
+            context.insert(loop)
+            return loop
+        }
+        let values = (1...4).map { PersonalValue(name: "Value \($0)") }
+        values.forEach(context.insert)
+        // One value you've placed yourself, just right of the middle.
+        values[0].mapX = 0.2
+        values[0].mapY = 0
+        let center = CGPoint(x: 180, y: 180)
+        let outer: CGFloat = 134
+        let points = MapLayout.spread(values: values, loops: loops, links: [], center: center, outer: outer)
+
+        #expect(points[0] == CGPoint(x: center.x + 0.2 * outer, y: center.y))
+        func rect(_ p: CGPoint, _ size: CGSize) -> CGRect {
+            CGRect(x: p.x - size.width / 2, y: p.y - size.height / 2, width: size.width, height: size.height)
+        }
+        for (i, point) in points.enumerated() {
+            for (j, loop) in loops.enumerated() {
+                let angle = -Double.pi / 2 + 2 * Double.pi * Double(j) / Double(loops.count)
+                let spot = CGPoint(x: center.x + outer * cos(angle), y: center.y + outer * sin(angle))
+                let shared = rect(point, MapLayout.valueSize(values[i].name)).intersection(rect(spot, MapLayout.loopBox(loop)))
+                #expect(shared.isNull || shared.width * shared.height < 1, "Value \(i + 1) sits on \(loop.name)")
+            }
+            for j in points.indices where j > i {
+                let shared = rect(point, MapLayout.valueSize(values[i].name))
+                    .intersection(rect(points[j], MapLayout.valueSize(values[j].name)))
+                #expect(shared.isNull || shared.width * shared.height < 1, "Value \(i + 1) and \(j + 1) overlap")
+            }
+        }
+    }
+
+    @Test("A map with no size yet doesn't crash")
+    func zeroSize() {
+        let values = (1...3).map { PersonalValue(name: "Value \($0)") }
+        let points = MapLayout.spread(values: values, loops: [], links: [], center: .zero, outer: -46)
+        #expect(points.count == 3)
     }
 
     @Test("A value dragged outside the map is kept inside it")
@@ -202,5 +247,88 @@ struct VisibleLoopsTests {
         let shown = MapLayout.visibleLoops(all, links: [link])
         #expect(shown.contains(all[9]) && shown.contains(all[8]))
         #expect(shown.count == MapLayout.loopLimit)
+    }
+}
+
+/// Seeing the map at an angle.
+struct MapProjectorTests {
+    let center = CGPoint(x: 100, y: 100)
+
+    @Test("Flat and unturned, the map is exactly as laid out")
+    func flatIsIdentity() {
+        let flat = MapProjector(center: center, outer: 80, tilt: 0, spin: 0)
+        let p = CGPoint(x: 140, y: 60)
+        #expect(flat.project(p) == p)
+        #expect(flat.scale(at: p) == 1)
+    }
+
+    @Test("Leaned back, the far side is smaller and the near side bigger")
+    func perspective() {
+        let tilted = MapProjector(center: center, outer: 80, tilt: 0.8, spin: 0)
+        let far = CGPoint(x: 100, y: 20), near = CGPoint(x: 100, y: 180)
+        #expect(tilted.scale(at: far) < 1)
+        #expect(tilted.scale(at: near) > 1)
+        #expect(tilted.clarity(tilted.scale(at: far)) < 1)
+        #expect(tilted.clarity(tilted.scale(at: near)) == 1)
+    }
+
+    @Test("A drag on screen moves a value the same way on a turned map")
+    func dragFollowsFinger() {
+        let turned = MapProjector(center: center, outer: 80, tilt: 0, spin: 0.9)
+        let start = CGPoint(x: 120, y: 90)
+        let move = CGSize(width: 15, height: -10)
+        let delta = turned.planeDelta(move)
+        let moved = turned.project(CGPoint(x: start.x + delta.width, y: start.y + delta.height))
+        let before = turned.project(start)
+        #expect(abs(moved.x - before.x - move.width) < 0.001)
+        #expect(abs(moved.y - before.y - move.height) < 0.001)
+    }
+}
+
+/// Footprints soften with time but never vanish.
+struct FootstepTests {
+    @Test("A new print is crisp and an old one stays visible")
+    func softness() {
+        #expect(Footstep.softness(age: 0) == 1)
+        #expect(Footstep.softness(age: 15) < 1)
+        #expect(Footstep.softness(age: 400) == Footstep.softness(age: 30))
+        #expect(Footstep.softness(age: 400) > 0.5)
+    }
+}
+
+/// Value labels on the map fit their words.
+struct ValueLabelTests {
+    @Test("Short words get small capsules, long ones are shortened")
+    func sizes() {
+        #expect(MapLayout.valueSize("Rest").width < MapLayout.valueSize("Independence").width)
+        #expect(MapLayout.shortName("A very long value name indeed").count == MapLayout.nameLimit)
+        #expect(MapLayout.shortName("Courage") == "Courage")
+    }
+}
+
+/// The welcome tour's values, and the sun at the middle of the map.
+@MainActor
+struct StartingValuesTests {
+    @Test("Picked values are added once, skipping ones you already have")
+    func addsOnce() throws {
+        let container = try AppSchema.inMemoryContainer()
+        let context = container.mainContext
+        context.insert(PersonalValue(name: "Curiosity"))
+        let existing = try context.fetch(FetchDescriptor<PersonalValue>())
+        ValueChooser.add(["curiosity", "Rest", "Courage"], existing: existing, to: context)
+        let names = try context.fetch(FetchDescriptor<PersonalValue>()).map(\.name).sorted()
+        #expect(names == ["Courage", "Curiosity", "Rest"])
+    }
+
+    @Test("A single value never sits on the sun")
+    func clearOfSun() {
+        let center = CGPoint(x: 180, y: 180)
+        let point = MapLayout.spread(values: [PersonalValue(name: "Rest")], loops: [], links: [],
+                                     center: center, outer: 134)[0]
+        let sun = CGRect(x: center.x - MapLayout.sunSize.width / 2, y: center.y - MapLayout.sunSize.height / 2,
+                         width: MapLayout.sunSize.width, height: MapLayout.sunSize.height)
+        let size = MapLayout.valueSize("Rest")
+        let label = CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height)
+        #expect(!label.intersects(sun.insetBy(dx: 1, dy: 1)))
     }
 }

@@ -13,6 +13,8 @@ struct AnchorsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    /// Until you first long-press a win, a small hand on the first one shows you can.
+    @AppStorage("hasHeldWin") private var hasHeldWin = false
     @Query(sort: \Win.createdAt, order: .reverse) private var wins: [Win]
     @Query(sort: \SavedReminder.createdAt, order: .reverse) private var reminders: [SavedReminder]
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
@@ -143,6 +145,14 @@ struct AnchorsView: View {
             ForEach(split.surface) { win in
                 DropCard(color: palette.colors[2]) {
                     WinContent(win: win)
+                }
+                // Once, on the first win: a small hand shows that wins can be held.
+                .overlay(alignment: .trailing) {
+                    if !hasHeldWin && win == split.surface.first {
+                        HoldCue(color: palette.colors[2], size: 28)
+                            .padding(.trailing, 8)
+                            .allowsHitTesting(false)
+                    }
                 }
                 .contextMenu { WinMenu(win: win) }
             }
@@ -715,14 +725,19 @@ private struct WinContent: View {
 /// Long-press actions for a win: keep it at the surface, let it settle, or remove it.
 private struct WinMenu: View {
     @Environment(\.modelContext) private var context
+    @AppStorage("hasHeldWin") private var hasHeldWin = false
     let win: Win
 
     var body: some View {
         Button(win.isPinned ? "Let it settle" : "Keep at the surface",
                systemImage: win.isPinned ? "pin.slash" : "pin") {
+            hasHeldWin = true
             withAnimation(.calm) { win.isPinned.toggle() }
         }
-        Button("Remove", systemImage: "minus.circle") { withAnimation(.calm) { context.delete(win) } }
+        Button("Remove", systemImage: "minus.circle") {
+            hasHeldWin = true
+            withAnimation(.calm) { context.delete(win) }
+        }
     }
 }
 

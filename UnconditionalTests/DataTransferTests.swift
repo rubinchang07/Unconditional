@@ -134,6 +134,27 @@ struct DataTransferTests {
         #expect(try count(GroundingPhoto.self, in: context) == 1)
     }
 
+    @Test("One-step-at-a-time paths come back with their footprints, once")
+    func pathsRoundTrip() throws {
+        let old = oldPhone.mainContext
+        let path = StepPath(title: "Finding a job", createdAt: day)
+        old.insert(path)
+        for (i, text) in ["Opened the job board", "Sent one email"].enumerated() {
+            let step = Footstep(text: text, createdAt: day.addingTimeInterval(Double(i) * 3600))
+            old.insert(step)
+            step.path = path
+        }
+        let file = try DataTransfer.encode(DataTransfer.snapshot(from: old))
+
+        let new = newPhone.mainContext
+        _ = DataTransfer.restore(try DataTransfer.decode(file), into: new)
+        _ = DataTransfer.restore(try DataTransfer.decode(file), into: new)
+
+        let paths = try new.fetch(FetchDescriptor<StepPath>())
+        #expect(paths.count == 1)
+        #expect(paths.first?.walked.map(\.text) == ["Opened the job board", "Sent one email"])
+    }
+
     @Test("A loop with the same name is reused, not doubled")
     func loopsMatchByName() throws {
         let old = oldPhone.mainContext

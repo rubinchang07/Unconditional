@@ -7,7 +7,8 @@ import SwiftData
 struct InsightsView: View {
     @Query(sort: \Entry.createdAt) private var entries: [Entry]
     @Query(sort: \Reframe.createdAt) private var reframes: [Reframe]
-    @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
+    /// Career check-ins became an ordinary check-in starting point. Older ones stay readable here.
+    @Query private var careerReflections: [CareerReflection]
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
 
     var body: some View {
@@ -46,7 +47,7 @@ struct InsightsView: View {
                     Label("Your map", systemImage: "point.3.connected.trianglepath.dotted")
                 }
             } footer: {
-                Text("Loops as rings, reframes, and when you check in. Your map shows how loops and values connect.")
+                Text("Loops as rings, and how reframes shift things. Your map shows how loops and values connect.")
             }
 
             Section {
@@ -55,7 +56,7 @@ struct InsightsView: View {
                 } label: {
                     Label("Weekly review", systemImage: "tray")
                 }
-                if careerEnabled {
+                if !careerReflections.isEmpty {
                     NavigationLink {
                         CareerHistoryView()
                     } label: {
@@ -66,6 +67,8 @@ struct InsightsView: View {
         }
         .themedBackground()
         .paperList()
+        // Room at the end, so the floating tab bar never sits over the last card.
+        .contentMargins(.bottom, 80, for: .scrollContent)
         .navigationTitle("insights")
         .navigationBarTitleDisplayMode(.inline)
     }

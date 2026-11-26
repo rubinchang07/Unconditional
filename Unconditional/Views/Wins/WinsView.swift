@@ -92,7 +92,7 @@ struct WinsList: View {
                                 Text(win.effortLabel)
                             }
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                         }
                         .padding(.vertical, 2)
                         .gentleRemove { context.delete(win) }

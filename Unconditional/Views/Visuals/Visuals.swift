@@ -69,52 +69,6 @@ struct BeliefBars: View {
     }
 }
 
-// MARK: - Clock dial
-
-/// A 24-hour ring. Each hour glows more when you checked in then more often.
-/// Midnight sits at the top, noon at the bottom.
-struct ClockDial: View {
-    /// Number of check-ins in each hour, 0 to 23.
-    let hours: [Int]
-
-    var body: some View {
-        let maxCount = max(hours.max() ?? 0, 1)
-        ZStack {
-            Canvas { ctx, size in
-                let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let radius = min(size.width, size.height) / 2 - 22
-                for hour in 0..<24 {
-                    let start = Angle.degrees(Double(hour) * 15 - 90 + 1.5)
-                    let end = Angle.degrees(Double(hour + 1) * 15 - 90 - 1.5)
-                    var arc = Path()
-                    arc.addArc(center: center, radius: radius, startAngle: start, endAngle: end, clockwise: false)
-                    let share = Double(hours[hour]) / Double(maxCount)
-                    ctx.stroke(arc, with: .color(.secondary.opacity(0.12)), style: StrokeStyle(lineWidth: 18, lineCap: .butt))
-                    if share > 0 {
-                        ctx.stroke(arc, with: .style(.tint.opacity(0.25 + 0.75 * share)),
-                                   style: StrokeStyle(lineWidth: 18, lineCap: .butt))
-                    }
-                }
-            }
-            // Four quiet markers instead of twenty-four numbers.
-            GeometryReader { proxy in
-                let c = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
-                let r = min(proxy.size.width, proxy.size.height) / 2 - 4
-                ForEach([(0, "moon"), (6, "sunrise"), (12, "sun.max"), (18, "sunset")], id: \.0) { hour, symbol in
-                    let angle = Double(hour) * 15 - 90
-                    Image(systemName: symbol)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .position(x: c.x + r * cos(angle * .pi / 180), y: c.y + r * sin(angle * .pi / 180))
-                }
-            }
-        }
-        .aspectRatio(1, contentMode: .fit)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Check-ins by hour of day")
-    }
-}
-
 // MARK: - Bubbles
 
 /// Packs circles of different sizes close together around the middle, biggest first.
@@ -314,7 +268,7 @@ struct CalendarDots: View {
 
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
-                    Text(symbol).font(.caption2).foregroundStyle(.tertiary)
+                    Text(symbol).font(.caption2).foregroundStyle(.secondary)
                 }
                 ForEach(0..<leadingBlanks, id: \.self) { _ in Color.clear.frame(height: 30) }
                 ForEach(daysInMonth, id: \.self) { day in
@@ -347,7 +301,11 @@ struct CalendarDots: View {
         let isToday = calendar.isDateInToday(day)
         ZStack {
             if colors.isEmpty {
-                Circle().stroke(.secondary.opacity(0.2), lineWidth: 1)
+                // Just the date, faint. An empty ring per day read like a streak to keep up,
+                // and missing days aren't something to fill in.
+                Text(day, format: .dateTime.day())
+                    .font(.caption2)
+                    .foregroundStyle(.secondary.opacity(0.7))
             } else if colors.count == 1 {
                 Circle().fill(colors[0].gradient)
             } else {

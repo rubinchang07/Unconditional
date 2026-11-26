@@ -12,7 +12,7 @@ struct SettingsView: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
     @AppStorage("eveningWarmth") private var eveningWarmth = true
-    @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
+    @AppStorage(OrbMotion.storageKey) private var orbMotion: OrbMotion = .always
 
     @Environment(\.modelContext) private var context
     @State private var notificationsDenied = false
@@ -30,13 +30,8 @@ struct SettingsView: View {
                     } label: {
                         Label("Your loops", systemImage: "arrow.triangle.2.circlepath")
                     }
-                    Toggle(isOn: $careerEnabled) {
-                        Label("Career check-ins", systemImage: "briefcase")
-                    }
                 } header: {
                     Text("Your journal")
-                } footer: {
-                    Text("Career check-ins add a short reflection after studying, applying, or interviewing. Turn them on if that's part of what you're working through.")
                 }
 
                 Section("Theme") {
@@ -76,6 +71,9 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 6)
+                    Picker("Orb moves", selection: $orbMotion) {
+                        ForEach(OrbMotion.allCases) { Text($0.label).tag($0) }
+                    }
                     Toggle("Evening warmth after 9 PM", isOn: $eveningWarmth)
                     Button("Replay the welcome tour") {
                         dismiss()
@@ -83,6 +81,8 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Orb")
+                } footer: {
+                    Text("Some people like the orb moving during exercises but prefer stillness while writing.")
                 }
 
                 Section {

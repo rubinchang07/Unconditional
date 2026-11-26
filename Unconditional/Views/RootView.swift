@@ -11,6 +11,8 @@ struct RootView: View {
     @State private var isAuthenticating = false
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
     @AppStorage("eveningWarmth") private var eveningWarmth = true
+    /// Opened from the lock screen widget or the Control Center button.
+    @State private var resetFromOutside = false
 
     var body: some View {
         ZStack {
@@ -52,6 +54,12 @@ struct RootView: View {
                 .accessibilityHidden(true)
             }
         }
+        // The widget and Control Center button open unconditional://reset:
+        // straight to a thought reset, whichever tab you were on.
+        .onOpenURL { url in
+            if url.scheme == "unconditional" && url.host() == "reset" { resetFromOutside = true }
+        }
+        .fullScreenCover(isPresented: $resetFromOutside) { ThoughtResetView() }
         // `.tint` colors every button, toggle, and link below it.
         .tint(theme.accent)
         .task { if lockEnabled { await unlock() } }

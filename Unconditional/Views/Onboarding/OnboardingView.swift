@@ -13,10 +13,13 @@ struct OnboardingView: View {
         let title: String
         let body: String
         var picksLoops = false
+        var picksValues = false
     }
 
     @State private var pickedStarters: Set<LoopStarter> = []
     @State private var customLoops: [String] = []
+    @State private var pickedValues: Set<String> = []
+    @Query private var values: [PersonalValue]
 
     private let pages: [Page] = [
         Page(title: "unconditional.",
@@ -28,6 +31,9 @@ struct OnboardingView: View {
         Page(title: "Your loops",
              body: "Which thoughts do you tend to get stuck on? Pick any that fit, or name your own. You can change them any time in Settings.",
              picksLoops: true),
+        Page(title: "What matters to you",
+             body: "Loops often hurt because they press on something you care about. Pick a few values that feel like yours. They'll steady you in Anchors and sit at the heart of your map.",
+             picksValues: true),
         Page(title: "Look again, gently",
              body: "Reframe a thought, or just be kind to yourself about it. Not every thought needs to be analyzed. Some can simply be let be."),
         Page(title: "When it's a lot",
@@ -73,6 +79,15 @@ struct OnboardingView: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .lineSpacing(4)
+                        if pages[i].picksValues {
+                            if values.isEmpty {
+                                ValueChooser(picked: $pickedValues)
+                                    .padding(.top, 4)
+                            } else {
+                                Text("You have \(values.count) value\(values.count == 1 ? "" : "s") already.")
+                                    .font(.callout.weight(.semibold))
+                            }
+                        }
                         if pages[i].picksLoops {
                             if loops.isEmpty {
                                 LoopChooser(picked: $pickedStarters, custom: $customLoops)
@@ -83,7 +98,7 @@ struct OnboardingView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, pages[i].picksLoops ? 20 : 32)
+                    .padding(.horizontal, pages[i].picksLoops || pages[i].picksValues ? 20 : 32)
                     .padding(.top, 24)
                     }
                     .scrollIndicators(.hidden)
@@ -119,12 +134,16 @@ struct OnboardingView: View {
         .animation(.easeInOut(duration: 0.6), value: onLoopsPage)
     }
 
-    private var onLoopsPage: Bool { pages[index].picksLoops }
+    /// Pages with choices shrink the orb to make room.
+    private var onLoopsPage: Bool { pages[index].picksLoops || pages[index].picksValues }
 
     /// Saves the loops you picked, then closes the tour.
     private func finish() {
         if !pickedStarters.isEmpty || !customLoops.isEmpty {
             LoopStarter.add(starters: Array(pickedStarters), custom: customLoops, to: context)
+        }
+        if !pickedValues.isEmpty {
+            ValueChooser.add(pickedValues, existing: values, to: context)
         }
         onFinish()
     }
