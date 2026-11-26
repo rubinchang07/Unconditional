@@ -1253,6 +1253,8 @@ enum RecurringWords {
         "going", "maybe", "still", "time", "even", "keep", "much", "said", "would", "could", "should",
         "need", "always", "never", "people", "everything", "anything", "lot", "way", "day", "get", "have",
         "be", "do", "go", "say", "see", "come", "take", "feeling",
+        // How far a word was slid in Words, not the feeling itself.
+        "heavier", "lighter", "little", "quite", "between",
     ]
 
     static func top(in entries: [Entry], limit: Int = 8) -> [String] {

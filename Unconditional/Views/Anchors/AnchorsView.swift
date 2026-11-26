@@ -6,7 +6,8 @@ import PhotosUI
 ///
 /// The page is a body of water. The top is the surface, bright and a little
 /// restless. Scrolling down is going deeper: the color deepens, the stream
-/// slows, and things get steadier. Wins sparkle near the surface, words to
+/// slows, and things get steadier. Wins and things that made you laugh
+/// sparkle near the surface, words to
 /// come back to drift in the middle current, and your values rest on the
 /// riverbed. The deeper you go, the steadier it gets.
 struct AnchorsView: View {
@@ -19,6 +20,7 @@ struct AnchorsView: View {
     @Query(sort: \SavedReminder.createdAt, order: .reverse) private var reminders: [SavedReminder]
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
     @Query(sort: \GroundingPhoto.createdAt) private var photos: [GroundingPhoto]
+    @Query(sort: \Laugh.createdAt, order: .reverse) private var laughs: [Laugh]
     /// The photo opened up close.
     @State private var openPhoto: GroundingPhoto?
 
@@ -50,6 +52,7 @@ struct AnchorsView: View {
                 VStack(alignment: .leading, spacing: 34) {
                     surface
                     winsLayer
+                    laughsLayer
                     wordsLayer
                     valuesLayer
                         .padding(.vertical, 24)
@@ -164,6 +167,37 @@ struct AnchorsView: View {
                     KeptStone(count: split.settled.count, color: palette.colors[2])
                 }
                 .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Also near the surface: things that made you laugh
+
+    /// Light things float. A row of slightly tilted cards, like notes stuck to a fridge.
+    private var laughsLayer: some View {
+        Layer(title: "things that made you laugh", subtitle: "A joke, a meme, something someone said. Lightness counts too.") {
+            if laughs.isEmpty {
+                Text("Add one with the + when something makes you laugh. It'll be here on a heavier day.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: 14) {
+                        ForEach(Array(laughs.enumerated()), id: \.element.id) { index, laugh in
+                            DropCard(color: palette.colors[2]) {
+                                LaughCard(laugh: laugh)
+                            }
+                            .frame(width: 230)
+                            .rotationEffect(.degrees(index.isMultiple(of: 2) ? -1.5 : 1.2))
+                            .contextMenu {
+                                Button("Remove", systemImage: "minus.circle") { withAnimation(.calm) { context.delete(laugh) } }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 4)
+                }
+                .scrollIndicators(.hidden)
+                .scrollClipDisabled()
             }
         }
     }
@@ -504,7 +538,7 @@ private struct Riverbed: View {
 /// One place to add any kind of anchor.
 private struct AddAnchorSheet: View {
     enum Kind: String, CaseIterable, Identifiable {
-        case win = "a win", words = "words", value = "a value", photo = "a photo"
+        case win = "a win", laugh = "a laugh", words = "words", value = "a value", photo = "a photo"
         var id: String { rawValue }
     }
 
@@ -523,8 +557,15 @@ private struct AddAnchorSheet: View {
     @State private var makingSticker = false
     @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
 
+    @State private var laughItem: PhotosPickerItem?
+    @State private var laughImage: Data?
+
     private var canAdd: Bool {
-        kind == .photo ? sticker != nil : !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        switch kind {
+        case .photo: sticker != nil
+        case .laugh: laughImage != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        default: !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     private var unusedValues: [String] {
@@ -551,6 +592,33 @@ private struct AddAnchorSheet: View {
                         HStack(spacing: 10) {
                             WordChip(title: "I tried", isOn: $tried)
                             WordChip(title: "It worked out", isOn: $workedOut)
+                        }
+                    }
+                case .laugh:
+                    Section {
+                        TextField("The joke, the moment, what they said", text: $text, axis: .vertical)
+                        PhotosPicker(selection: $laughItem, matching: .images) {
+                            Label(laughImage == nil ? "Add a screenshot or photo (optional)" : "Choose a different one",
+                                  systemImage: "photo")
+                        }
+                        if let laughImage, let image = UIImage(data: laughImage) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxHeight: 220)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .frame(maxWidth: .infinity)
+                                .listRowBackground(Color.clear)
+                        }
+                    } footer: {
+                        Text("A meme, a comic, something a friend said. Anything that made you laugh.")
+                    }
+                    .onChange(of: laughItem) { _, item in
+                        guard let item else { return }
+                        Task {
+                            if let data = try? await item.loadTransferable(type: Data.self) {
+                                laughImage = Laugh.shrink(data)
+                            }
                         }
                     }
                 case .words:
@@ -629,6 +697,8 @@ private struct AddAnchorSheet: View {
         case .win:
             let effort: Double = tried && !workedOut ? 0.1 : (workedOut && !tried ? 0.9 : 0.5)
             context.insert(Win(text: main, meaning: extra, effortToOutcome: effort))
+        case .laugh:
+            context.insert(Laugh(text: main, imageData: laughImage))
         case .words:
             context.insert(SavedReminder(text: main))
         case .value:
@@ -640,6 +710,32 @@ private struct AddAnchorSheet: View {
         try? context.save()
         dismiss()
         onAdded()
+    }
+}
+
+/// One thing that made you laugh: the picture if there is one, then the words.
+struct LaughCard: View {
+    let laugh: Laugh
+    @State private var image: UIImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: 180)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            if !laugh.text.isEmpty {
+                Text(laugh.text)
+                    .font(.system(.body, design: .serif))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task(id: laugh.persistentModelID) {
+            image = laugh.imageData.flatMap(UIImage.init(data:))
+        }
     }
 }
 

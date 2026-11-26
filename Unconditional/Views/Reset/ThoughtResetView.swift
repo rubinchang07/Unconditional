@@ -5,7 +5,7 @@ import SwiftData
 /// without writing a full entry.
 ///
 /// Tap the thought closest to yours, read a gentler perspective, then pick
-/// one of three: let it be, park it for later, or breathe.
+/// one of four: let it be, park it for later, breathe, or make it silly.
 /// Not every thought needs to be analyzed. Acknowledging it is enough.
 struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +13,7 @@ struct ThoughtResetView: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Query(sort: \ResetThought.sortOrder) private var thoughts: [ResetThought]
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt == nil }) private var parked: [ParkedThought]
+    @Query private var laughs: [Laugh]
 
     private enum Step: Equatable { case pick, perspective, closing(String) }
     /// How the closing orb behaves: the thought drifts into it, or a small orb pinches off.
@@ -27,6 +28,9 @@ struct ThoughtResetView: View {
     @State private var editingPerspective = false
     @State private var showBreathing = false
     @State private var showReview = false
+    @State private var showSilly = false
+    /// After a reset, one thing that made you laugh, if you asked for something lighter.
+    @State private var lighter: Laugh?
 
     /// The perspective for "Something else": no argument with the thought, just room around it.
     private let generalPerspective = "This thought is here, and it's heavy. You don't have to argue with it or obey it. You can notice it, and choose your next step."
@@ -57,6 +61,12 @@ struct ThoughtResetView: View {
             }
             .keyboardDoneButton()
             .sheet(isPresented: $showBreathing) { BreathingView() }
+            .sheet(isPresented: $showSilly) {
+                SillyThoughtView(thought: chosen?.text ?? customThought) {
+                    showSilly = false
+                    finish("Same words, sillier voice. Still just a thought.")
+                }
+            }
             .sheet(isPresented: $showReview) {
                 NavigationStack { ParkedReviewView() }
             }
@@ -168,6 +178,7 @@ struct ThoughtResetView: View {
                         finish("Parked. You can look at it calmly later, not in the middle of a spiral.")
                     }
                     choice("Breathe", symbol: "wind") { showBreathing = true }
+                    choice("Make it silly", symbol: "face.smiling") { showSilly = true }
                 }
 
                 Text("Every option is optional. Doing none of them is fine too.")
@@ -230,12 +241,24 @@ struct ThoughtResetView: View {
             Text(message)
                 .font(.system(.title3, design: .serif))
                 .multilineTextAlignment(.center)
+            // Something you once kept because it made you laugh, only if you ask.
+            if let lighter {
+                LaughCard(laugh: lighter)
+                    .paperCard(padding: 14)
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+            } else if !laughs.isEmpty {
+                Button("Want something lighter?", systemImage: "face.smiling") {
+                    withAnimation(.calm) { lighter = laughs.randomElement() }
+                }
+                .font(.subheadline)
+            }
             Spacer()
             Button("Done") { dismiss() }
                 .buttonStyle(.paper)
             Button("Reset another thought") {
                 closing = .plain
                 absorbed = false
+                lighter = nil
                 chosen = nil
                 customThought = ""
                 go(.pick)

@@ -31,6 +31,14 @@ enum DataTransfer {
         var photos: [PhotoRecord]? = []
         /// "One step at a time" paths, each with its footsteps. Optional for older files.
         var paths: [PathRecord]? = []
+        /// Things that made you laugh. Optional for older files.
+        var laughs: [LaughRecord]? = []
+    }
+
+    struct LaughRecord: Codable {
+        var text: String
+        var imageData: Data?
+        var createdAt: Date
     }
 
     struct PathRecord: Codable {
@@ -43,6 +51,10 @@ enum DataTransfer {
     struct StepRecord: Codable {
         var text: String
         var createdAt: Date
+        /// A hard day rather than a step. All three are optional, so older files still open.
+        var isTide: Bool?
+        var heaviness: Double?
+        var learned: String?
     }
 
     struct PhotoRecord: Codable {
@@ -93,6 +105,8 @@ enum DataTransfer {
         /// The loop's name, since loops are matched by name on restore.
         var loop: String?
         var isGood: Bool
+        /// "How does this sit?", 0 heavy to 1 light. Optional, also for older files.
+        var lightness: Double?
         var compassionHard: String
         var compassionShared: String
         var compassionNeed: String
@@ -167,6 +181,7 @@ enum DataTransfer {
         s.entries = all(Entry.self).map { e in
             EntryRecord(createdAt: e.createdAt, kind: e.kind, text: e.text, drawingData: e.drawingData,
                         drawingBackground: e.drawingBackground, loop: e.loop?.name, isGood: e.isGood,
+                        lightness: e.lightness,
                         compassionHard: e.compassionHard, compassionShared: e.compassionShared,
                         compassionNeed: e.compassionNeed,
                         reframe: e.reframe.map { r in
@@ -209,8 +224,14 @@ enum DataTransfer {
         }
         s.paths = all(StepPath.self).map { path in
             PathRecord(title: path.title, createdAt: path.createdAt, isResting: path.isResting,
-                       steps: path.walked.map { StepRecord(text: $0.text, createdAt: $0.createdAt) })
+                       steps: path.everything.map {
+                           StepRecord(text: $0.text, createdAt: $0.createdAt,
+                                      isTide: $0.isTide ? true : nil,
+                                      heaviness: $0.isTide ? $0.heaviness : nil,
+                                      learned: $0.learned.isEmpty ? nil : $0.learned)
+                       })
         }
+        s.laughs = all(Laugh.self).map { LaughRecord(text: $0.text, imageData: $0.imageData, createdAt: $0.createdAt) }
         return s
     }
 
@@ -267,6 +288,7 @@ enum DataTransfer {
             entry.loop = loop(named: r.loop)
             entry.drawingBackground = r.drawingBackground
             entry.isGood = r.isGood
+            entry.lightness = r.lightness
             entry.compassionHard = r.compassionHard
             entry.compassionShared = r.compassionShared
             entry.compassionNeed = r.compassionNeed
@@ -380,9 +402,19 @@ enum DataTransfer {
             let stepKeys = Set(path.steps.map { key($0.createdAt, $0.text) })
             for step in r.steps where !stepKeys.contains(key(step.createdAt, step.text)) {
                 let footstep = Footstep(text: step.text, createdAt: step.createdAt)
+                footstep.isTide = step.isTide ?? false
+                footstep.heaviness = step.heaviness ?? 0
+                footstep.learned = step.learned ?? ""
                 context.insert(footstep)
                 footstep.path = path
             }
+        }
+
+        let laughKeys = Set(all(Laugh.self).map { key($0.createdAt, $0.text) })
+        for r in s.laughs ?? [] {
+            if laughKeys.contains(key(r.createdAt, r.text)) { summary.skipped += 1; continue }
+            context.insert(Laugh(text: r.text, imageData: r.imageData, createdAt: r.createdAt))
+            summary.added += 1
         }
 
         // Map links last, once every loop and value they point at exists.

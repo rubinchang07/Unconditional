@@ -4,9 +4,9 @@ import PencilKit
 
 /// The daily flow, one calm step per screen:
 /// 0. home: the orb, a greeting, and one main action ("Check in")
-/// 1. choose how to start (Write, Speak, Draw)
-/// 2. get it out, optionally tap the loop it belongs to, and save
-/// Saving then offers the optional Reframe step.
+/// 1. choose how to start (Write, Speak, Draw, Words)
+/// 2. get it out, optionally say how heavy or light it sits and which loop it's in, and save
+/// Saving then offers the optional Reframe step, or for a light moment, a place in Anchors.
 struct TodayView: View {
     @Environment(\.modelContext) private var context
 
@@ -20,8 +20,11 @@ struct TodayView: View {
     @State private var tool = DrawingTool()
     @State private var canvasBackground: CanvasBackground = .paper
     @State private var loop: Loop?
-    /// This check-in is about something good, not something hard.
-    @State private var good = false
+    /// "How does this sit?", 0 heavy to 1 light. Only saved once something set it.
+    @State private var lightness = 0.5
+    @State private var lightnessSet = false
+    /// You moved the slider yourself, so Words stops nudging it.
+    @State private var lightnessTouched = false
     /// When set, the "kept" sheet for a good moment opens.
     @State private var savedGood: Entry?
 
@@ -180,23 +183,13 @@ struct TodayView: View {
             Spacer(minLength: 12)
 
             VStack(spacing: 18) {
-            Button("Check in") {
-                good = false
-                go(to: .choose)
-            }
+            // One way in for every kind of moment. You say how it sits after it's out,
+            // so a good moment and a hard one start the same way.
+            Button("Check in") { go(to: .choose) }
                 .buttonStyle(.paper)
 
-            // Same size on purpose: a good moment is as worth keeping as a hard one is worth working through.
-            HStack(spacing: 12) {
-                Button {
-                    good = true
-                    go(to: .choose)
-                } label: {
-                    Label("something good", systemImage: "sun.max").pill()
-                }
-                Button { showReset = true } label: {
-                    Label("i'm spiraling", systemImage: "wind").pill()
-                }
+            Button { showReset = true } label: {
+                Label("i'm spiraling", systemImage: "wind").pill()
             }
             .buttonStyle(.plain)
             .padding(.vertical, 4)
@@ -261,14 +254,8 @@ struct TodayView: View {
     private var chooseStep: some View {
         ScrollView {
             VStack(spacing: 16) {
-                if good {
-                    OrbView(palette: orbPalette, speed: 0.35, warm: true)
-                        .frame(width: 64, height: 64)
-                        .padding(.vertical, 6)
-                }
-                PaperHeading(title: good ? "Something good" : "How do you want to start?",
-                             subtitle: good ? "Big or small, it counts. How do you want to keep it?"
-                                            : "No right way to do this. Just get it out of your head.")
+                PaperHeading(title: "How do you want to start?",
+                             subtitle: "Hard or good, big or small. No right way to do this.")
                     .padding(.bottom, 8)
 
                 ForEach(EntryKind.allCases) { option in
@@ -323,7 +310,7 @@ struct TodayView: View {
     }
 
     private var saveBar: some View {
-        Button(good ? "Keep it" : "Save entry", action: save)
+        Button("Save entry", action: save)
             .buttonStyle(.paper)
             .disabled(!hasContent)
             .padding(.top, 14)
@@ -477,22 +464,15 @@ struct TodayView: View {
         VStack(spacing: 20) {
             switch kind {
             case .write:
-                if good {
-                    // Small and slow while you write, so it keeps you company without pulling focus.
-                    OrbView(palette: orbPalette, speed: 0.35, warm: true)
-                        .frame(width: 56, height: 56)
-                        .padding(.top, 4)
-                }
-                PaperHeading(title: good ? "What went well?" : "What's on your mind?",
-                             subtitle: good ? "Even a little. Good moments count as much as hard ones."
-                                            : "Write it the way you'd say it. Messy is fine.")
-                SituationPrompts(text: $text, good: good)
+                PaperHeading(title: "What's on your mind?",
+                             subtitle: "Something hard, something good, or both. Messy is fine.")
+                SituationPrompts(text: $text)
                 JournalEditor(text: $text, placeholder: "Start anywhere…")
             case .speak:
-                PaperHeading(title: good ? "Tell me what went well" : "Say it out loud",
+                PaperHeading(title: "Say it out loud",
                              subtitle: "Transcribed on your phone. Fix any words after you stop.")
                 // The orb listens: it grows gently with your voice while recording.
-                OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting, level: recorder.level, warm: good,
+                OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting, level: recorder.level,
                         exercise: true)
                     .frame(width: 130, height: 130)
                     .padding(.vertical, 8)
@@ -510,11 +490,24 @@ struct TodayView: View {
                     .overlay(alignment: .topTrailing) {
                         if maxDrawOffset > 1 { pageHandle }
                     }
+            case .words:
+                WordScramble(text: $text) { lean in
+                    // Start the slider where your words leaned, unless you've set it yourself.
+                    guard !lightnessTouched else { return }
+                    withAnimation(.calm) {
+                        lightness = (lean + 1) / 2
+                        lightnessSet = true
+                    }
+                }
             }
 
-            // Optional: which loop this belongs to, or that it was good after all.
-            // Never required, so it never stands between you and saving.
-            LoopChips(loop: $loop, good: $good)
+            // Both optional, so they never stand between you and saving:
+            // how heavy or light this sits, and which loop it belongs to.
+            LightnessDial(lightness: $lightness, isSet: lightnessSet) {
+                lightnessSet = true
+                lightnessTouched = true
+            }
+            LoopChips(loop: $loop)
                 .padding(.bottom, 12)
         }
     }
@@ -541,8 +534,11 @@ struct TodayView: View {
         // Insert first, then link relationships: SwiftData is happiest when both
         // sides of a relationship already belong to the same context.
         context.insert(entry)
-        entry.loop = good ? nil : loop
-        entry.isGood = good
+        entry.loop = loop
+        if lightnessSet {
+            entry.lightness = lightness
+            entry.isGood = lightness >= Entry.lightThreshold
+        }
         if kind == .draw { entry.drawingBackground = canvasBackground.rawValue }
         do {
             try context.save()
@@ -558,14 +554,16 @@ struct TodayView: View {
         textBeforeRecording = ""
         drawing = PKDrawing()
         loop = nil
+        lightness = 0.5
+        lightnessSet = false
+        lightnessTouched = false
         step = .home
-        // A good moment gets a warm "kept"; a hard one is offered a reframe.
-        if good {
+        // A light moment gets a warm "kept"; a heavier one is offered a reframe.
+        if entry.isGood {
             savedGood = entry
         } else {
             savedEntry = entry
         }
-        good = false
     }
 }
 
@@ -575,6 +573,7 @@ private extension EntryKind {
         case .write: "Type it out, at your own pace"
         case .speak: "Talk it through, I'll write it down"
         case .draw: "When words aren't there yet"
+        case .words: "When full sentences won't come"
         }
     }
 }
@@ -664,10 +663,8 @@ private struct JournalEditor: View {
 
 /// "Which loop is this?" as a row of small chips under what you wrote.
 /// Tap one to tag it, tap it again to untag. Leaving them all off is fine.
-/// "Something good" sits in the same row, for when it turned out to be good.
 private struct LoopChips: View {
     @Binding var loop: Loop?
-    @Binding var good: Bool
     /// One scrolling row instead of wrapping lines, so drawing keeps its space.
     var compact = false
     @Environment(\.modelContext) private var context
@@ -679,7 +676,7 @@ private struct LoopChips: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !compact {
-                Text(good ? "Kept as something good" : "Which loop is this? (optional)")
+                Text("Which loop is this? (optional)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -693,7 +690,7 @@ private struct LoopChips: View {
                 ChipFlow { chips }
             }
 
-            if naming && !good {
+            if naming {
                 HStack {
                     TextField("Name the loop", text: $newLoop)
                         .focused($nameFocused)
@@ -705,7 +702,7 @@ private struct LoopChips: View {
             }
 
             // Seeing the belief written down makes it a little easier to question.
-            if let loop, !loop.coreBelief.isEmpty, !good {
+            if let loop, !loop.coreBelief.isEmpty {
                 Text("“\(loop.coreBelief)”")
                     .font(.footnote)
                     .italic()
@@ -714,24 +711,17 @@ private struct LoopChips: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.calm, value: loop)
-        .animation(.calm, value: good)
         .animation(.calm, value: naming)
     }
 
     @ViewBuilder
     private var chips: some View {
-        if !good {
-            ForEach(loops) { option in
-                chip(option.name, isOn: loop == option) {
-                    loop = loop == option ? nil : option
-                }
+        ForEach(loops) { option in
+            chip(option.name, isOn: loop == option) {
+                loop = loop == option ? nil : option
             }
         }
-        chip("something good", systemImage: "sun.max", isOn: good) {
-            good.toggle()
-            if good { loop = nil }
-        }
-        if !good && !naming {
+        if !naming {
             chip("new loop", systemImage: "plus", isOn: false) {
                 naming = true
                 nameFocused = true
@@ -956,6 +946,59 @@ struct WinReminderView: View {
             value = values.randomElement()
             reminder = reminders.randomElement()
             win = wins.randomElement()
+        }
+    }
+}
+
+/// "How does this sit?": one slider from heavy to light, with a small orb that
+/// warms and opens as you slide toward light. Optional, and it starts untouched,
+/// because a check-in doesn't have to be sorted into good or bad.
+private struct LightnessDial: View {
+    @Binding var lightness: Double
+    let isSet: Bool
+    let onTouch: () -> Void
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+
+    private var isLight: Bool { isSet && lightness >= Entry.lightThreshold }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            OrbView(palette: orbPalette, speed: 0.35, state: isLight ? .glowing : .resting, warm: isLight)
+                .saturation(isSet ? 0.55 + 0.45 * lightness : 0.7)
+                .brightness(isSet ? 0.06 * (lightness - 0.5) : 0)
+                .scaleEffect(isSet ? 0.9 + 0.18 * lightness : 0.95)
+                .frame(width: 52, height: 52)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("How does this sit? (optional)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Slider(value: $lightness, in: 0...1, onEditingChanged: { editing in
+                    if editing { onTouch() }
+                })
+                .opacity(isSet ? 1 : 0.55)
+                .accessibilityLabel("How does this sit")
+                .accessibilityValue(isSet ? description : "Not set")
+                HStack {
+                    Text("heavy")
+                    Spacer()
+                    Text("light")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .paperCard(padding: 14)
+        .onChange(of: lightness) { _, _ in if !isSet { onTouch() } }
+        .animation(.calm, value: isLight)
+    }
+
+    private var description: String {
+        switch lightness {
+        case ..<0.2: "Heavy"
+        case ..<0.45: "A bit heavy"
+        case ..<0.6: "In between"
+        case ..<0.8: "A bit light"
+        default: "Light"
         }
     }
 }

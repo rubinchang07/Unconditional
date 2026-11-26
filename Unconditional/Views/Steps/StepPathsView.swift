@@ -77,7 +77,8 @@ struct StepPathsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(path.title)
                         .font(.system(.body, design: .serif))
-                    Text(path.steps.isEmpty ? "No steps yet" : "\(path.steps.count) step\(path.steps.count == 1 ? "" : "s") taken")
+                    let count = path.walked.count
+                    Text(count == 0 ? "No steps yet" : "\(count) step\(count == 1 ? "" : "s") taken")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -106,6 +107,10 @@ struct StepPathsView: View {
 
 /// One path as footprints in the sand, walking up the screen from the first step.
 /// The newest print sits at the top, closest to the horizon.
+///
+/// "A hard day" lets the tide come in over the sand, as high as the day felt,
+/// and then go back out. The prints are all still there afterwards: a setback
+/// is part of the walk, never a step backward and never an eraser.
 struct PathView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -115,20 +120,34 @@ struct PathView: View {
     /// The print you just made, so it can press into the sand.
     @State private var freshID: PersistentIdentifier?
     @State private var pressCount = 0
+    // The tide
+    @State private var markingTide = false
+    @State private var tideText = ""
+    @State private var tideHeaviness = 0.5
+    @State private var surgeAt: Date?
+    @State private var surgeReach = 0.0
+    /// The hard day just marked, so we can ask what it taught you once the water's gone.
+    @State private var askingLearned: Footstep?
+    @State private var learnedText = ""
 
     /// Vertical room for each print.
     private let rowHeight: CGFloat = 86
 
     var body: some View {
         let steps = path.walked
+        let printIndex = Dictionary(uniqueKeysWithValues: steps.enumerated().map { ($0.element.persistentModelID, $0.offset) })
         ScrollViewReader { reader in
             ScrollView {
                 VStack(spacing: 0) {
                     horizon
                         .id("top")
                     // Newest first, so the trail runs from the bottom of the screen upward.
-                    ForEach(Array(steps.enumerated().reversed()), id: \.element.persistentModelID) { index, step in
-                        printRow(step, index: index)
+                    ForEach(Array(path.everything.reversed())) { item in
+                        if item.isTide {
+                            tideRow(item)
+                        } else {
+                            printRow(item, index: printIndex[item.persistentModelID] ?? 0)
+                        }
                     }
                     if steps.isEmpty {
                         Text("Your first footprint will appear here.")
@@ -145,12 +164,21 @@ struct PathView: View {
                 .padding(.bottom, 120)
             }
             .defaultScrollAnchor(.bottom)
-            .background { SandBackground(reduceMotion: reduceMotion).ignoresSafeArea() }
+            .background {
+                SandBackground(reduceMotion: reduceMotion, surgeAt: surgeAt, surgeReach: surgeReach)
+                    .ignoresSafeArea()
+            }
             .safeAreaInset(edge: .bottom) {
-                Button("Take a step") { takingStep = true }
-                    .buttonStyle(.paper)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
+                VStack(spacing: 6) {
+                    Button("Take a step") { takingStep = true }
+                        .buttonStyle(.paper)
+                    Button("a hard day", systemImage: "water.waves") { markingTide = true }
+                        .font(.subheadline)
+                        .foregroundStyle(Sand.ink.opacity(0.8))
+                        .frame(minHeight: 44)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 4)
             }
             .navigationTitle(path.title.lowercased())
             .navigationBarTitleDisplayMode(.inline)
@@ -160,6 +188,14 @@ struct PathView: View {
                     withAnimation(.calm) { reader.scrollTo("top", anchor: .top) }
                 })
                 .presentationDetents([.medium])
+            }
+            .sheet(isPresented: $markingTide) {
+                tideSheet
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(item: $askingLearned) { tide in
+                learnedSheet(tide)
+                    .presentationDetents([.medium])
             }
         }
     }
@@ -238,6 +274,141 @@ struct PathView: View {
         }
     }
 
+    /// A hard day in the trail: a faint line of water where the tide reached, and
+    /// what it was, if you said. It sits between the prints, taking none away.
+    private func tideRow(_ tide: Footstep) -> some View {
+        VStack(spacing: 5) {
+            TideLine()
+                .stroke(Sand.water.opacity(0.45 + 0.5 * tide.heaviness),
+                        style: StrokeStyle(lineWidth: 1.5 + 2 * tide.heaviness, lineCap: .round))
+                .frame(height: 12)
+                .padding(.horizontal, 70)
+            Text(tide.text.isEmpty ? "a hard day" : tide.text)
+                .font(.system(.footnote, design: .serif))
+                .italic()
+                .foregroundStyle(Sand.ink.opacity(0.8))
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+            if !tide.learned.isEmpty {
+                Label(tide.learned, systemImage: "leaf")
+                    .font(.caption)
+                    .foregroundStyle(Sand.ink.opacity(0.7))
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(.horizontal, 48)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .transition(.opacity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("A hard day\(tide.text.isEmpty ? "" : ": \(tide.text)"), \(tide.createdAt.formatted(date: .abbreviated, time: .omitted))\(tide.learned.isEmpty ? "" : ". Learned: \(tide.learned)")")
+        .contextMenu {
+            Button("Remove", systemImage: "trash") {
+                withAnimation(.calm) { context.delete(tide) }
+            }
+        }
+    }
+
+    private var tideSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("A hard day")
+                    .font(.system(.title3, design: .serif).weight(.semibold))
+                Text("Hard days are part of any walk. The tide comes in, and it goes back out. None of your prints wash away.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                TextField("What happened (optional)", text: $tideText, axis: .vertical)
+                    .lineLimit(2...4)
+                    .padding(12)
+                    .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("How hard did it feel?")
+                        .font(.subheadline)
+                    Slider(value: $tideHeaviness, in: 0...1)
+                        .accessibilityLabel("How hard did it feel")
+                    HStack {
+                        Text("a little")
+                        Spacer()
+                        Text("very")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Let the tide come in", action: markTide)
+                    .buttonStyle(.paper)
+            }
+            .padding(20)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { markingTide = false }
+                }
+            }
+        }
+    }
+
+    /// Once the water's gone: anything it taught you? It can become a step of its own.
+    private func learnedSheet(_ tide: Footstep) -> some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("The tide went out")
+                    .font(.system(.title3, design: .serif).weight(.semibold))
+                Text("Your prints are all still here. Anything you learned, even a little? Only if something comes.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                TextField("Something I learned", text: $learnedText, axis: .vertical)
+                    .lineLimit(2...4)
+                    .padding(12)
+                    .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+                Spacer()
+                let learned = learnedText.trimmingCharacters(in: .whitespacesAndNewlines)
+                Button("Make it a step too") {
+                    tide.learned = learned
+                    askingLearned = nil
+                    learnedText = ""
+                    stepText = learned
+                    leavePrint()
+                }
+                .buttonStyle(.paper)
+                .disabled(learned.isEmpty)
+                Button(learned.isEmpty ? "Not now" : "Keep it with the hard day") {
+                    tide.learned = learned
+                    askingLearned = nil
+                    learnedText = ""
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .padding(20)
+        }
+    }
+
+    private func markTide() {
+        let text = tideText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let heaviness = tideHeaviness
+        tideText = ""
+        tideHeaviness = 0.5
+        markingTide = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            let tide = Footstep(text: text)
+            tide.isTide = true
+            tide.heaviness = heaviness
+            withAnimation(.calm) {
+                context.insert(tide)
+                tide.path = path
+            }
+            // The water rises as high as the day felt, then goes back out.
+            if !reduceMotion {
+                surgeReach = Footstep.tideReach(heaviness: heaviness)
+                surgeAt = .now
+                try? await Task.sleep(for: .seconds(SandBackground.surgeDuration))
+                surgeAt = nil
+            }
+            askingLearned = tide
+        }
+    }
+
     private func stepSheet(onSave: @escaping () -> Void) -> some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
@@ -296,11 +467,41 @@ enum Sand {
     static let print = Color(light: 0xD7C3A4, dark: 0x3A3228)
     static let rim = Color(light: 0xFBF5EC, dark: 0x4A4136)
     static let ink = Color(light: 0x5B4A36, dark: 0xE4D6C2)
+    static let water = Color(light: 0x8FBFCB, dark: 0x4D7A86)
+}
+
+/// A soft wave line, for where the tide reached.
+struct TideLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        for x in stride(from: rect.minX, through: rect.maxX, by: 2) {
+            path.addLine(to: CGPoint(x: x, y: rect.midY + rect.height * 0.35 * sin((x - rect.minX) / 14)))
+        }
+        return path
+    }
 }
 
 /// Warm sand, with a soft wash of water easing in and out along the bottom.
+/// On a hard day the tide surges up the sand, as high as `surgeReach`, and recedes.
 struct SandBackground: View {
     var reduceMotion: Bool
+    var surgeAt: Date? = nil
+    /// How far up the screen the tide reaches at its height, 0 to 1.
+    var surgeReach: Double = 0
+
+    /// Rising, a pause at the top, then going back out.
+    static let surgeDuration = 6.0
+
+    /// How far along the tide is, 0 to 1 and back to 0: in over 1.6 seconds,
+    /// holding for a moment, then out slowly. Smooth at both ends.
+    static func surge(elapsed t: Double) -> Double {
+        func ease(_ x: Double) -> Double { let x = min(max(x, 0), 1); return x * x * (3 - 2 * x) }
+        if t <= 0 || t >= surgeDuration { return 0 }
+        if t < 1.6 { return ease(t / 1.6) }
+        if t < 2.6 { return 1 }
+        return 1 - ease((t - 2.6) / (surgeDuration - 2.6))
+    }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
@@ -310,11 +511,12 @@ struct SandBackground: View {
                          with: .linearGradient(Gradient(colors: [Sand.light, Sand.deep]),
                                                startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
                 // The wash: a slow, wavy edge of water that comes up a little and goes back.
-                let reach = size.height * (0.05 + 0.025 * (reduceMotion ? 0 : sin(t * 0.35)))
+                let tide = surgeAt.map { Self.surge(elapsed: timeline.date.timeIntervalSince($0)) * surgeReach } ?? 0
+                let reach = size.height * (0.05 + 0.025 * (reduceMotion ? 0 : sin(t * 0.35)) + tide)
                 var water = Path()
                 water.move(to: CGPoint(x: 0, y: size.height))
                 for x in stride(from: 0, through: size.width, by: 6) {
-                    let y = size.height - reach + 5 * sin(x / 38 + t * 0.6)
+                    let y = size.height - reach + (5 + 7 * tide) * sin(x / 38 + t * 0.6)
                     water.addLine(to: CGPoint(x: x, y: y))
                 }
                 water.addLine(to: CGPoint(x: size.width, y: size.height))

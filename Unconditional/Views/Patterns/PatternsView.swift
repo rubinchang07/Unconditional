@@ -149,7 +149,7 @@ struct PatternsView: View {
 
     @ViewBuilder
     private var stepsAndWinsSection: some View {
-        let steps = footsteps.filter { inSpan($0.createdAt) }
+        let steps = footsteps.filter { !$0.isTide && inSpan($0.createdAt) }
         let spanWins = wins.filter { inSpan($0.createdAt) }
         let effortLeaning = spanWins.filter { $0.effortToOutcome < 0.4 }.count
 
