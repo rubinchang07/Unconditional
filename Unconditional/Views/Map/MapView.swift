@@ -17,6 +17,10 @@ struct MapView: View {
     @State private var selected: Loop?
     /// Show every loop, not just the ones that fit comfortably.
     @State private var showAllLoops = false
+    /// The thread whose knot you tapped (or just tied), shown with its slider under the map.
+    @State private var selectedLink: MapLink?
+    /// A dotted guess you tapped, shown with why the app suggested it.
+    @State private var selectedHint: Suggestion?
 
     /// Entries needed before the map has enough to go on.
     static let entriesNeeded = 5
@@ -30,15 +34,27 @@ struct MapView: View {
                                 message: "After \(left) more check-in\(left == 1 ? "" : "s"), you'll start to see which loops travel together.")
                         .padding(.top, 40)
                 } else {
-                    let shown = showAllLoops ? loops : MapLayout.visibleLoops(loops, links: links)
-                    MapWeb(loops: shown, values: linkedValues, links: links.filter(\.isConfirmed),
-                           color: color(for:), onSelect: { selected = $0 })
+                    let visible = MapLayout.visibleLoops(loops, links: links)
+                    // A guess always shows both its loops, even quieter ones.
+                    let shown = showAllLoops ? loops : loops.filter { loop in
+                        visible.contains(loop) || suggestions.contains { $0.a == loop || $0.b == loop }
+                    }
+                    MapWeb(loops: shown, values: values, links: links.filter(\.isConfirmed),
+                           hints: suggestions.filter { shown.contains($0.a) && shown.contains($0.b) },
+                           color: color(for:), onSelect: { selected = $0 },
+                           selectedLink: $selectedLink, selectedHint: $selectedHint)
                         .aspectRatio(1, contentMode: .fit)
                         .paperCard()
 
+                    if let link = selectedLink, link.isConfirmed {
+                        threadCard(link)
+                    } else if let hint = selectedHint {
+                        hintCard(hint)
+                    }
+
                     // Quieter loops are one tap away, so the map never gets crowded.
                     if loops.count > MapLayout.loopLimit, shown.count < loops.count || showAllLoops {
-                        let hidden = loops.count - MapLayout.visibleLoops(loops, links: links).count
+                        let hidden = loops.count - shown.count
                         Button(showAllLoops ? "show fewer loops" : "+\(hidden) quieter \(hidden == 1 ? "loop" : "loops")") {
                             withAnimation(.calm) { showAllLoops.toggle() }
                         }
@@ -47,7 +63,7 @@ struct MapView: View {
                     }
 
                     HStack(alignment: .top) {
-                        Text("Tap a loop or value to light up what it's connected to, and tap a lit loop again to open it. Drag a value to move it.")
+                        Text("Pull a thread from a loop onto another loop or a value to tie them. Tap a knot for how connected, or pull it off to untie. Dotted threads are the app's guesses: trace one, or pull its sparkle away.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -59,14 +75,6 @@ struct MapView: View {
                                 }
                             }
                             .font(.footnote)
-                        }
-                    }
-
-                    ForEach(suggestions, id: \.id) { suggestion in
-                        SuggestionCard(suggestion: suggestion) { strength in
-                            add(suggestion, strength: strength)
-                        } onDismiss: {
-                            add(suggestion, strength: 0, status: "dismissed")
                         }
                     }
 
@@ -100,9 +108,61 @@ struct MapView: View {
         .paperCard()
     }
 
-    /// Only values you've connected to a loop go on the web, so it stays uncluttered.
-    private var linkedValues: [PersonalValue] {
-        values.filter { value in links.contains { $0.isConfirmed && $0.value == value } }
+    /// Under the map: how connected a thread feels, as a slider, with untie beside it.
+    private func threadCard(_ link: MapLink) -> some View {
+        let a = link.loopA?.name ?? ""
+        let b = link.loopB?.name ?? link.value?.name ?? ""
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("\(a) and \(b)")
+                .font(.system(.headline, design: .serif))
+            RatingSlider(title: "How connected", value: Binding(get: { link.strength }, set: { link.strength = $0 }),
+                         range: 0.05...1, step: 0.05,
+                         lowLabel: "a little", highLabel: "very", valueText: MapLink.strengthLabel)
+            HStack {
+                Button("Untie") {
+                    withAnimation(.calm) {
+                        selectedLink = nil
+                        if link.value != nil { context.delete(link) } else { link.status = "dismissed" }
+                    }
+                }
+                .foregroundStyle(.secondary)
+                Spacer()
+                Button("Done") { withAnimation(.calm) { selectedLink = nil } }
+                    .buttonStyle(.paper)
+            }
+        }
+        .paperCard()
+        .transition(.opacity.combined(with: .offset(y: 8)))
+    }
+
+    /// Under the map: why the app guessed these two, and your answer.
+    private func hintCard(_ hint: Suggestion) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("\(hint.a.name) and \(hint.b.name) showed up on the same day \(hint.days) times. Do they feel connected?")
+                .font(.callout)
+            Text("Trace the dotted thread from one to the other to tie them, or answer here.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("Not really") {
+                    withAnimation(.calm) {
+                        selectedHint = nil
+                        add(hint, strength: 0, status: "dismissed")
+                    }
+                }
+                .foregroundStyle(.secondary)
+                Spacer()
+                Button("Connect them") {
+                    withAnimation(.calm) {
+                        selectedHint = nil
+                        selectedLink = add(hint, strength: 0.5)
+                    }
+                }
+                .buttonStyle(.paper)
+            }
+        }
+        .paperCard()
+        .transition(.opacity.combined(with: .offset(y: 8)))
     }
 
     private func color(for loop: Loop) -> Color {
@@ -145,26 +205,52 @@ struct MapView: View {
             .map { $0 }
     }
 
-    private func add(_ suggestion: Suggestion, strength: Double, status: String = "confirmed") {
+    @discardableResult
+    private func add(_ suggestion: Suggestion, strength: Double, status: String = "confirmed") -> MapLink {
         let link = MapLink()
         context.insert(link)
         link.loopA = suggestion.a
         link.loopB = suggestion.b
         link.strength = strength
         link.status = status
+        return link
     }
 }
 
 // MARK: - The web
 
-/// Values sit in the middle, loops around the outside. Lines are links you
-/// confirmed, thicker when they feel stronger.
+/// Something on the map a thread can tie to.
+enum MapNode: Equatable {
+    case loop(Loop)
+    case value(PersonalValue)
+
+    var id: PersistentIdentifier {
+        switch self {
+        case .loop(let loop): loop.persistentModelID
+        case .value(let value): value.persistentModelID
+        }
+    }
+}
+
+/// Values sit in the middle, loops around the outside. Threads are links you
+/// tied yourself, thicker when they feel stronger. Dotted threads are the app's
+/// guesses, waiting for you to trace them or pull them away.
+///
+/// Everything here is touch: pull a thread out of a loop and drop it on another
+/// loop or a value to tie it; tap a knot to say how connected; pull a knot off
+/// its thread to untie it.
 private struct MapWeb: View {
+    @Environment(\.modelContext) private var context
     let loops: [Loop]
     let values: [PersonalValue]
     let links: [MapLink]
+    let hints: [MapView.Suggestion]
     let color: (Loop) -> Color
     let onSelect: (Loop) -> Void
+    /// The thread whose knot you tapped, or just tied. Its slider shows under the map.
+    @Binding var selectedLink: MapLink?
+    @Binding var selectedHint: MapView.Suggestion?
+
     /// A value being dragged, and how far it has moved so far.
     @State private var dragging: (id: PersistentIdentifier, offset: CGSize)?
     /// The loop or value you tapped. Its connections stay lit and the rest fades back.
@@ -172,6 +258,416 @@ private struct MapWeb: View {
     /// Where the map placed values when a drag began. Reused for every frame of the
     /// drag, so moving one value doesn't redo the whole layout 60 times a second.
     @State private var frozenLayout: [CGPoint]?
+    /// A thread you're pulling out of a loop, and where your finger is.
+    @State private var pulling: (from: Loop, to: CGPoint)?
+    /// What the loose end is over right now, so it can light up before you let go.
+    @State private var hovering: MapNode?
+    /// A knot (or a hint's middle) being pulled, and how far.
+    @State private var tugging: (id: String, offset: CGSize)?
+    /// The node that just caught a thread, for a small bounce.
+    @State private var caught: PersistentIdentifier?
+    @State private var tiedCount = 0
+    @State private var untiedCount = 0
+
+    /// How far a knot has to be pulled before the thread lets go.
+    private let snapDistance: CGFloat = 70
+    /// How close the loose end has to be to catch on something.
+    private let catchDistance: CGFloat = 38
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let outer = min(size.width, size.height) / 2 - 46
+            let auto = frozenLayout.flatMap { $0.count == values.count ? $0 : nil }
+                ?? MapLayout.spread(values: values, loops: loops, links: links, center: center, outer: outer)
+            let positions = values.indices.map { place(values[$0], auto: auto[$0], center: center, outer: outer) }
+            let loopSpots = loops.indices.map { point($0, of: loops.count, radius: outer, center: center) }
+            let spot: (MapNode) -> CGPoint? = { node in
+                switch node {
+                case .loop(let loop): loops.firstIndex(of: loop).map { loopSpots[$0] }
+                case .value(let value): values.firstIndex(of: value).map { positions[$0] }
+                }
+            }
+
+            ZStack {
+                Canvas { ctx, _ in
+                    // A faint guide ring, like pencil on paper.
+                    let ring = Path(ellipseIn: CGRect(x: center.x - outer, y: center.y - outer, width: outer * 2, height: outer * 2))
+                    ctx.stroke(ring, with: .color(.secondary.opacity(0.12)), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+
+                    // The app's guesses: dotted and faint. Brighter while you pull from one of their loops.
+                    for hint in hints {
+                        guard let s = spot(.loop(hint.a)), let e = spot(.loop(hint.b)) else { continue }
+                        let ends = [hint.a, hint.b]
+                        let live = pulling.map { ends.contains($0.from) } ?? false
+                        let tug = tugging?.id == hint.id ? tugging?.offset : nil
+                        let path = thread(from: s, to: e, center: center, tug: tug)
+                        ctx.stroke(path, with: .color(.secondary.opacity(live ? 0.6 : 0.3)),
+                                   style: StrokeStyle(lineWidth: live ? 2.5 : 1.5, lineCap: .round, dash: [2, 6]))
+                    }
+
+                    // Threads you tied.
+                    for link in links {
+                        guard let a = link.loopA, let s = spot(.loop(a)) else { continue }
+                        let other: MapNode? = link.loopB.map { MapNode.loop($0) } ?? link.value.map { MapNode.value($0) }
+                        guard let other, let e = spot(other) else { continue }
+                        let tug = tugging?.id == key(link) ? tugging?.offset : nil
+                        let stretch = tug.map { min(hypot($0.width, $0.height) / snapDistance, 1) } ?? 0
+                        let faded = focus.map { !involves(link, $0) } ?? false
+                        let width = (1 + link.strength * 5) * (1 - stretch * 0.7)
+                        let shade = color(a).opacity((0.25 + link.strength * 0.45) * (faded ? 0.12 : 1))
+                        ctx.stroke(thread(from: s, to: e, center: center, tug: tug, bow: link.loopB != nil),
+                                   with: .color(shade), style: StrokeStyle(lineWidth: width, lineCap: .round))
+                    }
+
+                    // The thread you're pulling: a soft, gooey strand that swells at your fingertip.
+                    if let pulling, let s = spot(.loop(pulling.from)) {
+                        let end = hovering.flatMap(spot) ?? pulling.to
+                        let length = hypot(end.x - s.x, end.y - s.y)
+                        let count = max(2, Int(length / 7))
+                        let blobs = (0...count).map { i -> GooeyBlob in
+                            let t = CGFloat(i) / CGFloat(count)
+                            let p = CGPoint(x: s.x + (end.x - s.x) * t, y: s.y + (end.y - s.y) * t)
+                            // Thin in the middle, rounder at both ends, like something stretched.
+                            let r = 4 + 4 * pow(abs(t - 0.5) * 2, 3) + (t > 0.9 ? 4 : 0)
+                            return GooeyBlob(center: p, radius: r, color: color(pulling.from))
+                        }
+                        Gooey.draw(blobs, in: ctx, base: color(pulling.from), blur: 6)
+                    }
+                }
+                // Tapping empty space lets everything come back.
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.calm) {
+                        focus = nil
+                        selectedLink = nil
+                        selectedHint = nil
+                    }
+                }
+
+                // Hints: a small dot in the middle to tap (why?) or pull away (not really).
+                ForEach(hints, id: \.id) { hint in
+                    if let s = spot(.loop(hint.a)), let e = spot(.loop(hint.b)) {
+                        let mid = midpoint(from: s, to: e, center: center)
+                        let tug = tugging?.id == hint.id ? tugging?.offset ?? .zero : .zero
+                        Image(systemName: "sparkle")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, height: 24)
+                            .background(Paper.card, in: Circle())
+                            .overlay(Circle().stroke(.secondary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [2, 3])))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                            .opacity(tugOpacity(tug))
+                            .position(x: mid.x + tug.width, y: mid.y + tug.height)
+                            .gesture(tugGesture(id: hint.id) {
+                                withAnimation(.calm) { selectedHint = hint; selectedLink = nil }
+                            } onSnap: {
+                                dismiss(hint)
+                            })
+                            .accessibilityLabel("A guess: \(hint.a.name) and \(hint.b.name)")
+                            .accessibilityHint("Shows why, and lets you connect them or not")
+                            .accessibilityAction { selectedHint = hint }
+                    }
+                }
+
+                // Knots: tap to say how connected, pull off to untie.
+                ForEach(links, id: \.persistentModelID) { link in
+                    if let a = link.loopA, let s = spot(.loop(a)),
+                       let e = (link.loopB.map { MapNode.loop($0) } ?? link.value.map { MapNode.value($0) }).flatMap(spot) {
+                        let mid = midpoint(from: s, to: e, center: center, bow: link.loopB != nil)
+                        let tug = tugging?.id == key(link) ? tugging?.offset ?? .zero : .zero
+                        let faded = focus.map { !involves(link, $0) } ?? false
+                        Circle()
+                            .fill(color(a))
+                            .frame(width: selectedLink == link ? 14 : 9, height: selectedLink == link ? 14 : 9)
+                            .overlay(Circle().stroke(Paper.card, lineWidth: 2))
+                            .frame(width: 40, height: 40)
+                            .contentShape(Circle())
+                            .opacity(faded ? 0.2 : tugOpacity(tug))
+                            .position(x: mid.x + tug.width, y: mid.y + tug.height)
+                            .gesture(tugGesture(id: key(link)) {
+                                withAnimation(.calm) { selectedLink = link; selectedHint = nil }
+                            } onSnap: {
+                                untie(link)
+                            })
+                            .accessibilityLabel(linkName(link))
+                            .accessibilityValue(MapLink.strengthLabel(link.strength))
+                            .accessibilityHint("Shows how connected, or lets you untie it")
+                            .accessibilityAction { selectedLink = link }
+                    }
+                }
+
+                ForEach(Array(values.enumerated()), id: \.element.id) { index, value in
+                    let isDragging = dragging?.id == value.persistentModelID
+                    let isTarget = hovering == .value(value)
+                    Text(value.name)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: 76)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Paper.card, in: Capsule())
+                        .overlay(Capsule().stroke(.tint.opacity(isDragging || isTarget ? 0.8 : 0.35), lineWidth: isTarget ? 2 : 1))
+                        // Only the lift is animated. Animating the whole label made its
+                        // position spring toward your finger, so it trailed behind.
+                        .animation(.spring(duration: 0.3, bounce: 0.5)) {
+                            $0.scaleEffect(isDragging || isTarget ? 1.12 : caught == value.persistentModelID ? 1.2 : 1)
+                                .shadow(color: .black.opacity(isDragging ? 0.15 : 0), radius: 6, y: 3)
+                        }
+                        .opacity(isDragging || isTarget ? 1 : presence(value.persistentModelID))
+                        .position(positions[index])
+                        // One gesture for both: a touch that barely moves is a tap (focus),
+                        // anything more is a drag.
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { drag in
+                                    let moved = hypot(drag.translation.width, drag.translation.height)
+                                    guard moved > 4 || dragging != nil else { return }
+                                    if frozenLayout == nil { frozenLayout = auto }
+                                    dragging = (value.persistentModelID, drag.translation)
+                                }
+                                .onEnded { drag in
+                                    defer { dragging = nil; frozenLayout = nil }
+                                    guard dragging != nil else {
+                                        toggleFocus(value.persistentModelID)
+                                        return
+                                    }
+                                    let p = place(value, auto: auto[index], center: center, outer: outer, includingDrag: false)
+                                    let end = CGPoint(x: p.x + drag.translation.width, y: p.y + drag.translation.height)
+                                    let spot = MapLayout.clamp(end, center: center, limit: outer * MapLayout.dragLimit)
+                                    value.mapX = Double((spot.x - center.x) / outer)
+                                    value.mapY = Double((spot.y - center.y) / outer)
+                                }
+                        )
+                        .zIndex(isDragging ? 1 : 0)
+                        .sensoryFeedback(.selection, trigger: isDragging)
+                        .accessibilityAddTraits(focus == value.persistentModelID ? [.isButton, .isSelected] : .isButton)
+                        .accessibilityHint("Tap to light up its connections. Drag to move it on your map.")
+                        .accessibilityAction { toggleFocus(value.persistentModelID) }
+                }
+
+                ForEach(Array(loops.enumerated()), id: \.element.id) { index, loop in
+                    let isTarget = hovering == .loop(loop)
+                    let isSource = pulling?.from == loop
+                    VStack(spacing: 4) {
+                        // Loops are rings here too, matching Patterns.
+                        MiniRing(color: color(loop))
+                            .frame(width: MapLayout.dotSize(loop) + 6, height: MapLayout.dotSize(loop) + 6)
+                            .animation(.spring(duration: 0.3, bounce: 0.5)) {
+                                $0.scaleEffect(isTarget || isSource ? 1.2 : caught == loop.persistentModelID ? 1.3 : 1)
+                            }
+                        Text(loop.name)
+                            .font(.caption2)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.primary)
+                            .frame(width: 84)
+                    }
+                    .contentShape(Rectangle())
+                    .opacity(isTarget || isSource ? 1 : presence(loop.persistentModelID))
+                    .position(loopSpots[index])
+                    // Tap: light up its connections (a second tap opens it).
+                    // Pull: a thread comes out, to drop on another loop or a value.
+                    .gesture(
+                        DragGesture(minimumDistance: 0, coordinateSpace: .named("map"))
+                            .onChanged { drag in
+                                let moved = hypot(drag.translation.width, drag.translation.height)
+                                guard moved > 8 || pulling != nil else { return }
+                                pulling = (loop, drag.location)
+                                let target = nearest(to: drag.location, excluding: loop, loopSpots: loopSpots, positions: positions)
+                                if target != hovering { hovering = target }
+                            }
+                            .onEnded { _ in
+                                defer { pulling = nil; hovering = nil }
+                                guard pulling != nil else {
+                                    if focus == loop.persistentModelID {
+                                        onSelect(loop)
+                                    } else {
+                                        toggleFocus(loop.persistentModelID)
+                                    }
+                                    return
+                                }
+                                if let hovering { tie(loop, to: hovering) }
+                            }
+                    )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("\(loop.name), \(loop.entries.count) entries")
+                    .accessibilityAddTraits(focus == loop.persistentModelID ? .isSelected : [])
+                    .accessibilityHint("Lights up its connections. Pull to tie a thread to another loop or a value.")
+                    .accessibilityAction { toggleFocus(loop.persistentModelID) }
+                    .accessibilityAction(named: "Open") { onSelect(loop) }
+                    .accessibilityActions {
+                        ForEach(loops.filter { $0 != loop }) { other in
+                            Button("Tie to \(other.name)") { tie(loop, to: .loop(other)) }
+                        }
+                        ForEach(values) { value in
+                            Button("Tie to \(value.name)") { tie(loop, to: .value(value)) }
+                        }
+                    }
+                }
+            }
+            .coordinateSpace(.named("map"))
+            .sensoryFeedback(.selection, trigger: hovering)
+            .sensoryFeedback(.impact(weight: .medium, intensity: 0.8), trigger: tiedCount)
+            .sensoryFeedback(.impact(weight: .light, intensity: 0.6), trigger: untiedCount)
+        }
+    }
+
+    // MARK: Tying and untying
+
+    /// Ties a thread from a loop to another loop or a value. If you'd tied (or turned
+    /// down) these two before, that same link comes back rather than a second one.
+    private func tie(_ loop: Loop, to node: MapNode) {
+        let existing: MapLink?
+        switch node {
+        case .loop(let other):
+            guard other != loop else { return }
+            existing = allLinks.first { $0.value == nil && $0.joins(loop, other) }
+        case .value(let value):
+            existing = allLinks.first { $0.loopA == loop && $0.value == value }
+        }
+        let link: MapLink
+        if let existing {
+            link = existing
+            if !link.isConfirmed { link.strength = 0.5 }
+        } else {
+            link = MapLink()
+            context.insert(link)
+            link.loopA = loop
+            switch node {
+            case .loop(let other): link.loopB = other
+            case .value(let value): link.value = value
+            }
+            link.strength = 0.5
+        }
+        link.status = "confirmed"
+        tiedCount += 1
+        caught = node.id
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            caught = nil
+        }
+        // Straight away: how connected? A thread is never just on or off.
+        withAnimation(.calm) {
+            selectedHint = nil
+            selectedLink = link
+        }
+    }
+
+    private func untie(_ link: MapLink) {
+        untiedCount += 1
+        withAnimation(.calm) {
+            if selectedLink == link { selectedLink = nil }
+            if link.value != nil {
+                context.delete(link)
+            } else {
+                // Kept as "turned down", so the app doesn't suggest these two again.
+                link.status = "dismissed"
+            }
+        }
+    }
+
+    private func dismiss(_ hint: MapView.Suggestion) {
+        untiedCount += 1
+        withAnimation(.calm) {
+            if selectedHint?.id == hint.id { selectedHint = nil }
+            let link = MapLink()
+            context.insert(link)
+            link.loopA = hint.a
+            link.loopB = hint.b
+            link.strength = 0
+            link.status = "dismissed"
+        }
+    }
+
+    /// Every link, including turned-down ones, so tying never makes a duplicate.
+    private var allLinks: [MapLink] {
+        (try? context.fetch(FetchDescriptor<MapLink>())) ?? links
+    }
+
+    /// A tap (barely moving) or a tug (pulling away). Pull past `snapDistance` and let
+    /// go to snap; anything less springs back.
+    private func tugGesture(id: String, onTap: @escaping () -> Void, onSnap: @escaping () -> Void) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { drag in
+                let moved = hypot(drag.translation.width, drag.translation.height)
+                guard moved > 6 || tugging != nil else { return }
+                tugging = (id, drag.translation)
+            }
+            .onEnded { drag in
+                guard tugging != nil else {
+                    onTap()
+                    return
+                }
+                let moved = hypot(drag.translation.width, drag.translation.height)
+                if moved > snapDistance {
+                    tugging = nil
+                    onSnap()
+                } else {
+                    withAnimation(.spring(duration: 0.4, bounce: 0.5)) { tugging = nil }
+                }
+            }
+    }
+
+    /// A knot fades as you pull it, so you can feel it about to let go.
+    private func tugOpacity(_ tug: CGSize) -> Double {
+        1 - 0.6 * min(hypot(tug.width, tug.height) / snapDistance, 1)
+    }
+
+    private func key(_ link: MapLink) -> String { "\(link.persistentModelID.hashValue)" }
+
+    private func linkName(_ link: MapLink) -> String {
+        let a = link.loopA?.name ?? ""
+        let b = link.loopB?.name ?? link.value?.name ?? ""
+        return "Thread between \(a) and \(b)"
+    }
+
+    /// The closest loop or value to the loose end, if it's close enough to catch.
+    private func nearest(to point: CGPoint, excluding source: Loop, loopSpots: [CGPoint], positions: [CGPoint]) -> MapNode? {
+        var best: (node: MapNode, distance: CGFloat)?
+        for (i, loop) in loops.enumerated() where loop != source {
+            let d = hypot(loopSpots[i].x - point.x, loopSpots[i].y - point.y)
+            if d < catchDistance, d < (best?.distance ?? .infinity) { best = (.loop(loop), d) }
+        }
+        for (i, value) in values.enumerated() {
+            let d = hypot(positions[i].x - point.x, positions[i].y - point.y)
+            if d < catchDistance, d < (best?.distance ?? .infinity) { best = (.value(value), d) }
+        }
+        return best?.node
+    }
+
+    // MARK: Drawing threads
+
+    /// The bend point of a thread. Loop to loop bows toward the middle; loop to value is straight.
+    private func control(from s: CGPoint, to e: CGPoint, center: CGPoint, bow: Bool) -> CGPoint {
+        let mid = CGPoint(x: (s.x + e.x) / 2, y: (s.y + e.y) / 2)
+        return bow ? CGPoint(x: (mid.x + center.x) / 2, y: (mid.y + center.y) / 2) : mid
+    }
+
+    /// The point halfway along the thread, where its knot sits.
+    private func midpoint(from s: CGPoint, to e: CGPoint, center: CGPoint, bow: Bool = true) -> CGPoint {
+        let c = control(from: s, to: e, center: center, bow: bow)
+        return CGPoint(x: 0.25 * s.x + 0.5 * c.x + 0.25 * e.x, y: 0.25 * s.y + 0.5 * c.y + 0.25 * e.y)
+    }
+
+    /// A thread as a curve. When its knot is being pulled, the curve bends to follow it.
+    private func thread(from s: CGPoint, to e: CGPoint, center: CGPoint, tug: CGSize? = nil, bow: Bool = true) -> Path {
+        var c = control(from: s, to: e, center: center, bow: bow)
+        if let tug {
+            // Move the bend so the curve's halfway point lands on the pulled knot.
+            c.x += tug.width * 2
+            c.y += tug.height * 2
+        }
+        var path = Path()
+        path.move(to: s)
+        path.addQuadCurve(to: e, control: c)
+        return path
+    }
+
+    // MARK: Focus
 
     /// Everything directly connected to the focus, including the focus itself.
     private var lit: Set<PersistentIdentifier> {
@@ -196,130 +692,6 @@ private struct MapWeb: View {
 
     private func toggleFocus(_ id: PersistentIdentifier) {
         withAnimation(.calm) { focus = focus == id ? nil : id }
-    }
-
-    var body: some View {
-        GeometryReader { proxy in
-            let size = proxy.size
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let outer = min(size.width, size.height) / 2 - 46
-            let auto = frozenLayout.flatMap { $0.count == values.count ? $0 : nil }
-                ?? MapLayout.spread(values: values, loops: loops, links: links, center: center, outer: outer)
-            let positions = values.indices.map { place(values[$0], auto: auto[$0], center: center, outer: outer) }
-
-            ZStack {
-                Canvas { ctx, _ in
-                    // A faint guide ring, like pencil on paper.
-                    let ring = Path(ellipseIn: CGRect(x: center.x - outer, y: center.y - outer, width: outer * 2, height: outer * 2))
-                    ctx.stroke(ring, with: .color(.secondary.opacity(0.12)), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
-
-                    for link in links {
-                        guard let a = link.loopA, let ia = loops.firstIndex(of: a) else { continue }
-                        let start = point(ia, of: loops.count, radius: outer, center: center)
-                        let width = 1 + link.strength * 5
-                        let faded = focus.map { !involves(link, $0) } ?? false
-                        let shade = color(a).opacity((0.25 + link.strength * 0.45) * (faded ? 0.12 : 1))
-                        var path = Path()
-                        if let b = link.loopB, let ib = loops.firstIndex(of: b) {
-                            // Loop to loop: a curve that bows toward the middle.
-                            let end = point(ib, of: loops.count, radius: outer, center: center)
-                            let mid = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
-                            let control = CGPoint(x: (mid.x + center.x) / 2, y: (mid.y + center.y) / 2)
-                            path.move(to: start)
-                            path.addQuadCurve(to: end, control: control)
-                        } else if let value = link.value, let iv = values.firstIndex(of: value) {
-                            path.move(to: start)
-                            path.addLine(to: positions[iv])
-                        }
-                        ctx.stroke(path, with: .color(shade), style: StrokeStyle(lineWidth: width, lineCap: .round))
-                    }
-                }
-                // Tapping empty space lets everything come back.
-                .contentShape(Rectangle())
-                .onTapGesture { withAnimation(.calm) { focus = nil } }
-
-                ForEach(Array(values.enumerated()), id: \.element.id) { index, value in
-                    let isDragging = dragging?.id == value.persistentModelID
-                    Text(value.name)
-                        .font(.caption2)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .frame(maxWidth: 76)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Paper.card, in: Capsule())
-                        .overlay(Capsule().stroke(.tint.opacity(isDragging ? 0.8 : 0.35)))
-                        // Only the lift is animated. Animating the whole label made its
-                        // position spring toward your finger, so it trailed behind.
-                        .animation(.spring(duration: 0.3)) {
-                            $0.scaleEffect(isDragging ? 1.12 : 1)
-                                .shadow(color: .black.opacity(isDragging ? 0.15 : 0), radius: 6, y: 3)
-                        }
-                        .opacity(isDragging ? 1 : presence(value.persistentModelID))
-                        .position(positions[index])
-                        // One gesture for both: a touch that barely moves is a tap (focus),
-                        // anything more is a drag. Separate tap and drag gestures made the
-                        // drag wait to start, so the label lagged behind your finger.
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { drag in
-                                    let moved = hypot(drag.translation.width, drag.translation.height)
-                                    guard moved > 4 || dragging != nil else { return }
-                                    if frozenLayout == nil { frozenLayout = auto }
-                                    dragging = (value.persistentModelID, drag.translation)
-                                }
-                                .onEnded { drag in
-                                    defer { dragging = nil; frozenLayout = nil }
-                                    guard dragging != nil else {
-                                        toggleFocus(value.persistentModelID)
-                                        return
-                                    }
-                                    // Start from where it sat before the drag (positions[index]
-                                    // already includes the drag, so adding it again made it jump).
-                                    let p = place(value, auto: auto[index], center: center, outer: outer, includingDrag: false)
-                                    let end = CGPoint(x: p.x + drag.translation.width, y: p.y + drag.translation.height)
-                                    let spot = MapLayout.clamp(end, center: center, limit: outer * MapLayout.dragLimit)
-                                    value.mapX = Double((spot.x - center.x) / outer)
-                                    value.mapY = Double((spot.y - center.y) / outer)
-                                }
-                        )
-                        .zIndex(isDragging ? 1 : 0)
-                        .sensoryFeedback(.selection, trigger: isDragging)
-                        .accessibilityAddTraits(focus == value.persistentModelID ? [.isButton, .isSelected] : .isButton)
-                        .accessibilityHint("Tap to light up its connections. Drag to move it on your map.")
-                        .accessibilityAction { toggleFocus(value.persistentModelID) }
-                }
-
-                ForEach(Array(loops.enumerated()), id: \.element.id) { index, loop in
-                    // First tap lights up its connections; a second tap opens it.
-                    Button {
-                        if focus == loop.persistentModelID {
-                            onSelect(loop)
-                        } else {
-                            toggleFocus(loop.persistentModelID)
-                        }
-                    } label: {
-                        VStack(spacing: 4) {
-                            // Loops are rings here too, matching Patterns.
-                            MiniRing(color: color(loop))
-                                .frame(width: MapLayout.dotSize(loop) + 6, height: MapLayout.dotSize(loop) + 6)
-                            Text(loop.name)
-                                .font(.caption2)
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(.primary)
-                                .frame(width: 84)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .opacity(presence(loop.persistentModelID))
-                    .position(point(index, of: loops.count, radius: outer, center: center))
-                    .accessibilityLabel("\(loop.name), \(loop.entries.count) entries")
-                    .accessibilityAddTraits(focus == loop.persistentModelID ? .isSelected : [])
-                    .accessibilityHint(focus == loop.persistentModelID ? "Opens its core belief and words" : "Lights up its connections")
-                    .accessibilityAction(named: "Open") { onSelect(loop) }
-                }
-            }
-        }
     }
 
     /// Where a value is drawn: where you put it, or where the map placed it,
@@ -480,33 +852,6 @@ enum MapLayout {
         let distance = (dx * dx + dy * dy).squareRoot()
         guard distance > limit, distance > 0 else { return point }
         return CGPoint(x: center.x + dx / distance * limit, y: center.y + dy / distance * limit)
-    }
-}
-
-// MARK: - A suggestion
-
-private struct SuggestionCard: View {
-    let suggestion: MapView.Suggestion
-    let onConnect: (Double) -> Void
-    let onDismiss: () -> Void
-    @State private var strength = 0.5
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("\(suggestion.a.name) and \(suggestion.b.name) showed up on the same day \(suggestion.days) times. Do they feel connected?")
-                .font(.callout)
-            RatingSlider(title: "How connected", value: $strength, range: 0.05...1, step: 0.05,
-                         lowLabel: "a little", highLabel: "very", valueText: MapLink.strengthLabel)
-            HStack {
-                Button("Not really", action: onDismiss)
-                    .buttonStyle(.bordered)
-                    .softCase()
-                Spacer()
-                Button("Connect them") { onConnect(strength) }
-                    .buttonStyle(.paper)
-            }
-        }
-        .paperCard()
     }
 }
 
