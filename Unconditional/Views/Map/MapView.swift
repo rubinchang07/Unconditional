@@ -26,6 +26,8 @@ struct MapView: View {
     /// While you're pulling a thread or moving something, the map lies flat so it's easy to aim.
     @State private var handsOn = false
     @State private var spin = 0.0
+    /// The turn cue shows until the first time you turn the map.
+    @AppStorage("hasTurnedMap") private var hasTurnedMap = false
 
     /// Entries needed before the map has enough to go on.
     static let entriesNeeded = 5
@@ -54,7 +56,17 @@ struct MapView: View {
                            onSpin: { spin = $0 },
                            selectedLink: $selectedLink, selectedHint: $selectedHint)
                         .aspectRatio(1, contentMode: .fit)
-                        .paperCard()
+                        .padding(6)
+                        .background { SpaceBackdrop(spin: spin) }
+                        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                        .overlay(alignment: .topTrailing) { mapControls }
+                        .overlay(alignment: .bottom) {
+                            // A wordless hint that the map turns, until the first time you turn it.
+                            if tilted && !hasTurnedMap { TurnCue().padding(.bottom, 10).allowsHitTesting(false) }
+                        }
+                        .onChange(of: spin) { _, _ in
+                            if !hasTurnedMap { withAnimation(.calm) { hasTurnedMap = true } }
+                        }
 
                     if let link = selectedLink, link.isConfirmed {
                         threadCard(link)
@@ -72,31 +84,6 @@ struct MapView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    HStack(alignment: .top) {
-                        Text("Slide sideways on empty space to turn the map. Pull a thread from a loop onto another loop or a value to tie them; the map lies flat while you aim. Tap a knot for how connected, or pull it off to untie. Dotted threads are the app's guesses: trace one, or pull its sparkle away.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        VStack(alignment: .trailing, spacing: 6) {
-                        Button(tilted ? "lie flat" : "lean back") {
-                            withAnimation(.spring(duration: 0.6, bounce: 0.15)) {
-                                tilted.toggle()
-                                if !tilted { spin = 0 }
-                            }
-                        }
-                        .font(.footnote)
-                        // Hand placement back to the map.
-                        if values.contains(where: { $0.mapX != nil }) {
-                            Button("tidy up") {
-                                withAnimation(.calm) {
-                                    for value in values { value.mapX = nil; value.mapY = nil }
-                                }
-                            }
-                            .font(.footnote)
-                        }
-                        }
-                    }
-
                     rootCard
                 }
             }
@@ -111,6 +98,37 @@ struct MapView: View {
                 .presentationDetents([.large])
         }
         .animation(.calm, value: links.count)
+    }
+
+    /// Two quiet icons in the map's corner: flat or leaning back, and (once you've
+    /// moved a value) putting values back where the map placed them.
+    private var mapControls: some View {
+        HStack(spacing: 8) {
+            if values.contains(where: { $0.mapX != nil }) {
+                Button {
+                    withAnimation(.calm) {
+                        for value in values { value.mapX = nil; value.mapY = nil }
+                    }
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .accessibilityLabel("Put values back where the map placed them")
+                .transition(.opacity)
+            }
+            Button {
+                withAnimation(.spring(duration: 0.6, bounce: 0.15)) {
+                    tilted.toggle()
+                    if !tilted { spin = 0 }
+                }
+            } label: {
+                Image(systemName: tilted ? "view.2d" : "view.3d")
+            }
+            .accessibilityLabel(tilted ? "Lie flat" : "Lean back")
+        }
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(.white.opacity(0.75))
+        .buttonStyle(SpaceIconStyle())
+        .padding(10)
     }
 
     private var rootCard: some View {
@@ -345,8 +363,8 @@ private struct MapWeb: View, Animatable {
                                                               y: center.y + outer * share * sin(angle)))
                             if i == 0 { ring.move(to: p) } else { ring.addLine(to: p) }
                         }
-                        ctx.stroke(ring, with: .color(.secondary.opacity(share == 1 ? 0.14 : 0.08)),
-                                   style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                        ctx.stroke(ring, with: .color(.white.opacity(share == 1 ? 0.16 : 0.09)),
+                                   style: StrokeStyle(lineWidth: 0.8))
                     }
 
                     // The app's guesses: dotted and faint. Brighter while you pull from one of their loops.
@@ -356,7 +374,7 @@ private struct MapWeb: View, Animatable {
                         let live = pulling.map { ends.contains($0.from) } ?? false
                         let tug = tugging?.id == hint.id ? tugging?.offset : nil
                         let path = thread(from: s, to: e, center: center, tug: tug)
-                        ctx.stroke(path, with: .color(.secondary.opacity(live ? 0.6 : 0.3)),
+                        ctx.stroke(path, with: .color(.white.opacity(live ? 0.6 : 0.28)),
                                    style: StrokeStyle(lineWidth: live ? 2.5 : 1.5, lineCap: .round, dash: [2, 6]))
                     }
 
@@ -370,8 +388,13 @@ private struct MapWeb: View, Animatable {
                         let faded = focus.map { !involves(link, $0) } ?? false
                         let width = (1 + link.strength * 5) * (1 - stretch * 0.7)
                         let shade = color(a).opacity((0.25 + link.strength * 0.45) * (faded ? 0.12 : 1))
-                        ctx.stroke(thread(from: s, to: e, center: center, tug: tug, bow: link.loopB != nil),
-                                   with: .color(shade), style: StrokeStyle(lineWidth: width, lineCap: .round))
+                        let curve = thread(from: s, to: e, center: center, tug: tug, bow: link.loopB != nil)
+                        // A soft glow under each thread, like light between planets.
+                        ctx.drawLayer { glow in
+                            glow.addFilter(.blur(radius: 4))
+                            glow.stroke(curve, with: .color(shade.opacity(0.7)), style: StrokeStyle(lineWidth: width + 4, lineCap: .round))
+                        }
+                        ctx.stroke(curve, with: .color(shade), style: StrokeStyle(lineWidth: width, lineCap: .round))
                     }
 
                     // The thread you're pulling: a soft, gooey strand that swells at your fingertip.
@@ -416,10 +439,10 @@ private struct MapWeb: View, Animatable {
                         let tug = tugging?.id == hint.id ? tugging?.offset ?? .zero : .zero
                         Image(systemName: "sparkle")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white.opacity(0.8))
                             .frame(width: 24, height: 24)
-                            .background(Paper.card, in: Circle())
-                            .overlay(Circle().stroke(.secondary.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [2, 3])))
+                            .background(.white.opacity(0.08), in: Circle())
+                            .overlay(Circle().stroke(.white.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [2, 3])))
                             .frame(width: 44, height: 44)
                             .contentShape(Circle())
                             .opacity(tugOpacity(tug))
@@ -445,7 +468,7 @@ private struct MapWeb: View, Animatable {
                         Circle()
                             .fill(color(a))
                             .frame(width: selectedLink == link ? 14 : 9, height: selectedLink == link ? 14 : 9)
-                            .overlay(Circle().stroke(Paper.card, lineWidth: 2))
+                            .shadow(color: color(a).opacity(0.9), radius: 5)
                             .frame(width: 40, height: 40)
                             .contentShape(Circle())
                             .opacity(faded ? 0.2 : tugOpacity(tug))
@@ -466,15 +489,16 @@ private struct MapWeb: View, Animatable {
                     let isDragging = dragging?.id == value.persistentModelID
                     let isTarget = hovering == .value(value)
                     let depth = projector.scale(at: planePositions[index])
-                    Text(value.name)
+                    // The capsule hugs the word, however long or short it is.
+                    Text(MapLayout.shortName(value.name))
                         .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .frame(maxWidth: 76)
+                        .fixedSize()
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(Paper.card, in: Capsule())
-                        .overlay(Capsule().stroke(.tint.opacity(isDragging || isTarget ? 0.8 : 0.35), lineWidth: isTarget ? 2 : 1))
+                        .background(.white.opacity(isDragging || isTarget ? 0.2 : 0.1), in: Capsule())
+                        .overlay(Capsule().stroke(.white.opacity(isDragging || isTarget ? 0.7 : 0.25), lineWidth: isTarget ? 1.5 : 0.8))
                         // Only the lift is animated. Animating the whole label made its
                         // position spring toward your finger, so it trailed behind.
                         .animation(.spring(duration: 0.3, bounce: 0.5)) {
@@ -527,15 +551,17 @@ private struct MapWeb: View, Animatable {
                     let depth = projector.scale(at: planeLoops[index])
                     VStack(spacing: 4) {
                         // Loops are rings here too, matching Patterns.
+                        // Loops are rings here too, like planets with rings, glowing softly.
                         MiniRing(color: color(loop))
                             .frame(width: MapLayout.dotSize(loop) + 6, height: MapLayout.dotSize(loop) + 6)
+                            .shadow(color: color(loop).opacity(0.8), radius: 8)
                             .animation(.spring(duration: 0.3, bounce: 0.5)) {
                                 $0.scaleEffect(isTarget || isSource ? 1.2 : caught == loop.persistentModelID ? 1.3 : 1)
                             }
                         Text(loop.name)
                             .font(.caption2)
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.white.opacity(0.85))
                             .frame(width: 84)
                     }
                     .contentShape(Rectangle())
@@ -875,8 +901,19 @@ struct MapProjector {
 /// toward the loops it's linked to so lines stay short and cross less.
 enum MapLayout {
     /// Room a value label needs around it.
-    static let labelWidth: CGFloat = 92
     static let labelHeight: CGFloat = 30
+    /// Longer names are shortened on the map (the full name is in the value itself).
+    static let nameLimit = 18
+
+    static func shortName(_ name: String) -> String {
+        name.count > nameLimit ? String(name.prefix(nameLimit - 1)) + "…" : name
+    }
+
+    /// About how much room a value's label takes: its word, plus the capsule around it
+    /// and a little breathing space.
+    static func valueSize(_ name: String) -> CGSize {
+        CGSize(width: CGFloat(shortName(name).count) * 6.2 + 30, height: labelHeight)
+    }
     /// About how many loop labels fit around the ring on an iPhone.
     static let loopLimit = 8
 
@@ -928,7 +965,6 @@ enum MapLayout {
         func box(_ point: CGPoint, _ size: CGSize) -> CGRect {
             CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height)
         }
-        let valueSize = CGSize(width: labelWidth, height: labelHeight)
 
         let loopPoints = loops.indices.map { ringPoint($0, of: loops.count, radius: outer) }
         var taken: [CGRect] = loops.indices.map { box(loopPoints[$0], loopBox(loops[$0])) }
@@ -938,7 +974,9 @@ enum MapLayout {
             guard let x = value.mapX, let y = value.mapY else { return nil }
             return CGPoint(x: center.x + CGFloat(x) * outer, y: center.y + CGFloat(y) * outer)
         }
-        for case let point? in manual { taken.append(box(point, valueSize)) }
+        for (i, point) in manual.enumerated() {
+            if let point { taken.append(box(point, valueSize(values[i].name))) }
+        }
 
         // Where each value would like to sit.
         let preferred: [CGPoint] = values.indices.map { i in
@@ -977,7 +1015,7 @@ enum MapLayout {
             var bestOverlap = CGFloat.infinity
             var bestDistance = CGFloat.infinity
             for spot in spots {
-                let rect = box(spot, valueSize)
+                let rect = box(spot, valueSize(values[i].name))
                 var overlap: CGFloat = 0
                 for other in taken where other.intersects(rect) {
                     let shared = other.intersection(rect)
@@ -992,7 +1030,7 @@ enum MapLayout {
                 }
             }
             points[i] = best
-            taken.append(box(best, valueSize))
+            taken.append(box(best, valueSize(values[i].name)))
         }
         return points
     }

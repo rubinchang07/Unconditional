@@ -138,7 +138,8 @@ struct MapLayoutTests {
         #expect(points.count == values.count)
         for i in points.indices {
             for j in points.indices where j > i {
-                let apartX = abs(points[i].x - points[j].x) >= MapLayout.labelWidth - 1
+                let widths = MapLayout.valueSize(values[i].name).width + MapLayout.valueSize(values[j].name).width
+                let apartX = abs(points[i].x - points[j].x) >= widths / 2 - 1
                 let apartY = abs(points[i].y - points[j].y) >= MapLayout.labelHeight - 1
                 #expect(apartX || apartY, "Value \(i + 1) and \(j + 1) overlap")
             }
@@ -167,16 +168,16 @@ struct MapLayoutTests {
         func rect(_ p: CGPoint, _ size: CGSize) -> CGRect {
             CGRect(x: p.x - size.width / 2, y: p.y - size.height / 2, width: size.width, height: size.height)
         }
-        let valueSize = CGSize(width: MapLayout.labelWidth, height: MapLayout.labelHeight)
         for (i, point) in points.enumerated() {
             for (j, loop) in loops.enumerated() {
                 let angle = -Double.pi / 2 + 2 * Double.pi * Double(j) / Double(loops.count)
                 let spot = CGPoint(x: center.x + outer * cos(angle), y: center.y + outer * sin(angle))
-                let shared = rect(point, valueSize).intersection(rect(spot, MapLayout.loopBox(loop)))
+                let shared = rect(point, MapLayout.valueSize(values[i].name)).intersection(rect(spot, MapLayout.loopBox(loop)))
                 #expect(shared.isNull || shared.width * shared.height < 1, "Value \(i + 1) sits on \(loop.name)")
             }
             for j in points.indices where j > i {
-                let shared = rect(point, valueSize).intersection(rect(points[j], valueSize))
+                let shared = rect(point, MapLayout.valueSize(values[i].name))
+                    .intersection(rect(points[j], MapLayout.valueSize(values[j].name)))
                 #expect(shared.isNull || shared.width * shared.height < 1, "Value \(i + 1) and \(j + 1) overlap")
             }
         }
@@ -292,5 +293,15 @@ struct FootstepTests {
         #expect(Footstep.softness(age: 15) < 1)
         #expect(Footstep.softness(age: 400) == Footstep.softness(age: 30))
         #expect(Footstep.softness(age: 400) > 0.5)
+    }
+}
+
+/// Value labels on the map fit their words.
+struct ValueLabelTests {
+    @Test("Short words get small capsules, long ones are shortened")
+    func sizes() {
+        #expect(MapLayout.valueSize("Rest").width < MapLayout.valueSize("Independence").width)
+        #expect(MapLayout.shortName("A very long value name indeed").count == MapLayout.nameLimit)
+        #expect(MapLayout.shortName("Courage") == "Courage")
     }
 }
