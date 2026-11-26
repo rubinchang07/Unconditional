@@ -224,8 +224,9 @@ struct PathView: View {
                 .multilineTextAlignment(sway < 0 ? .leading : .trailing)
                 .offset(x: sway < 0 ? sway + 100 : sway - 100)
         }
-        .frame(height: rowHeight)
+        .frame(minHeight: rowHeight)
         .frame(maxWidth: .infinity)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         // A new print presses in: a touch bigger at first, then settling into the sand.
         .transition(.scale(scale: 1.3).combined(with: .opacity))
         .accessibilityElement(children: .ignore)

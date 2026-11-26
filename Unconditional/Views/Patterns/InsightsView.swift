@@ -47,7 +47,7 @@ struct InsightsView: View {
                     Label("Your map", systemImage: "point.3.connected.trianglepath.dotted")
                 }
             } footer: {
-                Text("Loops as rings, reframes, and when you check in. Your map shows how loops and values connect.")
+                Text("Loops as rings, and how reframes shift things. Your map shows how loops and values connect.")
             }
 
             Section {

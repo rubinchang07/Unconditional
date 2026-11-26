@@ -29,16 +29,18 @@ struct MapView: View {
     /// The turn cue shows until the first time you turn the map.
     @AppStorage("hasTurnedMap") private var hasTurnedMap = false
 
-    /// Entries needed before the map has enough to go on.
-    static let entriesNeeded = 5
+    @State private var editingRoot = false
+    /// A one-time, wordless demo of pulling a thread. The turn cue waits until it's done.
+    @AppStorage("hasSeenThreadDemo") private var hasSeenThreadDemo = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                if entries.count < Self.entriesNeeded {
-                    let left = Self.entriesNeeded - entries.count
-                    GentleEmpty(symbol: "point.3.connected.trianglepath.dotted", title: "Your map grows as you write",
-                                message: "After \(left) more check-in\(left == 1 ? "" : "s"), you'll start to see which loops travel together.")
+                // Open from day one: tying threads doesn't need any check-ins.
+                // The app's dotted guesses fill in later, as you write.
+                if loops.isEmpty {
+                    GentleEmpty(symbol: "point.3.connected.trianglepath.dotted", title: "Your map starts with your loops",
+                                message: "Name a loop or two in Settings → Your loops, and they'll appear here to connect.")
                         .padding(.top, 40)
                 } else {
                     let visible = MapLayout.visibleLoops(loops, links: links)
@@ -49,6 +51,8 @@ struct MapView: View {
                     MapWeb(loops: shown, values: values, links: links.filter(\.isConfirmed),
                            hints: suggestions.filter { shown.contains($0.a) && shown.contains($0.b) },
                            color: color(for:), onSelect: { selected = $0 },
+                           root: root, onTapSun: { editingRoot = true },
+                           showDemo: !hasSeenThreadDemo, onDemoDone: { hasSeenThreadDemo = true },
                            tilt: tilted && !handsOn ? 0.8 : 0, spin: spin,
                            onHandsOn: { on in
                                withAnimation(.spring(duration: 0.45, bounce: 0.15)) { handsOn = on }
@@ -62,7 +66,9 @@ struct MapView: View {
                         .overlay(alignment: .topTrailing) { mapControls }
                         .overlay(alignment: .bottom) {
                             // A wordless hint that the map turns, until the first time you turn it.
-                            if tilted && !hasTurnedMap { TurnCue().padding(.bottom, 10).allowsHitTesting(false) }
+                            if tilted && !hasTurnedMap && hasSeenThreadDemo {
+                                TurnCue().padding(.bottom, 10).allowsHitTesting(false)
+                            }
                         }
                         .onChange(of: spin) { _, _ in
                             if !hasTurnedMap { withAnimation(.calm) { hasTurnedMap = true } }
@@ -84,7 +90,6 @@ struct MapView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    rootCard
                 }
             }
             .padding()
@@ -93,6 +98,12 @@ struct MapView: View {
         .contentMargins(.bottom, 80, for: .scrollContent)
         .navigationTitle("your map")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $editingRoot) {
+            rootCard
+                .padding(20)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
         .sheet(item: $selected) { loop in
             LoopMapDetail(loop: loop, loops: loops, values: values, color: color(for: loop))
                 .presentationDetents([.large])
@@ -134,7 +145,7 @@ struct MapView: View {
     private var rootCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             PaperHeading(title: "What might sit underneath", subtitle: nil)
-            Text("Looking at these together, is there a belief they might share? Write it as a guess. You can change it any time.")
+            Text("Looking at your loops together, is there a belief they might share? Write it as a guess. It will glow at the middle of your map, and you can change it any time.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             TextField("For example: I'm only worth something if I succeed", text: $root, axis: .vertical)
@@ -142,7 +153,6 @@ struct MapView: View {
                 .padding(12)
                 .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
         }
-        .paperCard()
     }
 
     /// Under the map: how connected a thread feels, as a slider, with untie beside it.
@@ -298,6 +308,12 @@ private struct MapWeb: View, Animatable {
     var onHandsOn: (Bool) -> Void = { _ in }
     /// Turning the map: called with the new angle while you drag on empty space.
     var onSpin: (Double) -> Void = { _ in }
+    /// Your guess at a shared root belief, glowing at the middle like a sun.
+    var root: String = ""
+    var onTapSun: () -> Void = {}
+    /// Play the one-time "pull a thread" demo.
+    var showDemo = false
+    var onDemoDone: () -> Void = {}
     /// The thread whose knot you tapped, or just tied. Its slider shows under the map.
     @Binding var selectedLink: MapLink?
     @Binding var selectedHint: MapView.Suggestion?
@@ -485,6 +501,15 @@ private struct MapWeb: View, Animatable {
                     }
                 }
 
+                // Your root guess at the middle, like a sun. Tap to write or change it.
+                RootSun(root: root)
+                    .position(center)
+                    .onTapGesture(perform: onTapSun)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel(root.isEmpty ? "Add a guess at what might sit underneath" : "Your guess at what sits underneath: \(root)")
+                    .accessibilityAction { onTapSun() }
+
                 ForEach(Array(values.enumerated()), id: \.element.id) { index, value in
                     let isDragging = dragging?.id == value.persistentModelID
                     let isTarget = hovering == .value(value)
@@ -584,11 +609,8 @@ private struct MapWeb: View, Animatable {
                             .onEnded { _ in
                                 defer { pulling = nil; hovering = nil }
                                 guard pulling != nil else {
-                                    if focus == loop.persistentModelID {
-                                        onSelect(loop)
-                                    } else {
-                                        toggleFocus(loop.persistentModelID)
-                                    }
+                                    // Lights up its threads and shows a small card beside it.
+                                    toggleFocus(loop.persistentModelID)
                                     return
                                 }
                                 onHandsOn(false)
@@ -599,7 +621,7 @@ private struct MapWeb: View, Animatable {
                     .accessibilityAddTraits(.isButton)
                     .accessibilityLabel("\(loop.name), \(loop.entries.count) entries")
                     .accessibilityAddTraits(focus == loop.persistentModelID ? .isSelected : [])
-                    .accessibilityHint("Lights up its connections. Pull to tie a thread to another loop or a value.")
+                    .accessibilityHint("Shows its threads and a small card. Pull to tie a thread to another loop or a value.")
                     .accessibilityAction { toggleFocus(loop.persistentModelID) }
                     .accessibilityAction(named: "Open") { onSelect(loop) }
                     .accessibilityActions {
@@ -611,8 +633,35 @@ private struct MapWeb: View, Animatable {
                         }
                     }
                 }
+
+                // A small card beside the loop you tapped, leaning toward the middle.
+                if let focus, let i = loops.firstIndex(where: { $0.persistentModelID == focus }) {
+                    let loop = loops[i]
+                    let spot = loopSpots[i]
+                    let card = CGSize(width: 190, height: 118)
+                    let toward = CGPoint(x: spot.x + (center.x - spot.x) * 0.55, y: spot.y + (center.y - spot.y) * 0.55)
+                    LoopCard(loop: loop, color: color(loop),
+                             threads: links.filter { involves($0, focus) }.count,
+                             onOpen: { onSelect(loop) })
+                        .frame(width: card.width)
+                        .position(x: min(max(toward.x, card.width / 2 + 6), size.width - card.width / 2 - 6),
+                                  y: min(max(toward.y, card.height / 2 + 6), size.height - card.height / 2 - 6))
+                        .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                        .zIndex(50)
+                }
+
+                // The first visit: a ghost hand shows how a thread is pulled.
+                if showDemo, !loops.isEmpty, values.count + loops.count >= 2 {
+                    ThreadDemo(from: loopSpots[0],
+                               to: values.isEmpty ? loopSpots[1] : positions[0],
+                               color: color(loops[0]), onDone: onDemoDone)
+                        .allowsHitTesting(false)
+                        .zIndex(60)
+                }
             }
             .coordinateSpace(.named("map"))
+            // Labels grow with your text size, up to a point where the map still fits together.
+            .dynamicTypeSize(...DynamicTypeSize.xLarge)
             .sensoryFeedback(.selection, trigger: hovering)
             .sensoryFeedback(.impact(weight: .medium, intensity: 0.8), trigger: tiedCount)
             .sensoryFeedback(.impact(weight: .light, intensity: 0.6), trigger: untiedCount)
@@ -902,6 +951,14 @@ struct MapProjector {
 enum MapLayout {
     /// Room a value label needs around it.
     static let labelHeight: CGFloat = 30
+    /// Room kept free at the middle for the sun and its words.
+    static let sunSize = CGSize(width: 120, height: 58)
+
+    /// A root guess, shortened to fit under the sun.
+    static func shortRoot(_ root: String) -> String {
+        let trimmed = root.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count > 48 ? String(trimmed.prefix(47)) + "…" : trimmed
+    }
     /// Longer names are shortened on the map (the full name is in the value itself).
     static let nameLimit = 18
 
@@ -968,6 +1025,9 @@ enum MapLayout {
 
         let loopPoints = loops.indices.map { ringPoint($0, of: loops.count, radius: outer) }
         var taken: [CGRect] = loops.indices.map { box(loopPoints[$0], loopBox(loops[$0])) }
+
+        // The middle is the sun (your root guess), so values keep clear of it.
+        taken.append(box(center, sunSize))
 
         // Values you've placed by hand stay put, and the rest keep clear of them.
         let manual: [CGPoint?] = values.map { value in

@@ -305,3 +305,30 @@ struct ValueLabelTests {
         #expect(MapLayout.shortName("Courage") == "Courage")
     }
 }
+
+/// The welcome tour's values, and the sun at the middle of the map.
+@MainActor
+struct StartingValuesTests {
+    @Test("Picked values are added once, skipping ones you already have")
+    func addsOnce() throws {
+        let container = try AppSchema.inMemoryContainer()
+        let context = container.mainContext
+        context.insert(PersonalValue(name: "Curiosity"))
+        let existing = try context.fetch(FetchDescriptor<PersonalValue>())
+        ValueChooser.add(["curiosity", "Rest", "Courage"], existing: existing, to: context)
+        let names = try context.fetch(FetchDescriptor<PersonalValue>()).map(\.name).sorted()
+        #expect(names == ["Courage", "Curiosity", "Rest"])
+    }
+
+    @Test("A single value never sits on the sun")
+    func clearOfSun() {
+        let center = CGPoint(x: 180, y: 180)
+        let point = MapLayout.spread(values: [PersonalValue(name: "Rest")], loops: [], links: [],
+                                     center: center, outer: 134)[0]
+        let sun = CGRect(x: center.x - MapLayout.sunSize.width / 2, y: center.y - MapLayout.sunSize.height / 2,
+                         width: MapLayout.sunSize.width, height: MapLayout.sunSize.height)
+        let size = MapLayout.valueSize("Rest")
+        let label = CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height)
+        #expect(!label.intersects(sun.insetBy(dx: 1, dy: 1)))
+    }
+}

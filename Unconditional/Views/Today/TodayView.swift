@@ -164,14 +164,10 @@ struct TodayView: View {
             }
             if !showValues {
             VStack(spacing: 10) {
-                // A quiet hint, shown until you've found it once.
+                // A quiet, wordless hint, shown until you've held the orb once.
                 if !hasHeldOrb {
-                    Label("hold the orb to see what matters to you", systemImage: "hand.tap")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 4)
+                    HoldCue()
                         .transition(.opacity)
-                        .accessibilityHidden(true)
                 }
                 Text(Greeting.now)
                     .font(.system(.largeTitle, design: .serif).weight(.semibold))
