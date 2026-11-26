@@ -51,13 +51,13 @@ struct MapView: View {
                     MapWeb(loops: shown, values: values, links: links.filter(\.isConfirmed),
                            hints: suggestions.filter { shown.contains($0.a) && shown.contains($0.b) },
                            color: color(for:), onSelect: { selected = $0 },
-                           root: root, onTapSun: { editingRoot = true },
-                           showDemo: !hasSeenThreadDemo, onDemoDone: { hasSeenThreadDemo = true },
                            tilt: tilted && !handsOn ? 0.8 : 0, spin: spin,
                            onHandsOn: { on in
                                withAnimation(.spring(duration: 0.45, bounce: 0.15)) { handsOn = on }
                            },
                            onSpin: { spin = $0 },
+                           root: root, onTapSun: { editingRoot = true },
+                           showDemo: !hasSeenThreadDemo, onDemoDone: { hasSeenThreadDemo = true },
                            selectedLink: $selectedLink, selectedHint: $selectedHint)
                         .aspectRatio(1, contentMode: .fit)
                         .padding(6)
