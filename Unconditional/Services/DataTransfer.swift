@@ -29,6 +29,20 @@ enum DataTransfer {
         var mapLinks: [MapLinkRecord]? = []
         /// Optional for the same reason. Images are stored as base64 text.
         var photos: [PhotoRecord]? = []
+        /// "One step at a time" paths, each with its footsteps. Optional for older files.
+        var paths: [PathRecord]? = []
+    }
+
+    struct PathRecord: Codable {
+        var title: String
+        var createdAt: Date
+        var isResting: Bool
+        var steps: [StepRecord]
+    }
+
+    struct StepRecord: Codable {
+        var text: String
+        var createdAt: Date
     }
 
     struct PhotoRecord: Codable {
@@ -193,6 +207,10 @@ enum DataTransfer {
         s.photos = all(GroundingPhoto.self).map {
             PhotoRecord(imageData: $0.imageData, isCutout: $0.isCutout, caption: $0.caption, createdAt: $0.createdAt)
         }
+        s.paths = all(StepPath.self).map { path in
+            PathRecord(title: path.title, createdAt: path.createdAt, isResting: path.isResting,
+                       steps: path.walked.map { StepRecord(text: $0.text, createdAt: $0.createdAt) })
+        }
         return s
     }
 
@@ -343,6 +361,28 @@ enum DataTransfer {
             if photoKeys.contains(key(r.createdAt, r.caption)) { summary.skipped += 1; continue }
             context.insert(GroundingPhoto(imageData: r.imageData, isCutout: r.isCutout, caption: r.caption, createdAt: r.createdAt))
             summary.added += 1
+        }
+
+        // Paths are matched by name and start date; their steps are merged in.
+        var pathsByKey = Dictionary(all(StepPath.self).map { (key($0.createdAt, $0.title), $0) }, uniquingKeysWith: { a, _ in a })
+        for r in s.paths ?? [] {
+            let path: StepPath
+            if let existing = pathsByKey[key(r.createdAt, r.title)] {
+                path = existing
+                summary.skipped += 1
+            } else {
+                path = StepPath(title: r.title, createdAt: r.createdAt)
+                context.insert(path)
+                path.isResting = r.isResting
+                pathsByKey[key(r.createdAt, r.title)] = path
+                summary.added += 1
+            }
+            let stepKeys = Set(path.steps.map { key($0.createdAt, $0.text) })
+            for step in r.steps where !stepKeys.contains(key(step.createdAt, step.text)) {
+                let footstep = Footstep(text: step.text, createdAt: step.createdAt)
+                context.insert(footstep)
+                footstep.path = path
+            }
         }
 
         // Map links last, once every loop and value they point at exists.

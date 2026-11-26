@@ -29,17 +29,6 @@ struct HistoryView: View {
                     Text("One dot for each day you checked in, colored by loop. Good moments glow warm gold.")
                 }
 
-                if !monthDays.isEmpty {
-                    Section {
-                        CheckInConstellation(days: monthDays)
-                            .frame(height: 160)
-                    } header: {
-                        Text("This month's light")
-                    } footer: {
-                        Text("Each check-in leaves a point of light. Days without one just aren't drawn. Nothing is missing.")
-                    }
-                }
-
                 Section("Entries") {
                     ForEach(entries) { entry in
                         NavigationLink {
@@ -59,15 +48,6 @@ struct HistoryView: View {
             .themedBackground()
             .paperList()
         }
-    }
-
-    /// Each distinct day you checked in this month.
-    private var monthDays: [Date] {
-        let calendar = Calendar.current
-        let days = entries
-            .filter { calendar.isDate($0.createdAt, equalTo: .now, toGranularity: .month) }
-            .map { calendar.startOfDay(for: $0.createdAt) }
-        return Array(Set(days))
     }
 
     /// The colors of the loops you wrote about each day. Unnamed entries are grey.

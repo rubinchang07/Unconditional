@@ -13,7 +13,6 @@ struct SettingsView: View {
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
     @AppStorage("eveningWarmth") private var eveningWarmth = true
     @AppStorage(OrbMotion.storageKey) private var orbMotion: OrbMotion = .always
-    @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
     @Environment(\.modelContext) private var context
     @State private var notificationsDenied = false
@@ -31,13 +30,8 @@ struct SettingsView: View {
                     } label: {
                         Label("Your loops", systemImage: "arrow.triangle.2.circlepath")
                     }
-                    Toggle(isOn: $careerEnabled) {
-                        Label("Career check-ins", systemImage: "briefcase")
-                    }
                 } header: {
                     Text("Your journal")
-                } footer: {
-                    Text("Career check-ins add a short reflection after studying, applying, or interviewing. Turn them on if that's part of what you're working through.")
                 }
 
                 Section("Theme") {

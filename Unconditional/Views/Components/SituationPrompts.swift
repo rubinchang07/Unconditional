@@ -17,6 +17,9 @@ struct SituationPrompts: View {
     static let all: [Situation] = [
         Situation(title: "A rejection", symbol: "envelope.open",
                   prompt: "What happened:\n\nWhat it felt like it said about me:\n\nWhat else it could mean:\n\n"),
+        // Replaces the separate career check-in: same questions, now an ordinary entry.
+        Situation(title: "About work or school", symbol: "briefcase",
+                  prompt: "What I was doing (studying, applying, an interview, a setback):\n\nWhat I learned:\n\nWhat was interesting, even a little:\n\nHow much I enjoyed the work itself, apart from how it went:\n\n"),
         Situation(title: "A hard study session", symbol: "book",
                   prompt: "What I was working on:\n\nWhere it got hard:\n\nWhat I learned anyway, even a little:\n\n"),
         Situation(title: "Feeling behind", symbol: "hourglass",

@@ -34,8 +34,8 @@ struct TodayView: View {
     @State private var showBreathing = false
     @State private var showGrounding = false
     @State private var showTension = false
+    @State private var showSteps = false
     @State private var showReset = false
-    @State private var showCareer = false
     @State private var showSettings = false
     @State private var showValues = false
     @State private var saveFailed = false
@@ -56,7 +56,6 @@ struct TodayView: View {
     /// Becomes true the first time you hold the orb, and the hint under it goes away for good.
     @AppStorage("hasHeldOrb") private var hasHeldOrb = false
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
-    @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
 
     private var hasContent: Bool {
         if recorder.isRecording { return false }
@@ -122,8 +121,8 @@ struct TodayView: View {
             .sheet(isPresented: $showBreathing) { BreathingView() }
             .sheet(isPresented: $showGrounding) { GroundingView() }
             .sheet(isPresented: $showTension) { TensionReleaseView() }
+            .sheet(isPresented: $showSteps) { StepPathsView() }
             .fullScreenCover(isPresented: $showReset) { ThoughtResetView() }
-            .sheet(isPresented: $showCareer) { CareerReflectionView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(item: $savedGood) { entry in GoodMomentSheet(entry: entry) }
             .alert("couldn't save just now", isPresented: $saveFailed) {
@@ -185,9 +184,6 @@ struct TodayView: View {
             Spacer(minLength: 12)
 
             VStack(spacing: 18) {
-            // Shows up only when there's a tiny step to ask about.
-            TinyStepFollowUp()
-
             Button("Check in") {
                 good = false
                 go(to: .choose)
@@ -216,9 +212,7 @@ struct TodayView: View {
                     Button("5-4-3-2-1 grounding", systemImage: "hand.raised") { showGrounding = true }
                     Button("Release tension", systemImage: "figure.cooldown") { showTension = true }
                 }
-                if careerEnabled {
-                    Button("Career check-in", systemImage: "briefcase") { showCareer = true }
-                }
+                Button("One step at a time", systemImage: "shoeprints.fill") { showSteps = true }
             } label: {
                 Label("more", systemImage: "ellipsis.circle")
                     .font(.subheadline)
@@ -967,52 +961,6 @@ struct WinReminderView: View {
             reminder = reminders.randomElement()
             win = wins.randomElement()
         }
-    }
-}
-
-/// Follows up on tiny steps: did you give it a go? Effort is what counts here.
-struct TinyStepFollowUp: View {
-    @Environment(\.modelContext) private var context
-    @Query(filter: #Predicate<TinyStep> { $0.outcome == nil }, sort: \TinyStep.createdAt)
-    private var steps: [TinyStep]
-
-    /// Only steps from more than an hour ago, so it doesn't ask right away.
-    private var due: TinyStep? {
-        steps.first { $0.isOpen && $0.createdAt < Date.now.addingTimeInterval(-3600) }
-    }
-
-    var body: some View {
-        if let step = due {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Earlier you picked a tiny step")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tint)
-                Text(step.text)
-                    .font(.system(.body, design: .serif))
-                Text("Did you give it a go? It doesn't matter how it went.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 10) {
-                    Button("I tried") { resolve(step, outcome: "tried") }
-                        .buttonStyle(.borderedProminent)
-                    Button("Not yet") {
-                        withAnimation { step.snoozedUntil = Calendar.current.startOfDay(for: .now).addingTimeInterval(86_400) }
-                        try? context.save()
-                    }
-                    .buttonStyle(.bordered)
-                    Button("Let it go") { resolve(step, outcome: "letGo") }
-                        .buttonStyle(.bordered)
-                }
-                .font(.subheadline)
-            }
-            .paperCard(padding: 16)
-            .transition(.opacity)
-        }
-    }
-
-    private func resolve(_ step: TinyStep, outcome: String) {
-        withAnimation { step.outcome = outcome }
-        try? context.save()
     }
 }
 

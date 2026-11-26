@@ -21,6 +21,11 @@ struct MapView: View {
     @State private var selectedLink: MapLink?
     /// A dotted guess you tapped, shown with why the app suggested it.
     @State private var selectedHint: Suggestion?
+    /// Lean the map back for a 2.5D view, or keep it flat. Remembered.
+    @AppStorage("mapTilted") private var tilted = true
+    /// While you're pulling a thread or moving something, the map lies flat so it's easy to aim.
+    @State private var handsOn = false
+    @State private var spin = 0.0
 
     /// Entries needed before the map has enough to go on.
     static let entriesNeeded = 5
@@ -42,6 +47,11 @@ struct MapView: View {
                     MapWeb(loops: shown, values: values, links: links.filter(\.isConfirmed),
                            hints: suggestions.filter { shown.contains($0.a) && shown.contains($0.b) },
                            color: color(for:), onSelect: { selected = $0 },
+                           tilt: tilted && !handsOn ? 0.8 : 0, spin: spin,
+                           onHandsOn: { on in
+                               withAnimation(.spring(duration: 0.45, bounce: 0.15)) { handsOn = on }
+                           },
+                           onSpin: { spin = $0 },
                            selectedLink: $selectedLink, selectedHint: $selectedHint)
                         .aspectRatio(1, contentMode: .fit)
                         .paperCard()
@@ -63,10 +73,18 @@ struct MapView: View {
                     }
 
                     HStack(alignment: .top) {
-                        Text("Pull a thread from a loop onto another loop or a value to tie them. Tap a knot for how connected, or pull it off to untie. Dotted threads are the app's guesses: trace one, or pull its sparkle away.")
+                        Text("Slide sideways on empty space to turn the map. Pull a thread from a loop onto another loop or a value to tie them; the map lies flat while you aim. Tap a knot for how connected, or pull it off to untie. Dotted threads are the app's guesses: trace one, or pull its sparkle away.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .trailing, spacing: 6) {
+                        Button(tilted ? "lie flat" : "lean back") {
+                            withAnimation(.spring(duration: 0.6, bounce: 0.15)) {
+                                tilted.toggle()
+                                if !tilted { spin = 0 }
+                            }
+                        }
+                        .font(.footnote)
                         // Hand placement back to the map.
                         if values.contains(where: { $0.mapX != nil }) {
                             Button("tidy up") {
@@ -75,6 +93,7 @@ struct MapView: View {
                                 }
                             }
                             .font(.footnote)
+                        }
                         }
                     }
 
@@ -239,7 +258,7 @@ enum MapNode: Equatable {
 /// Everything here is touch: pull a thread out of a loop and drop it on another
 /// loop or a value to tie it; tap a knot to say how connected; pull a knot off
 /// its thread to untie it.
-private struct MapWeb: View {
+private struct MapWeb: View, Animatable {
     @Environment(\.modelContext) private var context
     let loops: [Loop]
     let values: [PersonalValue]
@@ -247,6 +266,20 @@ private struct MapWeb: View {
     let hints: [MapView.Suggestion]
     let color: (Loop) -> Color
     let onSelect: (Loop) -> Void
+    /// How far the map leans back, in radians: 0 is flat, about 0.8 is like a tabletop.
+    var tilt: Double = 0
+    /// How far the map has been turned, in radians.
+    var spin: Double = 0
+    /// Lets SwiftUI ease tilt and spin smoothly, redrawing every frame in between.
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(tilt, spin) }
+        set { tilt = newValue.first; spin = newValue.second }
+    }
+    /// True while a finger is working on something (a thread, a knot, a value), so the
+    /// map can lie flat and hold still; false when it lets go.
+    var onHandsOn: (Bool) -> Void = { _ in }
+    /// Turning the map: called with the new angle while you drag on empty space.
+    var onSpin: (Double) -> Void = { _ in }
     /// The thread whose knot you tapped, or just tied. Its slider shows under the map.
     @Binding var selectedLink: MapLink?
     @Binding var selectedHint: MapView.Suggestion?
@@ -268,6 +301,11 @@ private struct MapWeb: View {
     @State private var caught: PersistentIdentifier?
     @State private var tiedCount = 0
     @State private var untiedCount = 0
+    /// The angle when a turn began.
+    @State private var spinStart: Double?
+    /// The value layout, worked out only when something it depends on changes,
+    /// not on every frame of a turn or a tilt.
+    @State private var cache = LayoutCache()
 
     /// How far a knot has to be pulled before the thread lets go.
     private let snapDistance: CGFloat = 70
@@ -280,9 +318,15 @@ private struct MapWeb: View {
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             let outer = min(size.width, size.height) / 2 - 46
             let auto = frozenLayout.flatMap { $0.count == values.count ? $0 : nil }
-                ?? MapLayout.spread(values: values, loops: loops, links: links, center: center, outer: outer)
-            let positions = values.indices.map { place(values[$0], auto: auto[$0], center: center, outer: outer) }
-            let loopSpots = loops.indices.map { point($0, of: loops.count, radius: outer, center: center) }
+                ?? cache.points(for: layoutKey(size)) {
+                    MapLayout.spread(values: values, loops: loops, links: links, center: center, outer: outer)
+                }
+            let projector = MapProjector(center: center, outer: outer, tilt: tilt, spin: spin)
+            // Everything is placed on a flat plane first, then seen at an angle.
+            let planePositions = values.indices.map { place(values[$0], auto: auto[$0], center: center, outer: outer, projector: projector) }
+            let planeLoops = loops.indices.map { point($0, of: loops.count, radius: outer, center: center) }
+            let positions = planePositions.map(projector.project)
+            let loopSpots = planeLoops.map(projector.project)
             let spot: (MapNode) -> CGPoint? = { node in
                 switch node {
                 case .loop(let loop): loops.firstIndex(of: loop).map { loopSpots[$0] }
@@ -292,9 +336,18 @@ private struct MapWeb: View {
 
             ZStack {
                 Canvas { ctx, _ in
-                    // A faint guide ring, like pencil on paper.
-                    let ring = Path(ellipseIn: CGRect(x: center.x - outer, y: center.y - outer, width: outer * 2, height: outer * 2))
-                    ctx.stroke(ring, with: .color(.secondary.opacity(0.12)), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                    // Faint guide rings, like pencil on paper, seen at the same angle as everything else.
+                    for share in [1.0, 0.55] {
+                        var ring = Path()
+                        for i in 0...72 {
+                            let angle = Double(i) / 72 * 2 * .pi
+                            let p = projector.project(CGPoint(x: center.x + outer * share * cos(angle),
+                                                              y: center.y + outer * share * sin(angle)))
+                            if i == 0 { ring.move(to: p) } else { ring.addLine(to: p) }
+                        }
+                        ctx.stroke(ring, with: .color(.secondary.opacity(share == 1 ? 0.14 : 0.08)),
+                                   style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                    }
 
                     // The app's guesses: dotted and faint. Brighter while you pull from one of their loops.
                     for hint in hints {
@@ -345,6 +398,16 @@ private struct MapWeb: View {
                         selectedHint = nil
                     }
                 }
+                // Sliding sideways on empty space turns the map, like spinning a model of the planets.
+                .gesture(
+                    DragGesture(minimumDistance: 6)
+                        .onChanged { drag in
+                            let start = spinStart ?? spin
+                            if spinStart == nil { spinStart = start }
+                            onSpin(start + Double(drag.translation.width) / 140)
+                        }
+                        .onEnded { _ in spinStart = nil }
+                )
 
                 // Hints: a small dot in the middle to tap (why?) or pull away (not really).
                 ForEach(hints, id: \.id) { hint in
@@ -402,6 +465,7 @@ private struct MapWeb: View {
                 ForEach(Array(values.enumerated()), id: \.element.id) { index, value in
                     let isDragging = dragging?.id == value.persistentModelID
                     let isTarget = hovering == .value(value)
+                    let depth = projector.scale(at: planePositions[index])
                     Text(value.name)
                         .font(.caption2)
                         .lineLimit(1)
@@ -417,16 +481,21 @@ private struct MapWeb: View {
                             $0.scaleEffect(isDragging || isTarget ? 1.12 : caught == value.persistentModelID ? 1.2 : 1)
                                 .shadow(color: .black.opacity(isDragging ? 0.15 : 0), radius: 6, y: 3)
                         }
-                        .opacity(isDragging || isTarget ? 1 : presence(value.persistentModelID))
+                        // Nearer things are a little bigger and clearer; farther ones recede.
+                        .scaleEffect(depth)
+                        .opacity((isDragging || isTarget ? 1 : presence(value.persistentModelID)) * projector.clarity(depth))
                         .position(positions[index])
                         // One gesture for both: a touch that barely moves is a tap (focus),
                         // anything more is a drag.
                         .gesture(
-                            DragGesture(minimumDistance: 0)
+                            DragGesture(minimumDistance: 0, coordinateSpace: .named("map"))
                                 .onChanged { drag in
                                     let moved = hypot(drag.translation.width, drag.translation.height)
                                     guard moved > 4 || dragging != nil else { return }
-                                    if frozenLayout == nil { frozenLayout = auto }
+                                    if frozenLayout == nil {
+                                        frozenLayout = auto
+                                        onHandsOn(true)
+                                    }
                                     dragging = (value.persistentModelID, drag.translation)
                                 }
                                 .onEnded { drag in
@@ -435,14 +504,17 @@ private struct MapWeb: View {
                                         toggleFocus(value.persistentModelID)
                                         return
                                     }
-                                    let p = place(value, auto: auto[index], center: center, outer: outer, includingDrag: false)
-                                    let end = CGPoint(x: p.x + drag.translation.width, y: p.y + drag.translation.height)
+                                    onHandsOn(false)
+                                    let p = place(value, auto: auto[index], center: center, outer: outer,
+                                                  projector: projector, includingDrag: false)
+                                    let delta = projector.planeDelta(drag.translation)
+                                    let end = CGPoint(x: p.x + delta.width, y: p.y + delta.height)
                                     let spot = MapLayout.clamp(end, center: center, limit: outer * MapLayout.dragLimit)
                                     value.mapX = Double((spot.x - center.x) / outer)
                                     value.mapY = Double((spot.y - center.y) / outer)
                                 }
                         )
-                        .zIndex(isDragging ? 1 : 0)
+                        .zIndex(isDragging ? 10 : Double(depth))
                         .sensoryFeedback(.selection, trigger: isDragging)
                         .accessibilityAddTraits(focus == value.persistentModelID ? [.isButton, .isSelected] : .isButton)
                         .accessibilityHint("Tap to light up its connections. Drag to move it on your map.")
@@ -452,6 +524,7 @@ private struct MapWeb: View {
                 ForEach(Array(loops.enumerated()), id: \.element.id) { index, loop in
                     let isTarget = hovering == .loop(loop)
                     let isSource = pulling?.from == loop
+                    let depth = projector.scale(at: planeLoops[index])
                     VStack(spacing: 4) {
                         // Loops are rings here too, matching Patterns.
                         MiniRing(color: color(loop))
@@ -466,8 +539,10 @@ private struct MapWeb: View {
                             .frame(width: 84)
                     }
                     .contentShape(Rectangle())
-                    .opacity(isTarget || isSource ? 1 : presence(loop.persistentModelID))
+                    .scaleEffect(depth)
+                    .opacity((isTarget || isSource ? 1 : presence(loop.persistentModelID)) * projector.clarity(depth))
                     .position(loopSpots[index])
+                    .zIndex(Double(depth))
                     // Tap: light up its connections (a second tap opens it).
                     // Pull: a thread comes out, to drop on another loop or a value.
                     .gesture(
@@ -475,6 +550,7 @@ private struct MapWeb: View {
                             .onChanged { drag in
                                 let moved = hypot(drag.translation.width, drag.translation.height)
                                 guard moved > 8 || pulling != nil else { return }
+                                if pulling == nil { onHandsOn(true) }
                                 pulling = (loop, drag.location)
                                 let target = nearest(to: drag.location, excluding: loop, loopSpots: loopSpots, positions: positions)
                                 if target != hovering { hovering = target }
@@ -489,6 +565,7 @@ private struct MapWeb: View {
                                     }
                                     return
                                 }
+                                onHandsOn(false)
                                 if let hovering { tie(loop, to: hovering) }
                             }
                     )
@@ -595,6 +672,7 @@ private struct MapWeb: View {
             .onChanged { drag in
                 let moved = hypot(drag.translation.width, drag.translation.height)
                 guard moved > 6 || tugging != nil else { return }
+                if tugging == nil { onHandsOn(true) }
                 tugging = (id, drag.translation)
             }
             .onEnded { drag in
@@ -602,6 +680,7 @@ private struct MapWeb: View {
                     onTap()
                     return
                 }
+                onHandsOn(false)
                 let moved = hypot(drag.translation.width, drag.translation.height)
                 if moved > snapDistance {
                     tugging = nil
@@ -697,14 +776,16 @@ private struct MapWeb: View {
     /// Where a value is drawn: where you put it, or where the map placed it,
     /// plus any drag in progress.
     private func place(_ value: PersonalValue, auto: CGPoint, center: CGPoint, outer: CGFloat,
-                       includingDrag: Bool = true) -> CGPoint {
+                       projector: MapProjector, includingDrag: Bool = true) -> CGPoint {
         var p = auto
         if let x = value.mapX, let y = value.mapY {
             p = CGPoint(x: center.x + CGFloat(x) * outer, y: center.y + CGFloat(y) * outer)
         }
         if includingDrag, let dragging, dragging.id == value.persistentModelID {
-            p.x += dragging.offset.width
-            p.y += dragging.offset.height
+            // The finger moves on screen; turn that back into a move on the (possibly turned) map.
+            let delta = projector.planeDelta(dragging.offset)
+            p.x += delta.width
+            p.y += delta.height
             // Held inside the map while dragging, so letting go never makes it jump.
             p = MapLayout.clamp(p, center: center, limit: outer * MapLayout.dragLimit)
         }
@@ -715,6 +796,76 @@ private struct MapWeb: View {
         guard count > 0 else { return center }
         let angle = -Double.pi / 2 + 2 * Double.pi * (Double(index) + offset) / Double(count)
         return CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
+    }
+
+    /// Everything the value layout depends on. When this text is unchanged, the last layout is reused.
+    private func layoutKey(_ size: CGSize) -> String {
+        var key = "\(Int(size.width))x\(Int(size.height))"
+        for value in values {
+            key += "|v\(value.persistentModelID.hashValue):\(value.mapX ?? -9):\(value.mapY ?? -9):\(value.name)"
+        }
+        for loop in loops { key += "|l\(loop.persistentModelID.hashValue):\(loop.name):\(loop.entries.count)" }
+        for link in links { key += "|k\(link.persistentModelID.hashValue):\(link.strength)" }
+        return key
+    }
+}
+
+/// Remembers the last value layout. A class, so updating it while drawing
+/// doesn't count as a change that would redraw the view again.
+final class LayoutCache {
+    private var key = ""
+    private var points: [CGPoint] = []
+
+    func points(for key: String, make: () -> [CGPoint]) -> [CGPoint] {
+        if key != self.key {
+            points = make()
+            self.key = key
+        }
+        return points
+    }
+}
+
+// MARK: - Seeing the map at an angle
+
+/// Turns the flat map into a 2.5D view: turned by `spin`, then leaned back by `tilt`
+/// with a little perspective, so the far side is smaller and fainter. Labels are
+/// only moved and scaled, never slanted, so they always read upright.
+struct MapProjector {
+    let center: CGPoint
+    let outer: CGFloat
+    let tilt: Double
+    let spin: Double
+
+    /// How far away the viewer is. Larger is a gentler perspective.
+    private var focal: CGFloat { max(outer, 1) * 3.2 }
+
+    private func turned(_ p: CGPoint) -> CGPoint {
+        let x = p.x - center.x, y = p.y - center.y
+        return CGPoint(x: x * cos(spin) - y * sin(spin), y: x * sin(spin) + y * cos(spin))
+    }
+
+    /// Bigger than 1 for the near side, smaller for the far side. Exactly 1 when flat.
+    func scale(at p: CGPoint) -> CGFloat {
+        let depth = -turned(p).y * sin(tilt) // the top of the map leans away
+        return focal / max(focal + depth, 1)
+    }
+
+    /// Where a point on the map lands on screen.
+    func project(_ p: CGPoint) -> CGPoint {
+        let r = turned(p)
+        let s = scale(at: p)
+        return CGPoint(x: center.x + r.x * s, y: center.y + r.y * cos(tilt) * s)
+    }
+
+    /// A move on screen, turned back into a move on the map (close enough for dragging).
+    func planeDelta(_ move: CGSize) -> CGSize {
+        let x = move.width, y = move.height / max(cos(tilt), 0.3)
+        return CGSize(width: x * cos(spin) + y * sin(spin), height: -x * sin(spin) + y * cos(spin))
+    }
+
+    /// Far things fade a little, like distance.
+    func clarity(_ scale: CGFloat) -> Double {
+        min(1, max(0.45, 1 - Double(1 - scale) * 2.2))
     }
 }
 

@@ -278,53 +278,6 @@ struct FloatingOrbs: View {
     }
 }
 
-// MARK: - A constellation of check-ins
-
-/// Each day you checked in this month is a soft point of light, joined to the
-/// next by a faint line. Days without a check-in simply aren't drawn, so
-/// there's never a gap to look at.
-struct CheckInConstellation: View {
-    let days: [Date]
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { timeline in
-            let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-            Canvas { ctx, size in
-                let points = days.sorted().map { point(for: $0, in: size) }
-                var line = Path()
-                for (i, p) in points.enumerated() {
-                    if i == 0 { line.move(to: p) } else { line.addLine(to: p) }
-                }
-                ctx.stroke(line, with: .style(TintShapeStyle.tint.opacity(0.18)), lineWidth: 1)
-                for (i, p) in points.enumerated() {
-                    let twinkle = 0.65 + 0.35 * sin(t * 0.8 + Double(i) * 1.3)
-                    ctx.drawLayer { layer in
-                        layer.addFilter(.blur(radius: 6))
-                        layer.fill(Circle().path(in: Gooey.rect(p, 9)), with: .style(TintShapeStyle.tint.opacity(0.35 * twinkle)))
-                    }
-                    ctx.fill(Circle().path(in: Gooey.rect(p, 3)), with: .style(TintShapeStyle.tint.opacity(twinkle)))
-                }
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(days.count) check-in day\(days.count == 1 ? "" : "s") this month")
-    }
-
-    /// Left to right through the month, with a steady, made-up height for each day
-    /// so the same month always draws the same shape.
-    private func point(for day: Date, in size: CGSize) -> CGPoint {
-        let calendar = Calendar.current
-        let dayNumber = calendar.component(.day, from: day)
-        let daysInMonth = calendar.range(of: .day, in: .month, for: day)?.count ?? 30
-        let across: CGFloat = CGFloat(dayNumber - 1) / CGFloat(max(daysInMonth - 1, 1))
-        let x: CGFloat = 16 + (size.width - 32) * across
-        let wave: Double = sin(Double(dayNumber) * 2.39996) * 0.5 + 0.5 // the golden angle, for an even scatter
-        let y: CGFloat = 20 + (size.height - 40) * CGFloat(wave)
-        return CGPoint(x: x, y: y)
-    }
-}
-
 // MARK: - Dispersing into light
 
 /// The orb that ends a "calm your body" exercise: when `dispersed` turns true,

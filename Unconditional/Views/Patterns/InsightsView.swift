@@ -7,7 +7,8 @@ import SwiftData
 struct InsightsView: View {
     @Query(sort: \Entry.createdAt) private var entries: [Entry]
     @Query(sort: \Reframe.createdAt) private var reframes: [Reframe]
-    @AppStorage(CareerReflection.enabledKey) private var careerEnabled = false
+    /// Career check-ins became an ordinary check-in starting point. Older ones stay readable here.
+    @Query private var careerReflections: [CareerReflection]
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
 
     var body: some View {
@@ -55,7 +56,7 @@ struct InsightsView: View {
                 } label: {
                     Label("Weekly review", systemImage: "tray")
                 }
-                if careerEnabled {
+                if !careerReflections.isEmpty {
                     NavigationLink {
                         CareerHistoryView()
                     } label: {

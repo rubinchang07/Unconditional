@@ -248,3 +248,49 @@ struct VisibleLoopsTests {
         #expect(shown.count == MapLayout.loopLimit)
     }
 }
+
+/// Seeing the map at an angle.
+struct MapProjectorTests {
+    let center = CGPoint(x: 100, y: 100)
+
+    @Test("Flat and unturned, the map is exactly as laid out")
+    func flatIsIdentity() {
+        let flat = MapProjector(center: center, outer: 80, tilt: 0, spin: 0)
+        let p = CGPoint(x: 140, y: 60)
+        #expect(flat.project(p) == p)
+        #expect(flat.scale(at: p) == 1)
+    }
+
+    @Test("Leaned back, the far side is smaller and the near side bigger")
+    func perspective() {
+        let tilted = MapProjector(center: center, outer: 80, tilt: 0.8, spin: 0)
+        let far = CGPoint(x: 100, y: 20), near = CGPoint(x: 100, y: 180)
+        #expect(tilted.scale(at: far) < 1)
+        #expect(tilted.scale(at: near) > 1)
+        #expect(tilted.clarity(tilted.scale(at: far)) < 1)
+        #expect(tilted.clarity(tilted.scale(at: near)) == 1)
+    }
+
+    @Test("A drag on screen moves a value the same way on a turned map")
+    func dragFollowsFinger() {
+        let turned = MapProjector(center: center, outer: 80, tilt: 0, spin: 0.9)
+        let start = CGPoint(x: 120, y: 90)
+        let move = CGSize(width: 15, height: -10)
+        let delta = turned.planeDelta(move)
+        let moved = turned.project(CGPoint(x: start.x + delta.width, y: start.y + delta.height))
+        let before = turned.project(start)
+        #expect(abs(moved.x - before.x - move.width) < 0.001)
+        #expect(abs(moved.y - before.y - move.height) < 0.001)
+    }
+}
+
+/// Footprints soften with time but never vanish.
+struct FootstepTests {
+    @Test("A new print is crisp and an old one stays visible")
+    func softness() {
+        #expect(Footstep.softness(age: 0) == 1)
+        #expect(Footstep.softness(age: 15) < 1)
+        #expect(Footstep.softness(age: 400) == Footstep.softness(age: 30))
+        #expect(Footstep.softness(age: 400) > 0.5)
+    }
+}
