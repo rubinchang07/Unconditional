@@ -26,6 +26,25 @@ struct FeelingWordsTests {
         #expect(Set(first) != Set(next))
     }
 
+    @Test("A little heavier and a lot heavier offer different words")
+    func strengths() {
+        let little = FeelingWords.related(to: "tired", leaning: -0.3)
+        let lot = FeelingWords.related(to: "tired", leaning: -0.9)
+        #expect(little.allSatisfy(FeelingWords.heavyMild.contains))
+        #expect(lot.allSatisfy(FeelingWords.heavyStrong.contains))
+        #expect(Set(little).isDisjoint(with: lot))
+        #expect(Set(FeelingWords.light).count == FeelingWords.light.count)
+        #expect(Set(FeelingWords.heavy).count == FeelingWords.heavy.count)
+    }
+
+    @Test("Each bubble looks a little different, and the same word always looks the same")
+    func shades() {
+        let a = FeelingWords.bubbleShade(index: 0, word: "calm")
+        let b = FeelingWords.bubbleShade(index: 1, word: "warm")
+        #expect(a.hue != b.hue)
+        #expect(FeelingWords.bubbleShade(index: 0, word: "calm").hue == a.hue)
+    }
+
     @Test("A small slide is in between, and offers both sides")
     func inBetween() {
         #expect(FeelingWords.describe(0.05) == "in between")

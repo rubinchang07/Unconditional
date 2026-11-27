@@ -1,14 +1,16 @@
 import SwiftUI
 import SwiftData
 
-/// A short CBT reframe in three steps. The fuller thought record (what happened,
-/// evidence for and against, a small step) is tucked under "Go deeper".
-/// Works for a new reframe or editing an existing one.
+/// A short CBT reframe in two quiet screens, one thing to write on each:
+/// 1. the thought, and how heavy it feels
+/// 2. what you'd tell a friend, and how heavy it feels now
+/// Older reframes keep anything they had (evidence, a small step), untouched.
 struct ReframeView: View {
     @Environment(\.modelContext) private var context
     let entry: Entry
     var onDone: () -> Void = {}
-    /// When set, the last step offers a self-compassion break.
+    /// Kept so callers don't change. The self-compassion break isn't offered here
+    /// any more, to keep the reframe short.
     var onCompassion: (() -> Void)? = nil
 
     @State private var trigger = ""
@@ -24,24 +26,27 @@ struct ReframeView: View {
     @State private var showBreathing = false
     @State private var saveFailed = false
 
-    /// Three short steps: the thought, another way to see it, and how it feels now.
-    private enum Step: Int, CaseIterable { case thought, another, now }
+    private enum Step: Int, CaseIterable { case thought, another }
     @State private var step: Step = .thought
-    @State private var goDeeper = false
+    @FocusState private var writing: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 20) {
             StepDots(count: Step.allCases.count, current: step.rawValue)
                 .padding(.top, 8)
 
-            Form {
-                switch step {
-                case .thought: thoughtStep
-                case .another: anotherStep
-                case .now: nowStep
+            ScrollView {
+                Group {
+                    switch step {
+                    case .thought: thoughtStep
+                    case .another: anotherStep
+                    }
                 }
+                .id(step)
+                .transition(.opacity)
+                .padding(.top, 12)
             }
-            .scrollContentBackground(.hidden)
+            .scrollIndicators(.hidden)
 
             HStack {
                 if step != .thought {
@@ -50,28 +55,24 @@ struct ReframeView: View {
                         .frame(minWidth: 70, minHeight: 44)
                 }
                 Spacer()
-                if step == .now {
+                if step == .another {
                     Button("Save", action: save).buttonStyle(.paper).frame(maxWidth: 200)
                 } else {
                     Button("Next") { go(1) }.buttonStyle(.paper).frame(maxWidth: 200)
                 }
             }
-            .padding(.horizontal, 20)
             .padding(.bottom, 16)
         }
+        .padding(.horizontal, 20)
         .navigationTitle("reframe")
         .themedBackground()
-        .paperList()
         .scrollDismissesKeyboard(.interactively)
         .keyboardDoneButton()
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: load)
         .onChange(of: distressBefore) { old, new in
-            // Keep "after" following "before" until you've looked at the thought.
+            // "Now" starts where "before" was, until you move it.
             if distressAfter == old { distressAfter = new }
-        }
-        .onChange(of: beliefBefore) { old, new in
-            if beliefAfter == old { beliefAfter = new }
         }
         .sheet(isPresented: $showBreathing) { BreathingView() }
         .alert("couldn't save just now", isPresented: $saveFailed) {
@@ -81,80 +82,64 @@ struct ReframeView: View {
         }
     }
 
-    // MARK: - Step 1: the thought
+    // MARK: - 1. The thought
 
-    @ViewBuilder
     private var thoughtStep: some View {
-        Section {
-            TextField("What's the thought?", text: $coreBelief, axis: .vertical)
-                .font(.system(.body, design: .serif))
-        } header: {
-            Text("The thought")
-        }
-        Section {
-            RatingSlider(title: "How much do you believe it?", value: $beliefBefore,
-                         range: 0...100, step: 5, lowLabel: "Not at all", highLabel: "Completely",
-                         valueText: { "\(Int($0))%" })
-            RatingSlider(title: "How distressed do you feel?", value: $distressBefore,
-                         lowLabel: "Calm", highLabel: "Overwhelmed")
+        VStack(alignment: .leading, spacing: 28) {
+            Text("What's the thought?")
+                .font(.system(.title2, design: .serif).weight(.semibold))
+                .softCase()
+            TextField("In your own words", text: $coreBelief, axis: .vertical)
+                .font(.system(.title3, design: .serif))
+                .lineLimit(2...6)
+                .focused($writing)
+                .paperCard(padding: 16)
+            heaviness("How heavy does it feel?", value: $distressBefore)
             if distressBefore >= 7 {
                 Button("That's a lot. Breathe for a minute first?", systemImage: "wind") { showBreathing = true }
+                    .font(.subheadline)
             }
-        } footer: {
-            Text("Somewhere in between is normal. There's no right number.")
         }
     }
 
-    // MARK: - Step 2: another way to see it
+    // MARK: - 2. Another way to see it
 
-    @ViewBuilder
     private var anotherStep: some View {
-        Section {
-            TextField("What would you tell a friend who thought this?", text: $kinderRead, axis: .vertical)
+        VStack(alignment: .leading, spacing: 28) {
+            Text("What would you tell a friend?")
+                .font(.system(.title2, design: .serif).weight(.semibold))
+                .softCase()
+            if !coreBelief.isEmpty {
+                Text("“\(coreBelief)”")
+                    .font(.system(.body, design: .serif))
+                    .italic()
+                    .foregroundStyle(.secondary)
+            }
+            TextField("Something kinder, and a little more accurate", text: $kinderRead, axis: .vertical)
+                .font(.system(.title3, design: .serif))
                 .lineLimit(3...8)
-        } header: {
-            Text("Another way to see it")
-        } footer: {
-            Text("Not forced positivity. Just something kinder and a little more accurate.")
-        }
-        Section {
-            DisclosureGroup("Go deeper", isExpanded: $goDeeper) {
-                TextField("What happened, as a camera would see it", text: $trigger, axis: .vertical)
-                TextField("What makes the thought feel true?", text: $evidenceFor, axis: .vertical)
-                TextField("What doesn't fit it?", text: $evidenceAgainst, axis: .vertical)
-                TextField("One small step, under 10 minutes", text: $smallStep, axis: .vertical)
-            }
-        } footer: {
-            if goDeeper {
-                Text("Treat the thought like a guess, not a fact. Feelings count as information, not proof.")
-            }
+                .focused($writing)
+                .paperCard(padding: 16)
+            heaviness("And now?", value: $distressAfter)
         }
     }
 
-    // MARK: - Step 3: now
-
-    @ViewBuilder
-    private var nowStep: some View {
-        Section {
-            DistressOrbs(before: distressBefore, after: distressAfter, maxSize: 100)
-            RatingSlider(title: "How distressed do you feel now?", value: $distressAfter,
-                         lowLabel: "Calm", highLabel: "Overwhelmed")
-            RatingSlider(title: "How much do you believe it now?", value: $beliefAfter,
-                         range: 0...100, step: 5, lowLabel: "Not at all", highLabel: "Completely",
-                         valueText: { "\(Int($0))%" })
-        } header: {
-            Text("After looking at it")
-        } footer: {
-            Text("Even a small shift counts. So does no shift at all.")
-        }
-        if let onCompassion {
-            Section {
-                Button("Add a self-compassion break", systemImage: "heart") {
-                    if persist() { onCompassion() }
-                }
-            } footer: {
-                Text("Optional. For when it needs kindness more than logic.")
+    /// One heavy-to-light slider, no numbers on screen.
+    private func heaviness(_ title: String, value: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Slider(value: value, in: 0...10)
+                .accessibilityLabel(title)
+                .accessibilityValue("\(Int(value.wrappedValue.rounded())) out of 10")
+            HStack {
+                Text("light")
+                Spacer()
+                Text("very heavy")
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 

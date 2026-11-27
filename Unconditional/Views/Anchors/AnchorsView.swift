@@ -174,12 +174,10 @@ struct AnchorsView: View {
     // MARK: - Also near the surface: things that made you laugh
 
     /// Light things float. A row of slightly tilted cards, like notes stuck to a fridge.
+    @ViewBuilder
     private var laughsLayer: some View {
-        Layer(title: "things that made you laugh", subtitle: "A joke, a meme, something someone said. Lightness counts too.") {
-            if laughs.isEmpty {
-                Text("Add one with the + when something makes you laugh. It'll be here on a heavier day.")
-                    .foregroundStyle(.secondary)
-            } else {
+        if !laughs.isEmpty {
+            Layer(title: "things that made you laugh", subtitle: "") {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 14) {
                         ForEach(Array(laughs.enumerated()), id: \.element.id) { index, laugh in
@@ -332,9 +330,11 @@ private struct Layer<Content: View>: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(.title2, design: .serif).weight(.semibold))
-                Text(subtitle)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
             content
         }

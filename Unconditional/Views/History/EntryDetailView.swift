@@ -36,8 +36,11 @@ struct EntryDetailView: View {
             Section("Reframe") {
                 if let reframe = entry.reframe {
                     DistressOrbs(before: reframe.distressBefore, after: reframe.distressAfter, maxSize: 90)
-                    BeliefBars(before: reframe.beliefBefore, after: reframe.beliefAfter)
-                        .padding(.vertical, 4)
+                    // Older reframes asked how much you believed the thought; newer ones don't.
+                    if reframe.beliefBefore != reframe.beliefAfter {
+                        BeliefBars(before: reframe.beliefBefore, after: reframe.beliefAfter)
+                            .padding(.vertical, 4)
+                    }
                     LabeledText(title: "The thought", value: reframe.coreBelief)
                     LabeledText(title: "Another way to see it", value: reframe.kinderRead)
                     // The deeper fields only show when you filled them in.

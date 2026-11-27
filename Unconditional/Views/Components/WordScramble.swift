@@ -12,18 +12,33 @@ struct KeptWord: Identifiable, Equatable {
 /// The feeling words that bubble up after you slide a word, and how a set of
 /// kept words is written into the entry.
 enum FeelingWords {
-    static let heavy = [
-        "tired", "anxious", "stuck", "lonely", "ashamed", "overwhelmed", "behind", "drained",
-        "restless", "sad", "frustrated", "worried", "numb", "small", "scattered", "tense",
-        "disappointed", "afraid", "guilty", "lost", "pressured", "hurt", "bored", "jealous",
-        "unsure", "exhausted", "irritable", "embarrassed", "discouraged", "empty",
+    // Each side comes in two strengths, so a small slide and a big one offer
+    // different words: "a bit off" isn't the same as "overwhelmed".
+    static let heavyMild = [
+        "tired", "unsure", "restless", "bored", "stuck", "worried", "tense", "scattered",
+        "disappointed", "behind", "drained", "irritable", "uneasy", "flat", "distracted",
+        "low", "frustrated", "impatient", "lonely", "sad", "awkward", "pressured",
     ]
-    static let light = [
-        "calm", "hopeful", "proud", "grateful", "curious", "relieved", "rested", "connected",
-        "steady", "content", "excited", "playful", "safe", "capable", "peaceful", "warm",
-        "focused", "energized", "gentle", "free", "loved", "amused", "clear", "brave",
-        "patient", "open", "satisfied", "inspired", "cared for", "glad",
+    static let heavyStrong = [
+        "overwhelmed", "hopeless", "ashamed", "exhausted", "panicked", "devastated", "worthless",
+        "empty", "numb", "crushed", "furious", "terrified", "trapped", "heartbroken", "desperate",
+        "guilty", "afraid", "hurt", "defeated", "jealous", "lost", "embarrassed",
     ]
+    static let lightMild = [
+        "calm", "okay", "steady", "content", "rested", "relieved", "gentle", "patient",
+        "curious", "open", "focused", "settled", "warm", "safe", "clear", "glad", "hopeful",
+        "amused", "comfortable", "satisfied", "cozy", "lighter",
+    ]
+    static let lightStrong = [
+        "joyful", "proud", "grateful", "excited", "inspired", "loved", "energized", "free",
+        "brave", "elated", "delighted", "playful", "connected", "alive", "peaceful", "confident",
+        "capable", "thrilled", "cared for", "radiant", "uplifted", "moved",
+    ]
+    static var heavy: [String] { heavyMild + heavyStrong }
+    static var light: [String] { lightMild + lightStrong }
+
+    /// From here on, a slide counts as strong rather than mild.
+    static let strong = 0.5
 
     /// Below this, a slide is "in between" rather than heavier or lighter.
     static let middle = 0.15
@@ -39,7 +54,13 @@ enum FeelingWords {
                         count: Int = 6, shuffle: Int = 0) -> [String] {
         let key = word.lowercased()
         let pool: [String]
-        if lean <= -middle { pool = heavy } else if lean >= middle { pool = light } else { pool = interleaved }
+        switch lean {
+        case ...(-strong): pool = heavyStrong
+        case ...(-middle): pool = heavyMild
+        case strong...: pool = lightStrong
+        case middle...: pool = lightMild
+        default: pool = interleaved
+        }
         let candidates = pool.filter { $0 != key && !used.contains($0) }
         guard !candidates.isEmpty else { return [] }
 
@@ -52,12 +73,23 @@ enum FeelingWords {
         } else {
             ranked = candidates
         }
+        // Half the closest in meaning, half spread across the rest, so the
+        // words don't all say the same thing.
         let start = (shuffle * count) % ranked.count
-        return (0..<min(count, ranked.count)).map { ranked[(start + $0) % ranked.count] }
+        let rotated = Array(ranked[start...] + ranked[..<start])
+        let near = (count + 1) / 2
+        var picks = Array(rotated.prefix(near))
+        let rest = Array(rotated.dropFirst(near))
+        let wanted = min(count - picks.count, rest.count)
+        if wanted > 0 {
+            let stride = Double(rest.count) / Double(wanted)
+            picks += (0..<wanted).map { rest[Int(Double($0) * stride)] }
+        }
+        return picks
     }
 
     private static var interleaved: [String] {
-        zip(heavy, light).flatMap { [$0, $1] }
+        zip(heavyMild, lightMild).flatMap { [$0, $1] }
     }
 
     /// "heavier, a lot", "lighter, a little", or "in between". Plain words, no numbers.
@@ -92,6 +124,15 @@ enum FeelingWords {
     static func averageLean(_ words: [KeptWord]) -> Double {
         guard !words.isEmpty else { return 0 }
         return words.map(\.lean).reduce(0, +) / Double(words.count)
+    }
+
+    /// A small, steady difference for each bubble: hue, brightness, glow, and size.
+    /// Based on the word, so the same word always looks the same.
+    static func bubbleShade(index: Int, word: String) -> (hue: Double, brightness: Double, glow: CGFloat, size: CGFloat) {
+        let seed = word.unicodeScalars.reduce(index * 31) { ($0 &* 33 &+ Int($1.value)) & 0xFFFF }
+        let a = Double(seed % 100) / 100
+        let b = Double((seed / 100) % 100) / 100
+        return (hue: -28 + 56 * a, brightness: -0.04 + 0.1 * b, glow: CGFloat(4 + 10 * b), size: CGFloat(12 * a))
     }
 
     /// The first word of what was typed, tidied. Nil when nothing was typed.
@@ -299,7 +340,13 @@ struct WordScramble: View {
             ForEach(Array(bubbles.enumerated()), id: \.element) { index, word in
                 let angle = CGFloat(index) / CGFloat(bubbles.count) * 2 * .pi - .pi / 2
                 Button { pick(word) } label: {
-                    WordOrb(word: word, color: FeelingWords.color(for: lastLean * 0.6, palette: palette), size: 76, ink: FeelingWords.ink(on: palette), small: true)
+                    // Each bubble its own shade and glow, like no two feelings are quite alike.
+                    let tint = FeelingWords.bubbleShade(index: index, word: word)
+                    WordOrb(word: word, color: FeelingWords.color(for: lastLean * 0.6, palette: palette), size: 70 + tint.size,
+                            ink: FeelingWords.ink(on: palette), small: true)
+                        .hueRotation(.degrees(tint.hue))
+                        .brightness(tint.brightness)
+                        .shadow(color: FeelingWords.color(for: lastLean, palette: palette).opacity(0.5), radius: tint.glow)
                 }
                 .buttonStyle(.plain)
                 .offset(x: cos(angle) * radius, y: sin(angle) * radius)
