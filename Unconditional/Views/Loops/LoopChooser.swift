@@ -63,6 +63,7 @@ struct LoopChooser: View {
     private func addDraft() {
         let name = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !custom.contains(name) else { return }
+        Keyboard.hide()
         custom.append(name)
         draft = ""
     }

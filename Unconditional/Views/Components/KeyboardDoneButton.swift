@@ -10,10 +10,7 @@ struct KeyboardDoneButton: ViewModifier {
         content.toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Done") {
-                    // Asks whichever text field is active to give up focus, which hides the keyboard.
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
+                Button("Done") { Keyboard.hide() }
             }
         }
     }
@@ -21,4 +18,11 @@ struct KeyboardDoneButton: ViewModifier {
 
 extension View {
     func keyboardDoneButton() -> some View { modifier(KeyboardDoneButton()) }
+}
+
+enum Keyboard {
+    /// Asks whichever text field is active to give up focus, which hides the keyboard.
+    static func hide() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
 }

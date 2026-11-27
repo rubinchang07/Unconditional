@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 /// Common values to start from in the welcome tour. Pick any, or name your own.
-/// They become your values in Anchors and sit in the middle of your map.
+/// They become your values in Anchors and live inside the orb.
 struct ValueChooser: View {
     @Binding var picked: Set<String>
     @State private var draft = ""
@@ -17,7 +17,7 @@ struct ValueChooser: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
                 ForEach(all, id: \.self) { name in
                     let on = picked.contains(name)
                     Button {
@@ -28,8 +28,9 @@ struct ValueChooser: View {
                                 .foregroundStyle(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
                             Text(name)
                                 .font(.subheadline)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.85)
+                                .multilineTextAlignment(.leading)
                             Spacer(minLength: 0)
                         }
                         .padding(.horizontal, 12)
@@ -58,6 +59,7 @@ struct ValueChooser: View {
     private func addDraft() {
         let name = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
+        Keyboard.hide()
         picked.insert(name)
         draft = ""
     }

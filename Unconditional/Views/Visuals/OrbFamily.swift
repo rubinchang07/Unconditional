@@ -130,8 +130,12 @@ struct ValuesBloom: View {
                             Text(value.name)
                                 .font(.caption.weight(selected == value ? .semibold : .regular))
                                 .foregroundStyle(selected == value ? .primary : .secondary)
-                                .fixedSize()
-                                .position(x: point.x, y: point.y + r + 12)
+                                // Wraps instead of running on, and stays inside the screen's edges.
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .frame(width: 110)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .position(x: min(max(point.x, 55), size.width - 55), y: point.y + r + 14)
                                 .opacity(p)
                                 .allowsHitTesting(false)
                         }

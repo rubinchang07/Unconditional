@@ -102,6 +102,7 @@ struct OnboardingView: View {
                     .padding(.top, 24)
                     }
                     .scrollIndicators(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
                     .tag(i)
                 }
             }
@@ -132,6 +133,9 @@ struct OnboardingView: View {
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .animation(.easeInOut(duration: 0.6), value: onLoopsPage)
+        // The keyboard from naming a loop or value never follows you onto the next page.
+        .onChange(of: index) { _, _ in Keyboard.hide() }
+        .keyboardDoneButton()
     }
 
     /// Pages with choices shrink the orb to make room.
