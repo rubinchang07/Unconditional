@@ -174,6 +174,13 @@ struct ThoughtResetView: View {
                         .buttonStyle(.paper)
                         .padding(.bottom, 12)
                         .transition(.opacity)
+                } else {
+                    // The breath is the default, never a wait: skip straight to the words.
+                    Button("show me now") { withAnimation(.calm) { momentDone = true } }
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(minHeight: 44)
+                        .padding(.bottom, 12)
                 }
             }
             .padding(.horizontal, 28)
@@ -181,7 +188,7 @@ struct ThoughtResetView: View {
         .transition(.opacity)
         .task {
             try? await Task.sleep(for: .seconds(reduceMotion ? 2 : ResetWords.breathLength))
-            withAnimation(.calm) { momentDone = true }
+            if !momentDone { withAnimation(.calm) { momentDone = true } }
         }
     }
 

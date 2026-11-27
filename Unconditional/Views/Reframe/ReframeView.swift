@@ -134,19 +134,22 @@ struct ReframeView: View {
         }
     }
 
-    /// One heavy-to-light slider, no numbers on screen.
+    /// One heavy-to-light slider, no numbers on screen. Heavy on the left and light on
+    /// the right, the same way round as the head slider, so nothing has to be flipped
+    /// in your head between screens. The value is still stored as heaviness, 0 to 10.
     private func heaviness(_ title: String, value: Binding<Double>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let lightness = Binding<Double>(get: { 10 - value.wrappedValue }, set: { value.wrappedValue = 10 - $0 })
+        return VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Slider(value: value, in: 0...10)
+            Slider(value: lightness, in: 0...10)
                 .accessibilityLabel(title)
-                .accessibilityValue("\(Int(value.wrappedValue.rounded())) out of 10")
+                .accessibilityValue(value.wrappedValue > 5 ? "heavier" : "lighter")
             HStack {
-                Text("light")
+                Text("heavy")
                 Spacer()
-                Text("very heavy")
+                Text("light")
             }
             .font(.caption)
             .foregroundStyle(.secondary)
