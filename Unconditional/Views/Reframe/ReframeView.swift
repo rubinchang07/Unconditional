@@ -96,7 +96,7 @@ struct ReframeView: View {
                 .lineLimit(2...6)
                 .focused($writing)
                 .paperCard(padding: 16)
-            heaviness("How heavy is it?", value: $distressBefore)
+            heaviness("How heavy does the situation feel?", value: $distressBefore)
             if distressBefore >= 7 {
                 Button("That's a lot. Breathe for a minute first?", systemImage: "wind") { showBreathing = true }
                     .font(.subheadline)
@@ -117,11 +117,11 @@ struct ReframeView: View {
                 .focused($writing)
                 .paperCard(padding: 16)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Seen this way, how heavy is it?")
+                Text("Seen this way, how heavy is the situation?")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Slider(value: $headLight, in: 0...1)
-                    .accessibilityLabel("Seen this way, how heavy is it")
+                    .accessibilityLabel("Seen this way, how heavy is the situation")
                     .accessibilityValue(headLight < 0.5 ? "heavier" : "lighter")
                 HStack {
                     Text("heavy")
