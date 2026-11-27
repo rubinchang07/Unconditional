@@ -847,8 +847,7 @@ struct ReframePromptView: View {
                     if let reframe = entry.reframe {
                         if reframe.hasHeadAndHeart {
                             // Head and heart, side by side for the first time.
-                            HeadAndHeart(head: reframe.headLight >= 0 ? reframe.headLight : reframe.headTrue,
-                                         heart: 1 - reframe.distressBefore / 10) {
+                            HeadAndHeart(head: reframe.headValue, heart: reframe.heartValue) {
                                 withAnimation { step = .win }
                             }
                         } else {

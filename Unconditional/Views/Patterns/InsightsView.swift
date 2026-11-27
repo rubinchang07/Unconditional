@@ -2,14 +2,19 @@ import SwiftUI
 import SwiftData
 
 /// One place for looking back. It opens on a sentence or two about the month,
-/// in plain words. The detailed visuals and your map are a tap further,
-/// for when you want to explore.
+/// in plain words, then head and heart from recent reframes as small waves.
 struct InsightsView: View {
     @Query(sort: \Entry.createdAt) private var entries: [Entry]
     @Query(sort: \Reframe.createdAt) private var reframes: [Reframe]
     /// Career check-ins became an ordinary check-in starting point. Older ones stay readable here.
     @Query private var careerReflections: [CareerReflection]
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
+
+    /// Head-and-heart reframes from the last four weeks, oldest first.
+    private var headAndHeart: [Reframe] {
+        let start = Date.now.addingTimeInterval(-Double(InsightSummary.days) * 86_400)
+        return reframes.filter { $0.hasHeadAndHeart && $0.createdAt >= start && $0.entry != nil }
+    }
 
     var body: some View {
         List {
@@ -33,6 +38,31 @@ struct InsightsView: View {
                 Text("This month")
             } footer: {
                 Text("A description, never a score.")
+            }
+
+            if !headAndHeart.isEmpty {
+                Section {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 10) {
+                            ForEach(headAndHeart) { reframe in
+                                if let entry = reframe.entry {
+                                    NavigationLink { EntryDetailView(entry: entry) } label: {
+                                        TinyWaves(head: reframe.headValue, heart: reframe.heartValue)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .scrollIndicators(.hidden)
+                    // Opens on the newest, at the right end.
+                    .defaultScrollAnchor(.trailing)
+                } header: {
+                    Text("Head and heart lately")
+                } footer: {
+                    Text("Calm waves: they agreed. Wobbly: they were apart. Tap one to see it.")
+                }
             }
 
             Section {
@@ -66,6 +96,25 @@ struct InsightsView: View {
     }
 }
 
+/// One past reframe's head and heart, as a tiny still pair of waves: no labels,
+/// no numbers. Calm when they agreed, wobbly when they were apart.
+struct TinyWaves: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
+    let head: Double
+    let heart: Double
+
+    var body: some View {
+        let colors = orbPalette.colors
+        let gap = HeadAndHeart.gap(head: head, heart: heart)
+        DissonanceWaves(gap: gap, headColor: colors.first ?? .teal, heartColor: colors.last ?? .orange, reduceMotion: true)
+            .frame(width: 64, height: 36)
+            .padding(8)
+            .background(Paper.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(gap >= HeadAndHeart.noticeable ? "Head and heart apart" : "Head and heart in tune")
+    }
+}
+
 /// A sentence or two about the last four weeks, in ordinary words.
 /// Descriptive only: it says what happened, never whether that's good or bad.
 enum InsightSummary {
@@ -77,6 +126,7 @@ enum InsightSummary {
         let recent = entries.filter { $0.createdAt >= start && $0.createdAt <= now }
         // Only older reframes asked heaviness twice; newer ones compare head and heart instead.
         let recentReframes = reframes.filter { $0.createdAt >= start && $0.createdAt <= now && !$0.hasHeadAndHeart }
+        let recentHeadHeart = reframes.filter { $0.createdAt >= start && $0.createdAt <= now && $0.hasHeadAndHeart }
 
         guard recent.count >= 3 else {
             return ["After a few more check-ins, a sentence or two about your month will show up here."]
@@ -99,7 +149,12 @@ enum InsightSummary {
         }
 
         // 2. Reframes, or good moments if there weren't enough reframes to say anything.
-        if recentReframes.count >= 2 {
+        if recentHeadHeart.count >= 2 {
+            let apart = recentHeadHeart.filter { HeadAndHeart.gap(head: $0.headValue, heart: $0.heartValue) >= HeadAndHeart.noticeable }.count
+            result.append(apart * 2 > recentHeadHeart.count
+                ? "When you reframed, your head and heart were often apart. Understanding often arrives first."
+                : "When you reframed, your head and heart mostly agreed.")
+        } else if recentReframes.count >= 2 {
             let before = recentReframes.map(\.distressBefore).reduce(0, +) / Double(recentReframes.count)
             let after = recentReframes.map(\.distressAfter).reduce(0, +) / Double(recentReframes.count)
             result.append(after < before - 0.5

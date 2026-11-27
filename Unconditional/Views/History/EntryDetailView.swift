@@ -37,8 +37,7 @@ struct EntryDetailView: View {
                 if let reframe = entry.reframe {
                     if reframe.hasHeadAndHeart {
                         // Head and heart reframes: the same two waves you saw, held still.
-                        HeadAndHeartStill(head: reframe.headLight >= 0 ? reframe.headLight : reframe.headTrue,
-                                          heart: 1 - reframe.distressBefore / 10)
+                        HeadAndHeartStill(head: reframe.headValue, heart: reframe.heartValue)
                         // Newer reframes don't ask you to write the feeling again: it's the entry above.
                         if !reframe.coreBelief.isEmpty {
                             LabeledText(title: "In your heart", value: reframe.coreBelief)

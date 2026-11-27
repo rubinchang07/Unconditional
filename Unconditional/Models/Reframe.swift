@@ -38,6 +38,11 @@ final class Reframe {
     /// Whether this reframe compares head and heart (newer) rather than before and after.
     var hasHeadAndHeart: Bool { headLight >= 0 || headTrue >= 0 }
 
+    /// The head's answer, 0 heavy to 1 light (older reframes asked how true it seemed instead).
+    var headValue: Double { headLight >= 0 ? headLight : headTrue }
+    /// The heart's answer on the same 0 heavy to 1 light scale.
+    var heartValue: Double { 1 - distressBefore / 10 }
+
     var entry: Entry?
 
     init(trigger: String = "", coreBelief: String = "", kinderRead: String = "", smallStep: String = "", createdAt: Date = .now) {
