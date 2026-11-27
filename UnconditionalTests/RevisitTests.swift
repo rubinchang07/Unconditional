@@ -26,7 +26,8 @@ struct RevisitTests {
         #expect(RevisitView.message(then: 0.6, now: 0.1) == "They've come together. Sometimes it just takes time.")
         #expect(RevisitView.message(then: 0.1, now: 0.1) == "Still in tune.")
         #expect(RevisitView.message(then: 0.7, now: 0.4) == "A little closer than before. Still settling, and that's okay.")
-        #expect(RevisitView.message(then: 0.4, now: 0.5) == "Still settling. Some things take longer, and that's okay.")
+        #expect(RevisitView.message(then: 0.4, now: 0.45) == "Still settling. Some things take longer, and that's okay.")
+        #expect(RevisitView.message(then: 0.3, now: 0.6) == "Further apart than before. Feelings move both ways, and that isn't a step back.")
     }
 
     @Test("The second look survives a backup, and the first is untouched")
