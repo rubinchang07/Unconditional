@@ -108,7 +108,7 @@ struct ReframeView: View {
 
     private var anotherStep: some View {
         VStack(alignment: .leading, spacing: 28) {
-            Label("Now step back. Looking at it logically, how would you describe it?", systemImage: "brain.head.profile")
+            Label("Now step back. Looking at it logically, how would you describe the situation?", systemImage: "brain.head.profile")
                 .font(.system(.title2, design: .serif).weight(.semibold))
                 .softCase()
             TextField("Just the facts, as an outsider might see them", text: $kinderRead, axis: .vertical)

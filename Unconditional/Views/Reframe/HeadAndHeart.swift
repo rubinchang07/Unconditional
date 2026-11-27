@@ -73,6 +73,32 @@ struct HeadAndHeart: View {
     }
 }
 
+/// The same waves, still and small, for looking back at a past reframe.
+struct HeadAndHeartStill: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    let head: Double
+    let heart: Double
+
+    var body: some View {
+        let colors = orbPalette.colors
+        let headColor = colors.first ?? .teal, heartColor = colors.last ?? .orange
+        let gap = HeadAndHeart.gap(head: head, heart: heart)
+        VStack(spacing: 10) {
+            DissonanceWaves(gap: gap, headColor: headColor, heartColor: heartColor, reduceMotion: true)
+                .frame(height: 60)
+            HStack(spacing: 22) {
+                Label("head", systemImage: "circle.fill").foregroundStyle(headColor)
+                Label("heart", systemImage: "circle.fill").foregroundStyle(heartColor)
+            }
+            .font(.caption)
+            .labelStyle(DotLabel())
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(gap >= HeadAndHeart.noticeable ? "Head and heart were apart" : "Head and heart were in tune")
+    }
+}
+
 /// A small colored dot beside a word.
 private struct DotLabel: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {

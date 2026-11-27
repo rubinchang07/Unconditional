@@ -118,7 +118,7 @@ struct TodayView: View {
                     }
                 } else {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Thought reset", systemImage: "leaf") { showReset = true }
+                        Button("i'm spiraling", systemImage: "leaf") { showReset = true }
                     }
                 }
                 if step != .home {

@@ -97,7 +97,7 @@ struct ValueDetailView: View {
                 TextField("Name", text: $value.name)
             }
             Section {
-                TextField("e.g. Asking questions even when I feel behind", text: $value.meaning, axis: .vertical)
+                TextField("For example: Asking questions even when I feel behind", text: $value.meaning, axis: .vertical)
             } header: {
                 Text("What it looks like for me")
             }

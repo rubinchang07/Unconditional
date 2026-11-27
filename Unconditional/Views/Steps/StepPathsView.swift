@@ -506,6 +506,7 @@ struct PathView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(kind == .write ? "What's one small next step?" : "What's a smaller piece of it?")
                     .font(.system(.title3, design: .serif).weight(.semibold))
+                    .softCase()
                 if kind == .smaller {
                     Text(path.nextStep)
                         .font(.system(.callout, design: .serif))
@@ -575,6 +576,7 @@ struct PathView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("What did you do?")
                     .font(.system(.title3, design: .serif).weight(.semibold))
+                    .softCase()
                 Text("Small counts. Opening the document counts. Sending one email counts. How it went doesn't change the print.")
                     .font(.callout)
                     .foregroundStyle(.secondary)

@@ -128,6 +128,13 @@ struct ThoughtResetView: View {
                 Button("work through it") { go(.breathe) }
                     .font(.body.weight(.medium))
                     .frame(minHeight: 44)
+                // Quiet, but always here: the moment it matters most is this one.
+                NavigationLink { SupportView() } label: {
+                    Label("talk to someone", systemImage: "phone")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(minHeight: 44)
             }
             .padding(.bottom, 16)
         }

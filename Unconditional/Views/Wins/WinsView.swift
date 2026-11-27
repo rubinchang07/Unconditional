@@ -67,7 +67,7 @@ struct WinsList: View {
                 Button("Add win", action: add)
                     .disabled(newWin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             } footer: {
-                Text("You tend to discount successes. Logging them is a way of keeping score fairly. Effort counts, even when the outcome isn't there yet.")
+                Text("You tend to discount successes. Logging them keeps the record fair. Effort counts, even when the outcome isn't there yet.")
             }
 
             if wins.isEmpty {
@@ -127,7 +127,7 @@ struct RemindersList: View {
     var body: some View {
         List {
             Section {
-                TextField("e.g. I can feel uncertain and still take one step", text: $newReminder, axis: .vertical)
+                TextField("For example: I can feel uncertain and still take one step", text: $newReminder, axis: .vertical)
                 Button("Add reminder") {
                     context.insert(SavedReminder(text: newReminder.trimmingCharacters(in: .whitespacesAndNewlines)))
                     try? context.save()
@@ -135,12 +135,12 @@ struct RemindersList: View {
                 }
                 .disabled(newReminder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             } footer: {
-                Text("Write them in your own words, or save one from Thought Reset. They can show up after a reframe.")
+                Text("Write them in your own words. They can show up after a reframe.")
             }
 
             if reminders.isEmpty {
                 GentleEmpty(symbol: "bookmark", title: "Words for hard moments",
-                            message: "Things you'd want to hear when it's a lot. Write your own, or save one from a thought reset.")
+                            message: "Things you'd want to hear when it's a lot. Write them in your own words.")
                     .listRowBackground(Color.clear)
             }
 
