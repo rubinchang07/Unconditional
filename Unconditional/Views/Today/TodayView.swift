@@ -26,6 +26,8 @@ struct TodayView: View {
     /// "How does this sit?", 0 heavy to 1 light. Only saved once something set it.
     @State private var lightness = 0.5
     @State private var lightnessSet = false
+    /// Whether the keyboard is showing, so the bottom button can make room for its Done button.
+    @State private var keyboardUp = false
     /// When set, the "kept" sheet for a good moment opens.
     @State private var savedGood: Entry?
 
@@ -135,6 +137,8 @@ struct TodayView: View {
                 }
             }
             .keyboardDoneButton()
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
             .onChange(of: recorder.transcript) { _, spoken in
                 text = textBeforeRecording.isEmpty ? spoken : textBeforeRecording + " " + spoken
             }
@@ -367,8 +371,10 @@ struct TodayView: View {
         Button(title, action: action)
             .buttonStyle(.paper)
             .padding(.top, 14)
-            .padding(.bottom, 8)
+            // With the keyboard up, sit above its Done button instead of under it.
+            .padding(.bottom, keyboardUp ? 56 : 8)
             .background { FadingThemeBar() }
+            .animation(.easeOut(duration: 0.2), value: keyboardUp)
     }
 
     /// The orb is the button: tap to talk, tap to stop. Your words appear under it.
