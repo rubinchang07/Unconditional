@@ -1,26 +1,57 @@
 import SwiftUI
 
+/// How grown the sun at the middle of your map is, from 0 to 1.
+///
+/// It grows with every check-in and every thread you tie, quickly at first
+/// and then more and more slowly. It only ever grows: nothing you do or don't
+/// do shrinks it, and it never shows a number.
+enum SunGrowth {
+    static func amount(checkIns: Int, threads: Int) -> Double {
+        let points = Double(max(checkIns, 0) + 3 * max(threads, 0))
+        return min(1, (points / 400).squareRoot())
+    }
+
+    /// A small red star, then orange, yellow, white, and at last a soft blue.
+    static let stops: [UInt32] = [0xE0664F, 0xF2995A, 0xF6D06B, 0xFFF4E2, 0x9CC2FF]
+
+    static func color(_ growth: Double) -> Color {
+        let g = min(max(growth, 0), 1) * Double(stops.count - 1)
+        let i = min(Int(g), stops.count - 2)
+        return Color(hex: stops[i]).mix(with: Color(hex: stops[i + 1]), by: g - Double(i))
+    }
+}
+
 /// Your guess at a shared root belief, glowing at the middle of the map like a sun.
-/// Before you've written one, it's a dim little star waiting for a guess.
+/// It starts as a small red star and slowly grows and changes color as you
+/// check in and tie threads, the way getting to know yourself adds up.
 struct RootSun: View {
     let root: String
+    var growth: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var hasRoot: Bool { !root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
+        let core = 16 + 34 * growth
+        let glow = core * 3
+        let color = SunGrowth.color(growth)
         VStack(spacing: 5) {
-            ZStack {
-                Circle()
-                    .fill(RadialGradient(colors: [Color(hex: 0xFFD59A).opacity(hasRoot ? 0.55 : 0.2), .clear],
-                                         center: .center, startRadius: 0, endRadius: hasRoot ? 34 : 20))
-                    .frame(width: hasRoot ? 68 : 40, height: hasRoot ? 68 : 40)
-                Circle()
-                    .fill(RadialGradient(colors: [Color(hex: 0xFFF1D6), Color(hex: 0xF6B86B)],
-                                         center: UnitPoint(x: 0.4, y: 0.35), startRadius: 0, endRadius: 14))
-                    .frame(width: hasRoot ? 22 : 10, height: hasRoot ? 22 : 10)
-                    .opacity(hasRoot ? 1 : 0.6)
+            TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { timeline in
+                // A slow, faint flicker, so it feels alive.
+                let flicker = reduceMotion ? 1 : 1 + 0.05 * sin(timeline.date.timeIntervalSinceReferenceDate * 1.3)
+                ZStack {
+                    Circle()
+                        .fill(RadialGradient(colors: [color.opacity(hasRoot ? 0.6 : 0.4), .clear],
+                                             center: .center, startRadius: 0, endRadius: glow / 2))
+                        .frame(width: glow, height: glow)
+                        .scaleEffect(flicker)
+                    Circle()
+                        .fill(RadialGradient(colors: [.white.opacity(0.95), color],
+                                             center: UnitPoint(x: 0.4, y: 0.35), startRadius: 0, endRadius: core * 0.65))
+                        .frame(width: core, height: core)
+                }
             }
-            .frame(height: 30)
+            .frame(height: 52)
             if hasRoot {
                 Text(MapLayout.shortRoot(root))
                     .font(.system(.caption2, design: .serif).italic())
@@ -31,6 +62,7 @@ struct RootSun: View {
             }
         }
         .contentShape(Rectangle())
+        .animation(.easeInOut(duration: 1.2), value: growth)
     }
 }
 
@@ -55,9 +87,6 @@ struct LoopCard: View {
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(2)
             HStack {
-                Text("\(threads) thread\(threads == 1 ? "" : "s")")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.6))
                 Spacer()
                 Button("open", action: onOpen)
                     .font(.caption.weight(.semibold))

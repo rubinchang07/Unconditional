@@ -49,15 +49,17 @@ struct MapView: View {
                         visible.contains(loop) || suggestions.contains { $0.a == loop || $0.b == loop }
                     }
                     MapWeb(loops: shown, values: values, links: links.filter(\.isConfirmed),
-                           hints: suggestions.filter { shown.contains($0.a) && shown.contains($0.b) },
+                           hints: Array(suggestions.filter { shown.contains($0.a) && shown.contains($0.b) }.prefix(MapLayout.hintLimit)),
                            color: color(for:), onSelect: { selected = $0 },
-                           root: root, onTapSun: { editingRoot = true },
-                           showDemo: !hasSeenThreadDemo, onDemoDone: { hasSeenThreadDemo = true },
                            tilt: tilted && !handsOn ? 0.8 : 0, spin: spin,
                            onHandsOn: { on in
                                withAnimation(.spring(duration: 0.45, bounce: 0.15)) { handsOn = on }
                            },
                            onSpin: { spin = $0 },
+                           root: root,
+                           sunGrowth: SunGrowth.amount(checkIns: entries.count, threads: links.filter(\.isConfirmed).count),
+                           onTapSun: { editingRoot = true },
+                           showDemo: !hasSeenThreadDemo, onDemoDone: { hasSeenThreadDemo = true },
                            selectedLink: $selectedLink, selectedHint: $selectedHint)
                         .aspectRatio(1, contentMode: .fit)
                         .padding(6)
@@ -105,8 +107,8 @@ struct MapView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $selected) { loop in
-            LoopMapDetail(loop: loop, loops: loops, values: values, color: color(for: loop))
-                .presentationDetents([.large])
+            LoopMapDetail(loop: loop, color: color(for: loop))
+                .presentationDetents([.medium, .large])
         }
         .animation(.calm, value: links.count)
     }
@@ -310,6 +312,8 @@ private struct MapWeb: View, Animatable {
     var onSpin: (Double) -> Void = { _ in }
     /// Your guess at a shared root belief, glowing at the middle like a sun.
     var root: String = ""
+    /// How far the sun has grown, 0 to 1. See `SunGrowth`.
+    var sunGrowth: Double = 0
     var onTapSun: () -> Void = {}
     /// Play the one-time "pull a thread" demo.
     var showDemo = false
@@ -502,7 +506,7 @@ private struct MapWeb: View, Animatable {
                 }
 
                 // Your root guess at the middle, like a sun. Tap to write or change it.
-                RootSun(root: root)
+                RootSun(root: root, growth: sunGrowth)
                     .position(center)
                     .onTapGesture(perform: onTapSun)
                     .accessibilityElement(children: .ignore)
@@ -514,16 +518,32 @@ private struct MapWeb: View, Animatable {
                     let isDragging = dragging?.id == value.persistentModelID
                     let isTarget = hovering == .value(value)
                     let depth = projector.scale(at: planePositions[index])
-                    // The capsule hugs the word, however long or short it is.
-                    Text(MapLayout.shortName(value.name))
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.92))
-                        .lineLimit(1)
-                        .fixedSize()
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(.white.opacity(isDragging || isTarget ? 0.2 : 0.1), in: Capsule())
-                        .overlay(Capsule().stroke(.white.opacity(isDragging || isTarget ? 0.7 : 0.25), lineWidth: isTarget ? 1.5 : 0.8))
+                    // With more than a few values, they rest as small stars and show their
+                    // names when lit (tap a loop or value) or while you're working with them.
+                    let named = MapLayout.showsValueName(count: values.count, lit: focus != nil && lit.contains(value.persistentModelID),
+                                                         active: isDragging || isTarget)
+                    Group {
+                        if named {
+                            // The capsule hugs the word, however long or short it is.
+                            Text(MapLayout.shortName(value.name))
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.92))
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(.white.opacity(isDragging || isTarget ? 0.2 : 0.1), in: Capsule())
+                                .overlay(Capsule().stroke(.white.opacity(isDragging || isTarget ? 0.7 : 0.25), lineWidth: isTarget ? 1.5 : 0.8))
+                        } else {
+                            Circle()
+                                .fill(.white.opacity(0.9))
+                                .frame(width: 7, height: 7)
+                                .shadow(color: .white.opacity(0.8), radius: 4)
+                                .frame(width: 30, height: 30)
+                                .contentShape(Circle())
+                        }
+                    }
+                    .accessibilityLabel(value.name)
                         // Only the lift is animated. Animating the whole label made its
                         // position spring toward your finger, so it trailed behind.
                         .animation(.spring(duration: 0.3, bounce: 0.5)) {
@@ -952,7 +972,7 @@ enum MapLayout {
     /// Room a value label needs around it.
     static let labelHeight: CGFloat = 30
     /// Room kept free at the middle for the sun and its words.
-    static let sunSize = CGSize(width: 120, height: 58)
+    static let sunSize = CGSize(width: 130, height: 84)
 
     /// A root guess, shortened to fit under the sun.
     static func shortRoot(_ root: String) -> String {
@@ -972,7 +992,18 @@ enum MapLayout {
         CGSize(width: CGFloat(shortName(name).count) * 6.2 + 30, height: labelHeight)
     }
     /// About how many loop labels fit around the ring on an iPhone.
-    static let loopLimit = 8
+    static let loopLimit = 6
+
+    /// A few values always show their names. With more, they rest as small stars
+    /// and show names only when lit by a tap, or while you drag or aim at them.
+    static let namedValueLimit = 4
+
+    static func showsValueName(count: Int, lit: Bool, active: Bool) -> Bool {
+        count <= namedValueLimit || lit || active
+    }
+
+    /// At most this many of the app's dotted guesses at once, so they whisper.
+    static let hintLimit = 2
 
     /// The loops to show: every loop you've linked to something (so a connection
     /// never disappears), then the ones that came up most in the last three months,
@@ -1118,65 +1149,34 @@ extension MapLink {
 // MARK: - One loop up close
 
 private struct LoopMapDetail: View {
-    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     let loop: Loop
-    let loops: [Loop]
-    let values: [PersonalValue]
     let color: Color
-    /// Its own query, so a new link shows up here straight away while you slide.
-    @Query private var links: [MapLink]
     @State private var words: [String] = []
 
+    /// Two things only: the belief it runs on, and the words you keep using in it.
+    /// Connections are made on the map itself, by pulling threads.
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Text(loop.coreBelief.isEmpty ? "No core belief written yet." : loop.coreBelief)
-                        .font(.system(.body, design: .serif))
-                } header: {
-                    Text("Core belief")
-                } footer: {
-                    Text("The belief this loop runs on, in your words. You can edit it in Settings → Your loops.")
-                }
-
-                Section {
-                    if words.isEmpty {
-                        Text("After a few more written entries in this loop, the words you keep using will show here.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        FlowWords(words: words, color: color)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    Text(loop.coreBelief.isEmpty ? "No belief written yet." : "“\(loop.coreBelief)”")
+                        .font(.system(.title3, design: .serif))
+                        .italic(!loop.coreBelief.isEmpty)
+                        .foregroundStyle(loop.coreBelief.isEmpty ? .secondary : .primary)
+                    if !words.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("words that keep coming up")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            FlowWords(words: words, color: color)
+                        }
                     }
-                } header: {
-                    Text("Words that keep coming up")
-                } footer: {
-                    Text("Found on your phone. Nothing leaves it.")
                 }
-
-                Section {
-                    if values.isEmpty {
-                        Text("Add values in Anchors, then connect them here.")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(values) { value in
-                        RatingSlider(title: value.name, value: valueBinding(value), range: 0...1, step: 0.05,
-                                     lowLabel: "not really", highLabel: "a lot", valueText: MapLink.strengthLabel)
-                    }
-                } header: {
-                    Text("Values underneath")
-                } footer: {
-                    Text("A loop often hurts because it touches something you care about. How much does this one touch each value?")
-                }
-
-                Section {
-                    ForEach(loops.filter { $0 != loop }) { other in
-                        RatingSlider(title: other.name, value: loopBinding(other), range: 0...1, step: 0.05,
-                                     lowLabel: "not really", highLabel: "a lot", valueText: MapLink.strengthLabel)
-                    }
-                } header: {
-                    Text("Connected loops")
-                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .themedBackground()
             .navigationTitle(loop.name.lowercased())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1185,42 +1185,6 @@ private struct LoopMapDetail: View {
                 }
             }
             .task { words = RecurringWords.top(in: loop.entries) }
-        }
-    }
-
-    private func valueBinding(_ value: PersonalValue) -> Binding<Double> {
-        binding(for: links.first { $0.loopA == loop && $0.value == value }) { link in
-            link.loopA = loop
-            link.value = value
-        }
-    }
-
-    private func loopBinding(_ other: Loop) -> Binding<Double> {
-        binding(for: links.first { $0.value == nil && $0.joins(loop, other) }) { link in
-            link.loopA = loop
-            link.loopB = other
-        }
-    }
-
-    /// Slide up from zero to create a link, back to zero to remove it.
-    private func binding(for existing: MapLink?, attach: @escaping (MapLink) -> Void) -> Binding<Double> {
-        Binding {
-            guard let existing, existing.isConfirmed else { return 0 }
-            return existing.strength
-        } set: { newValue in
-            if let existing {
-                if newValue < 0.05 {
-                    context.delete(existing)
-                } else {
-                    existing.strength = newValue
-                    existing.status = "confirmed"
-                }
-            } else if newValue >= 0.05 {
-                let link = MapLink()
-                context.insert(link)
-                attach(link)
-                link.strength = newValue
-            }
         }
     }
 }
@@ -1253,6 +1217,8 @@ enum RecurringWords {
         "going", "maybe", "still", "time", "even", "keep", "much", "said", "would", "could", "should",
         "need", "always", "never", "people", "everything", "anything", "lot", "way", "day", "get", "have",
         "be", "do", "go", "say", "see", "come", "take", "feeling",
+        // How far a word was slid in Words, not the feeling itself.
+        "heavier", "lighter", "little", "quite", "between",
     ]
 
     static func top(in entries: [Entry], limit: Int = 8) -> [String] {

@@ -7,6 +7,8 @@ enum EntryKind: String, Codable, CaseIterable, Identifiable {
     case write
     case speak
     case draw
+    /// One word at a time: lean each toward heavier or lighter, and related words bubble up.
+    case words
 
     var id: String { rawValue }
 
@@ -15,6 +17,7 @@ enum EntryKind: String, Codable, CaseIterable, Identifiable {
         case .write: "Write"
         case .speak: "Speak"
         case .draw: "Draw"
+        case .words: "Words"
         }
     }
 
@@ -23,10 +26,11 @@ enum EntryKind: String, Codable, CaseIterable, Identifiable {
         case .write: "pencil.line"
         case .speak: "mic"
         case .draw: "scribble.variable"
+        case .words: "bubble.left.and.bubble.right"
         }
     }
 
-    /// Write and Speak both produce text.
+    /// Write, Speak and Words all produce text.
     var isText: Bool { self != .draw }
 }
 
@@ -49,8 +53,16 @@ final class Entry {
     /// Which loop this thought belongs to. Optional: you might not know yet.
     var loop: Loop?
 
-    /// A good moment rather than a hard one. Good entries don't need a loop.
+    /// A good moment rather than a hard one. Set from `lightness` when you save
+    /// (0.6 or lighter), so older parts of the app that ask "was it good?" still work.
     var isGood: Bool = false
+
+    /// "How does this sit?" after a check-in: 0 is heavy, 1 is light.
+    /// Optional: nil means you skipped the slider.
+    var lightness: Double?
+
+    /// Light enough to count as a good moment.
+    static let lightThreshold = 0.6
 
     // Self-compassion break: three short reflections, all optional.
     /// "This is hard." Naming the difficulty.

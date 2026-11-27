@@ -33,7 +33,7 @@ enum AppSchema {
     static let models: [any PersistentModel.Type] = [
         Loop.self, Entry.self, Reframe.self, Win.self, PersonalValue.self, ResetThought.self,
         SavedReminder.self, ParkedThought.self, TinyStep.self, CareerReflection.self, MapLink.self,
-        GroundingPhoto.self, StepPath.self, Footstep.self,
+        GroundingPhoto.self, StepPath.self, Footstep.self, Laugh.self,
     ]
 
     /// A throwaway database that lives only in memory. Used by the tests.

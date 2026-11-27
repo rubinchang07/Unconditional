@@ -1,72 +1,41 @@
 import SwiftUI
 import SwiftData
 
-/// Past entries as a calendar of dots and a list, with Insights one tap away.
+/// Reflect: your entries as a branch with leaves, and Insights one quiet tap away.
 struct HistoryView: View {
-    @Environment(\.modelContext) private var context
     @Query(sort: \Entry.createdAt, order: .reverse) private var entries: [Entry]
-    @Query(sort: \Loop.sortOrder) private var loops: [Loop]
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
+            ScrollView {
+                VStack(spacing: 28) {
                     NavigationLink {
                         InsightsView()
                     } label: {
-                        Label("Insights", systemImage: "chart.line.uptrend.xyaxis")
-                            .font(.headline)
-                            .padding(.vertical, 6)
+                        Label("insights", systemImage: "sparkles")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 18)
+                            .frame(minHeight: 44)
+                            .background(.tint.opacity(0.12), in: Capsule())
                     }
-                } footer: {
-                    Text("Patterns over time, your map, and your weekly review.")
-                }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
 
-                Section {
-                    CalendarDots(days: dayColors)
-                        .padding(.vertical, 6)
-                } footer: {
-                    Text("One dot for each day you checked in, colored by loop. Good moments glow warm gold.")
-                }
-
-                Section("Entries") {
-                    ForEach(entries) { entry in
-                        NavigationLink {
-                            EntryDetailView(entry: entry)
-                        } label: {
-                            EntryRow(entry: entry)
-                        }
-                        .gentleRemove { context.delete(entry) }
-                    }
                     if entries.isEmpty {
                         GentleEmpty(symbol: "leaf", title: "Nothing here yet",
-                                    message: "Whenever you check in, it'll be kept here. There's no schedule to keep up with.")
+                                    message: "Every check-in becomes a leaf here. There's no schedule to keep up with.")
+                            .padding(.top, 40)
+                    } else {
+                        EntryBranch(entries: entries)
                     }
                 }
+                .padding(.top, 8)
+                .padding(.horizontal, 20)
             }
+            .contentMargins(.bottom, 80, for: .scrollContent)
             .navigationTitle("reflect")
             .themedBackground()
-            .paperList()
         }
-    }
-
-    /// The colors of the loops you wrote about each day. Unnamed entries are grey.
-    private var dayColors: [Date: [Color]] {
-        var result: [Date: [Color]] = [:]
-        for entry in entries {
-            let day = Calendar.current.startOfDay(for: entry.createdAt)
-            let color: Color
-            if entry.isGood {
-                // Good moments glow warm, like sunlight.
-                color = Color(hex: 0xF6C38B)
-            } else if let loop = entry.loop, let index = loops.firstIndex(of: loop) {
-                color = Color(hex: Loop.palette[index % Loop.palette.count])
-            } else {
-                color = Color.secondary.opacity(0.5)
-            }
-            if !(result[day]?.contains(color) ?? false) { result[day, default: []].append(color) }
-        }
-        return result
     }
 }
 

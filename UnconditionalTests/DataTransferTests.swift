@@ -155,6 +155,66 @@ struct DataTransferTests {
         #expect(paths.first?.walked.map(\.text) == ["Opened the job board", "Sent one email"])
     }
 
+    @Test("Hard days on a path, how an entry sat, and laughs all come back")
+    func newerThingsRoundTrip() throws {
+        let old = oldPhone.mainContext
+        let path = StepPath(title: "Finding a job", createdAt: day)
+        old.insert(path)
+        let step = Footstep(text: "Sent one email", createdAt: day)
+        old.insert(step)
+        step.path = path
+        let tide = Footstep(text: "Got a rejection", createdAt: day.addingTimeInterval(3600))
+        tide.isTide = true
+        tide.heaviness = 0.8
+        tide.learned = "One no isn't the answer."
+        old.insert(tide)
+        tide.path = path
+        step.shell = "music on"
+        path.setNext("Open the job board", now: day)
+
+        let entry = Entry(kind: .words, text: "tired (heavier, a lot)", createdAt: day)
+        old.insert(entry)
+        entry.lightness = 0.2
+        old.insert(Laugh(text: "The cat sat on my homework", imageData: Data([9, 9]), createdAt: day))
+
+        let file = try DataTransfer.encode(DataTransfer.snapshot(from: old))
+        let new = newPhone.mainContext
+        _ = DataTransfer.restore(try DataTransfer.decode(file), into: new)
+        _ = DataTransfer.restore(try DataTransfer.decode(file), into: new)
+
+        let restored = try #require(try new.fetch(FetchDescriptor<StepPath>()).first)
+        #expect(restored.walked.map(\.text) == ["Sent one email"])
+        #expect(restored.tides.count == 1)
+        #expect(restored.tides.first?.heaviness == 0.8)
+        #expect(restored.tides.first?.learned == "One no isn't the answer.")
+        #expect(restored.walked.first?.shell == "music on")
+        #expect(restored.nextStep == "Open the job board")
+        #expect(restored.nextSetAt == day)
+        let entries = try new.fetch(FetchDescriptor<Entry>())
+        #expect(entries.first?.kind == .words)
+        #expect(entries.first?.lightness == 0.2)
+        let laughs = try new.fetch(FetchDescriptor<Laugh>())
+        #expect(laughs.count == 1)
+        #expect(laughs.first?.imageData == Data([9, 9]))
+    }
+
+    @Test("A file from before tides and laughs still opens")
+    func olderFileWithoutNewFields() throws {
+        let json = """
+        {"version":1,"exportedAt":"2026-11-01T00:00:00Z","loops":[],"wins":[],"values":[],"reminders":[],
+         "resetThoughts":[],"parkedThoughts":[],"tinySteps":[],"careerReflections":[],
+         "entries":[{"createdAt":"2026-11-01T00:00:00Z","kind":"write","text":"hi","drawingBackground":"paper",
+                     "isGood":false,"compassionHard":"","compassionShared":"","compassionNeed":""}],
+         "paths":[{"title":"A path","createdAt":"2026-11-01T00:00:00Z","isResting":false,
+                   "steps":[{"text":"One step","createdAt":"2026-11-01T00:00:00Z"}]}]}
+        """
+        let snapshot = try DataTransfer.decode(Data(json.utf8))
+        let new = newPhone.mainContext
+        DataTransfer.restore(snapshot, into: new)
+        #expect(try new.fetch(FetchDescriptor<Entry>()).first?.lightness == nil)
+        #expect(try new.fetch(FetchDescriptor<StepPath>()).first?.walked.count == 1)
+    }
+
     @Test("A loop with the same name is reused, not doubled")
     func loopsMatchByName() throws {
         let old = oldPhone.mainContext

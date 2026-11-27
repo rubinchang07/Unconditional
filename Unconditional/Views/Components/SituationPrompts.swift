@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// Optional starting points for common hard moments. Tapping one only fills in
-/// a few gentle questions in the journal. It's still an ordinary entry.
+/// Optional starting points for common moments, hard and good side by side,
+/// since a check-in can be either. Tapping one only fills in a few gentle
+/// questions in the journal. It's still an ordinary entry.
 struct SituationPrompts: View {
     @Binding var text: String
-    /// Prompts for a good moment instead of a hard one.
-    var good = false
 
     struct Situation: Identifiable {
         let title: String
@@ -43,10 +42,20 @@ struct SituationPrompts: View {
                   prompt: "I'm proud that\n\nIt matters to me because\n\n"),
     ]
 
+    /// Hard and good moments taken in turn, so neither kind is tucked at the end.
+    static var mixed: [Situation] {
+        var result: [Situation] = []
+        for i in 0..<max(all.count, goodOnes.count) {
+            if i < all.count { result.append(all[i]) }
+            if i < goodOnes.count { result.append(goodOnes[i]) }
+        }
+        return result
+    }
+
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                ForEach(good ? Self.goodOnes : Self.all) { situation in
+                ForEach(Self.mixed) { situation in
                     Button {
                         withAnimation(.calm) {
                             text = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
