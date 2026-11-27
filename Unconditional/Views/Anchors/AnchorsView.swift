@@ -205,7 +205,7 @@ struct AnchorsView: View {
     private var wordsLayer: some View {
         Layer(title: "words to come back to", subtitle: "In your own words. Swipe through them one at a time.") {
             if reminders.isEmpty {
-                Text("Things you'd want to hear when it's a lot. Rewritten perspectives from a thought reset land here too.")
+                Text("Things you'd want to hear when it's a lot.")
                     .foregroundStyle(.secondary)
             } else {
                 TabView {

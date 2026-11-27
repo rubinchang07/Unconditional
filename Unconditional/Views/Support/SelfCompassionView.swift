@@ -16,7 +16,7 @@ struct SelfCompassionView: View {
             }
 
             Section {
-                TextField("e.g. Feeling behind everyone is really painful right now", text: $entry.compassionHard, axis: .vertical)
+                TextField("For example: Feeling behind everyone is really painful right now", text: $entry.compassionHard, axis: .vertical)
             } header: {
                 Text("1. This is hard")
             } footer: {
@@ -24,7 +24,7 @@ struct SelfCompassionView: View {
             }
 
             Section {
-                TextField("e.g. Lots of people my age feel unsure about their path", text: $entry.compassionShared, axis: .vertical)
+                TextField("For example: Lots of people my age feel unsure about their path", text: $entry.compassionShared, axis: .vertical)
             } header: {
                 Text("2. Others feel this too")
             } footer: {
@@ -32,7 +32,7 @@ struct SelfCompassionView: View {
             }
 
             Section {
-                TextField("e.g. Rest tonight, and one small step tomorrow", text: $entry.compassionNeed, axis: .vertical)
+                TextField("For example: Rest tonight, and one small step tomorrow", text: $entry.compassionNeed, axis: .vertical)
             } header: {
                 Text("3. What do I need right now?")
             } footer: {

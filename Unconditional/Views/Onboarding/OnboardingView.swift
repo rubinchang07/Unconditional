@@ -32,7 +32,7 @@ struct OnboardingView: View {
              body: "Which thoughts do you tend to get stuck on? Pick any that fit, or name your own. You can change them any time in Settings.",
              picksLoops: true),
         Page(title: "What matters to you",
-             body: "Loops often hurt because they press on something you care about. Pick a few values that feel like yours. They'll steady you in Anchors and sit at the heart of your map.",
+             body: "Loops often hurt because they press on something you care about. Pick a few values that feel like yours. They'll steady you in Anchors and sit at the bottom of Anchors, where it is steadiest.",
              picksValues: true),
         Page(title: "Look again, gently",
              body: "Reframe a thought, or just be kind to yourself about it. Not every thought needs to be analyzed. Some can simply be let be."),

@@ -118,7 +118,7 @@ struct TodayView: View {
                     }
                 } else {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Thought reset", systemImage: "leaf") { showReset = true }
+                        Button("i'm spiraling", systemImage: "leaf") { showReset = true }
                     }
                 }
                 if step != .home {
@@ -837,9 +837,10 @@ struct ReframePromptView: View {
                                 onCompassion: { withAnimation { step = .compassion } })
                 case .shift:
                     if let reframe = entry.reframe {
-                        if reframe.headTrue >= 0 {
+                        if reframe.hasHeadAndHeart {
                             // Head and heart, side by side for the first time.
-                            HeadAndHeart(head: reframe.headTrue, heart: 1 - reframe.distressBefore / 10) {
+                            HeadAndHeart(head: reframe.headLight >= 0 ? reframe.headLight : reframe.headTrue,
+                                         heart: 1 - reframe.distressBefore / 10) {
                                 withAnimation { step = .win }
                             }
                         } else {

@@ -391,17 +391,24 @@ struct WordScramble: View {
             VStack(spacing: 4) {
                 ForEach(kept) { item in
                     // Dark text for reading, with the orb's light around it: it's yours now.
-                    Text(item.word)
-                        .font(.system(.callout, design: .serif).weight(.medium))
-                        .foregroundStyle(.primary)
-                        .ownGlow(FeelingWords.color(for: item.lean, palette: palette), radius: 6)
-                        .contextMenu {
-                            Button("Remove", systemImage: "minus.circle") {
-                                withAnimation(.calm) { kept.removeAll { $0.id == item.id } }
-                                if kept.isEmpty { phase = .typing }
-                            }
+                    // Tap it (the small x shows how) to take it back out.
+                    Button { remove(item) } label: {
+                        HStack(spacing: 5) {
+                            Text(item.word)
+                                .font(.system(.callout, design: .serif).weight(.medium))
+                                .foregroundStyle(.primary)
+                                .ownGlow(FeelingWords.color(for: item.lean, palette: palette), radius: 6)
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .accessibilityLabel("\(item.word), \(FeelingWords.describe(item.lean))")
+                        .frame(minHeight: 32)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    .accessibilityLabel("\(item.word), \(FeelingWords.describe(item.lean))")
+                    .accessibilityHint("Removes this word")
                 }
             }
             .frame(maxWidth: radius * 1.2)
@@ -426,9 +433,13 @@ struct WordScramble: View {
                     removal: .opacity))
             }
 
-            HStack(spacing: 28) {
+            HStack(spacing: 24) {
                 Button("other words", systemImage: "shuffle", action: showOthers)
                 Button("type one", systemImage: "character.cursor.ibeam") { phase = .typing }
+                Button("start over", systemImage: "arrow.counterclockwise") {
+                    withAnimation(.calm) { kept.removeAll() }
+                    phase = .typing
+                }
             }
             .font(.footnote)
             .foregroundStyle(.secondary)
@@ -465,6 +476,11 @@ struct WordScramble: View {
         seed = Int.random(in: 0..<1000)
         phase = .more
         offerBubbles()
+    }
+
+    private func remove(_ item: KeptWord) {
+        withAnimation(.calm) { kept.removeAll { $0.id == item.id } }
+        if kept.isEmpty { phase = .typing }
     }
 
     private func showOthers() {

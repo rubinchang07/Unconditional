@@ -1,7 +1,9 @@
 import Foundation
 import SwiftData
 
-/// A connection on "your map" that *you* confirmed or turned down.
+/// A connection that *you* confirmed or turned down, from the map that used to be in
+/// Insights. The map was removed (it asked too much for too little), but links are
+/// kept so existing data and backups still open and round-trip.
 ///
 /// The app only ever suggests links. A link exists because you said it feels
 /// connected, and `strength` says how much (a spectrum, not yes or no).
@@ -30,4 +32,16 @@ final class MapLink {
 extension Loop {
     /// Soft colors for loops by order, shared by Patterns and the map.
     static let palette: [UInt32] = [0xE9785E, 0x9B86C4, 0x6FA3CC, 0xE8B07E, 0x7FA383]
+}
+
+extension MapLink {
+    /// How strong a link is, in words, never a number.
+    static func strengthLabel(_ value: Double) -> String {
+        switch value {
+        case ..<0.05: "not linked"
+        case ..<0.35: "a little"
+        case ..<0.7: "somewhat"
+        default: "strongly"
+        }
+    }
 }

@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Cognitive dissonance, drawn as sound, shown once at the end of a reframe: one wave
-/// for your heart (how it felt, from the first screen) and one for your head (how true
-/// the step-back view seemed, from the second). You only see them together here, so
+/// for your heart (how heavy it felt, from the first screen) and one for your head (how
+/// heavy it looks stepped back, from the second), on the same heavy-to-light scale, so
+/// both heavy or both light is in tune. You only see them together here, so
 /// neither answer was nudged by the picture.
 ///
 /// Two notes that are close but not the same "beat": you hear a wobble that slows
@@ -12,7 +13,7 @@ import SwiftUI
 struct HeadAndHeart: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// How true the step-back view seems, 0 "not really" to 1 "completely".
+    /// How heavy it looks stepped back, 0 heavy to 1 light (same scale as the heart).
     let head: Double
     /// How it feels, 0 heavy to 1 light.
     let heart: Double
@@ -64,10 +65,37 @@ struct HeadAndHeart: View {
     /// From here on the gap counts as noticeable.
     static let noticeable = 0.25
 
+    /// Never says they should match. Understanding and feeling move at their own pace.
     static func message(gap: Double) -> String {
         gap >= noticeable
-            ? "Your head and heart are telling different stories. Feelings often catch up later."
-            : "Your head and heart are close right now."
+            ? "Understanding and feeling often move at different times. Both are real."
+            : "Your head and heart agree right now."
+    }
+}
+
+/// The same waves, still and small, for looking back at a past reframe.
+struct HeadAndHeartStill: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    let head: Double
+    let heart: Double
+
+    var body: some View {
+        let colors = orbPalette.colors
+        let headColor = colors.first ?? .teal, heartColor = colors.last ?? .orange
+        let gap = HeadAndHeart.gap(head: head, heart: heart)
+        VStack(spacing: 10) {
+            DissonanceWaves(gap: gap, headColor: headColor, heartColor: heartColor, reduceMotion: true)
+                .frame(height: 60)
+            HStack(spacing: 22) {
+                Label("head", systemImage: "circle.fill").foregroundStyle(headColor)
+                Label("heart", systemImage: "circle.fill").foregroundStyle(heartColor)
+            }
+            .font(.caption)
+            .labelStyle(DotLabel())
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(gap >= HeadAndHeart.noticeable ? "Head and heart were apart" : "Head and heart were in tune")
     }
 }
 

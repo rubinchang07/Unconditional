@@ -77,9 +77,9 @@ final class Footstep {
     }
 
     /// Older prints soften, like sand smoothing over, but never disappear.
-    /// 1 for today, easing to 0.55 after about a month.
+    /// 1 for today, easing to 0.75 after about a month, so old steps stay easy to see.
     static func softness(age days: Double) -> Double {
-        1 - 0.45 * min(max(days, 0) / 30, 1)
+        1 - 0.25 * min(max(days, 0) / 30, 1)
     }
 
     /// How high the water rises for a hard day, as a share of the screen.
