@@ -15,7 +15,7 @@ struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
     @Query private var laughs: [Laugh]
     @Query private var photos: [GroundingPhoto]

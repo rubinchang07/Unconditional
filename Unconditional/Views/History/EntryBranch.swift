@@ -59,7 +59,7 @@ enum LeafColor {
 
     /// Heavy to light, tinted a little toward your orb's colors so Reflect
     /// belongs to the same world (heavy toward its outer glow, light toward its inner light).
-    static func color(for entry: Entry, palette: OrbPalette = .emberSage) -> Color {
+    static func color(for entry: Entry, palette: OrbPalette = .midnight) -> Color {
         let c = palette.colors
         let low = Self.heavy.mix(with: c[0], by: 0.3), high = Self.light.mix(with: c[2], by: 0.25)
         if let lightness = entry.lightness { return low.mix(with: high, by: min(max(lightness, 0), 1)) }
@@ -69,7 +69,7 @@ enum LeafColor {
 
 /// A gently swaying stem with leaves on alternating sides.
 private struct MonthBranch: View {
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     let entries: [Entry]
     let namespace: Namespace.ID
     let onRemove: (Entry) -> Void

@@ -113,7 +113,7 @@ struct StepPathsView: View {
 /// is part of the walk, never a step backward and never an eraser.
 struct PathView: View {
     @Environment(\.modelContext) private var context
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let path: StepPath
     @State private var takingStep = false
@@ -746,7 +746,7 @@ struct TideLine: Shape {
 /// Warm sand, with a soft wash of water easing in and out along the bottom.
 /// On a hard day the tide surges up the sand, as high as `surgeReach`, and recedes.
 struct SandBackground: View {
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     var reduceMotion: Bool
     var surgeAt: Date? = nil
     /// How far up the screen the tide reaches at its height, 0 to 1.

@@ -15,7 +15,7 @@ struct TodayView: View {
 
     private enum Step: Int, CaseIterable { case home, choose, capture, sit, loop }
     @State private var step: Step = .home
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
 
     @State private var kind: EntryKind = .write
     @State private var text = ""
@@ -195,11 +195,6 @@ struct TodayView: View {
             }
             if !showValues {
             VStack(spacing: 10) {
-                // A quiet, wordless hint, shown until you've held the orb once.
-                if !hasHeldOrb {
-                    HoldCue()
-                        .transition(.opacity)
-                }
                 Text(Greeting.now)
                     .font(.system(.largeTitle, design: .serif).weight(.semibold))
                     .softCase()
@@ -802,7 +797,7 @@ private struct LoopChips: View {
 /// it shows one of your past wins, to counter the habit of discounting them.
 struct ReframePromptView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     let entry: Entry
 
     private enum Step { case ask, reframe, shift, compassion, win }
@@ -893,7 +888,7 @@ private struct ShiftView: View {
 /// Shown after a reframe or self-compassion break. Leads with a value, because
 /// your worth doesn't depend on past success. A past win is there if you want it.
 struct WinReminderView: View {
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     @Query private var wins: [Win]
     @Query private var values: [PersonalValue]
     @Query private var reminders: [SavedReminder]
@@ -994,7 +989,7 @@ private struct SitView: View {
     @Binding var lightness: Double
     let isSet: Bool
     let onTouch: () -> Void
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
 
     private var isLight: Bool { isSet && lightness >= Entry.lightThreshold }
 
@@ -1047,7 +1042,7 @@ private struct SitView: View {
 private struct GoodMomentSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     let entry: Entry
     /// After "keep it as a win too": a small golden orb floats off toward Anchors.
     @State private var sendingToAnchors = false

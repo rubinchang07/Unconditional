@@ -69,7 +69,7 @@ struct ShellRidges: Shape {
 
 /// A shell lying in the sand.
 struct ShellMark: View {
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     var body: some View {
         ZStack {
             ScallopShell().fill(Sand.rim)
@@ -112,7 +112,7 @@ enum TrailLayout {
 /// from the first step upward. No count, no distance: just how far you've walked.
 struct TrailOverview: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     private var water: Color { orbPalette.world.water }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let path: StepPath
@@ -233,7 +233,7 @@ struct TrailOverview: View {
 /// sinks halfway below a thin horizon line, where it stays as a low sun: the light
 /// you walk toward. It has its own space, so it never sits behind any words.
 struct HorizonSun: View {
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var set = false
 

@@ -233,7 +233,7 @@ struct WordScramble: View {
 
     private enum Phase: Equatable { case typing, sliding(String), more }
 
-    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .midnight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase: Phase = .typing
     @State private var kept: [KeptWord] = []

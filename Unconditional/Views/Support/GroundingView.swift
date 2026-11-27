@@ -5,7 +5,7 @@ import SwiftUI
 /// one you notice. It's a quick way out of your head and back into the room.
 struct GroundingView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .midnight
 
     private struct Sense {
         let count: Int

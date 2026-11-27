@@ -34,7 +34,7 @@ enum AnyAnchor: Identifiable {
 /// One anchor, shown on its own: the picture or the words, nothing else.
 struct AnchorCard: View {
     let anchor: AnyAnchor
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
 
     var body: some View {
         switch anchor {

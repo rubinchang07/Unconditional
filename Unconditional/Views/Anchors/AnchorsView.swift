@@ -13,7 +13,7 @@ import PhotosUI
 struct AnchorsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .midnight
     /// Until you first long-press a win, a small hand on the first one shows you can.
     @AppStorage("hasHeldWin") private var hasHeldWin = false
     @Query(sort: \Win.createdAt, order: .reverse) private var wins: [Win]
@@ -555,7 +555,7 @@ private struct AddAnchorSheet: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var sticker: StickerMaker.Result?
     @State private var makingSticker = false
-    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .midnight
 
     @State private var laughItem: PhotosPickerItem?
     @State private var laughImage: Data?

@@ -4,7 +4,7 @@ import SwiftData
 /// Reflect: your entries as a branch with leaves, and Insights one quiet tap away.
 struct HistoryView: View {
     @Query(sort: \Entry.createdAt, order: .reverse) private var entries: [Entry]
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     @State private var released = false
     @State private var settled = false
 

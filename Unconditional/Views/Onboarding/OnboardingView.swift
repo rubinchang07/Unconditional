@@ -4,7 +4,7 @@ import SwiftData
 /// The welcome tour: one idea per screen, so nothing arrives all at once.
 /// Shown on first launch, and again any time from Settings.
 struct OnboardingView: View {
-    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .midnight
     @Environment(\.modelContext) private var context
     @Query private var loops: [Loop]
     let onFinish: () -> Void
@@ -32,12 +32,12 @@ struct OnboardingView: View {
              body: "Which thoughts do you tend to get stuck on? Pick any that fit, or name your own. You can change them any time in Settings.",
              picksLoops: true),
         Page(title: "What matters to you",
-             body: "Loops often hurt because they press on something you care about. Pick a few values that feel like yours. They'll steady you in Anchors and sit at the bottom of Anchors, where it is steadiest.",
+             body: "Loops often hurt because they press on something you care about. Pick a few values that feel like yours. They rest at the bottom of Anchors, where it's steadiest. Hold the orb on the home screen to see them.",
              picksValues: true),
         Page(title: "Look again, gently",
              body: "Reframe a thought, or just be kind to yourself about it. Not every thought needs to be analyzed. Some can simply be let be."),
         Page(title: "When it's a lot",
-             body: "\"I'm spiraling\" is always one tap away. Pick the thought that's closest, read another angle, and take a breath."),
+             body: "\"I'm spiraling\" is always one tap away. Take just a moment, work through it, or find someone to talk to."),
         Page(title: "Your anchors",
              body: "Keep the values you care about, the reminders you want to hear, and small wins, including the ones that were only effort."),
         Page(title: "Yours alone",

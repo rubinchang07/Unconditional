@@ -9,7 +9,7 @@ struct InsightsView: View {
     @Query(sort: \Reframe.createdAt) private var reframes: [Reframe]
     /// Career check-ins became an ordinary check-in starting point. Older ones stay readable here.
     @Query private var careerReflections: [CareerReflection]
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
 
     var body: some View {
         List {

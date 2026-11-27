@@ -39,7 +39,10 @@ struct EntryDetailView: View {
                         // Head and heart reframes: the same two waves you saw, held still.
                         HeadAndHeartStill(head: reframe.headLight >= 0 ? reframe.headLight : reframe.headTrue,
                                           heart: 1 - reframe.distressBefore / 10)
-                        LabeledText(title: "In your heart", value: reframe.coreBelief)
+                        // Newer reframes don't ask you to write the feeling again: it's the entry above.
+                        if !reframe.coreBelief.isEmpty {
+                            LabeledText(title: "In your heart", value: reframe.coreBelief)
+                        }
                         LabeledText(title: "Stepped back", value: reframe.kinderRead)
                     } else {
                         DistressOrbs(before: reframe.distressBefore, after: reframe.distressAfter, maxSize: 90)
