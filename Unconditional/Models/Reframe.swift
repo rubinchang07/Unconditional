@@ -43,6 +43,22 @@ final class Reframe {
     /// The heart's answer on the same 0 heavy to 1 light scale.
     var heartValue: Double { 1 - distressBefore / 10 }
 
+    /// A second look a few days later: head and heart again, 0 heavy to 1 light.
+    /// The first answers are never changed, so you can see if they've moved. -1 when not yet asked.
+    var laterHead: Double = -1
+    var laterHeart: Double = -1
+    var laterAt: Date?
+
+    var hasLater: Bool { laterHead >= 0 && laterHeart >= 0 }
+
+    /// Days before a reframe is offered for a second look: long enough for things to settle.
+    static let revisitAfterDays = 3.0
+
+    /// Whether it's been long enough to look again.
+    func canRevisit(now: Date = .now) -> Bool {
+        hasHeadAndHeart && now.timeIntervalSince(createdAt) >= Self.revisitAfterDays * 86_400
+    }
+
     var entry: Entry?
 
     init(trigger: String = "", coreBelief: String = "", kinderRead: String = "", smallStep: String = "", createdAt: Date = .now) {

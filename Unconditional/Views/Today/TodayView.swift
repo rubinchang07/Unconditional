@@ -59,6 +59,7 @@ struct TodayView: View {
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
     /// Parked thoughts. On Sundays, a quiet note on Today offers a calm look at them.
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt == nil }) private var parked: [ParkedThought]
+    @Query(sort: \Reframe.createdAt, order: .reverse) private var reframes: [Reframe]
     @State private var showReview = false
 
     private var hasContent: Bool {
@@ -229,9 +230,11 @@ struct TodayView: View {
             .padding(.vertical, 4)
 
             // Only on Sundays, and only when something's waiting. No section of its own.
-            if ReminderScheduler.isReviewDay(.now) && !parked.isEmpty {
+            if ReminderScheduler.isReviewDay(.now) && (!parked.isEmpty || !ParkedReviewView.lookAgain(from: reframes).isEmpty) {
                 Button { showReview = true } label: {
-                    Label("it's sunday. \(parked.count) parked thought\(parked.count == 1 ? "" : "s") to look at",
+                    Label(parked.isEmpty
+                          ? "it's sunday. something to look at again"
+                          : "it's sunday. \(parked.count) parked thought\(parked.count == 1 ? "" : "s") to look at",
                           systemImage: "tray")
                         .font(.footnote)
                         .foregroundStyle(.secondary)

@@ -11,6 +11,17 @@ struct ParkedReviewView: View {
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt != nil },
            sort: \ParkedThought.createdAt, order: .reverse) private var reviewed: [ParkedThought]
     @Query(sort: \CareerReflection.createdAt, order: .reverse) private var reflections: [CareerReflection]
+    @Query(sort: \Reframe.createdAt, order: .reverse) private var reframes: [Reframe]
+    @State private var revisiting: Reframe?
+
+    /// One or two recent reframes worth a second look: a few days old, not looked at again yet.
+    private var lookAgain: [Reframe] { ParkedReviewView.lookAgain(from: reframes) }
+
+    static func lookAgain(from reframes: [Reframe], now: Date = .now) -> [Reframe] {
+        let threeWeeks = now.addingTimeInterval(-21 * 86_400)
+        return Array(reframes.filter { $0.canRevisit(now: now) && !$0.hasLater && $0.createdAt >= threeWeeks && $0.entry != nil }
+            .prefix(2))
+    }
 
     /// Things you learned or enjoyed in the last 7 days, to weigh alongside the doubts.
     private var thisWeek: [CareerReflection] {
@@ -54,7 +65,29 @@ struct ParkedReviewView: View {
                 }
             }
 
-            if waiting.isEmpty {
+            if !lookAgain.isEmpty {
+                Section {
+                    ForEach(lookAgain) { reframe in
+                        Button { revisiting = reframe } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                if let entry = reframe.entry, entry.kind.isText, !entry.text.isEmpty {
+                                    Text("“\(entry.text)”")
+                                        .lineLimit(2)
+                                        .foregroundStyle(.primary)
+                                }
+                                Label("how does it sit now?", systemImage: "clock.arrow.circlepath")
+                                    .font(.callout)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Look again")
+                } footer: {
+                    Text("Sometimes the heart needs a few days to catch up with the head.")
+                }
+            }
+
+            if waiting.isEmpty && lookAgain.isEmpty {
                 Section {
                     Text("Nothing waiting.")
                         .foregroundStyle(.secondary)
@@ -85,6 +118,7 @@ struct ParkedReviewView: View {
                 }
             }
         }
+        .sheet(item: $revisiting) { RevisitView(reframe: $0) }
         .navigationTitle("sunday look-back")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { if waiting.isEmpty { ReminderScheduler.cancelSundayReview() } }

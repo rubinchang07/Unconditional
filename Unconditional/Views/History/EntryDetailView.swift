@@ -6,6 +6,7 @@ struct EntryDetailView: View {
     @Bindable var entry: Entry
     @State private var editingReframe = false
     @State private var editingCompassion = false
+    @State private var revisiting = false
 
     var body: some View {
         List {
@@ -37,7 +38,20 @@ struct EntryDetailView: View {
                 if let reframe = entry.reframe {
                     if reframe.hasHeadAndHeart {
                         // Head and heart reframes: the same two waves you saw, held still.
-                        HeadAndHeartStill(head: reframe.headValue, heart: reframe.heartValue)
+                        if reframe.hasLater {
+                            // The first look, faded, above the later one.
+                            HeadAndHeartStill(head: reframe.headValue, heart: reframe.heartValue)
+                                .opacity(0.55)
+                            HeadAndHeartStill(head: reframe.laterHead, heart: reframe.laterHeart)
+                        } else {
+                            HeadAndHeartStill(head: reframe.headValue, heart: reframe.heartValue)
+                        }
+                        if reframe.canRevisit() {
+                            Button(reframe.hasLater ? "look again" : "how does it sit now?", systemImage: "clock.arrow.circlepath") {
+                                revisiting = true
+                            }
+                            .font(.callout)
+                        }
                         // Newer reframes don't ask you to write the feeling again: it's the entry above.
                         if !reframe.coreBelief.isEmpty {
                             LabeledText(title: "In your heart", value: reframe.coreBelief)
@@ -64,6 +78,9 @@ struct EntryDetailView: View {
                     Button("Reframe this thought") { editingReframe = true }
                 }
             }
+        }
+        .sheet(isPresented: $revisiting) {
+            if let reframe = entry.reframe { RevisitView(reframe: reframe) }
         }
         .navigationTitle("entry")
         .toolbar {
