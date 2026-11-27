@@ -2,7 +2,8 @@ import SwiftUI
 import SwiftData
 
 /// A second look at a reframe, a few days later. Sometimes the heart just needs
-/// time to catch up with the head. One slider per screen, heart then head, and
+/// time to catch up with the head. One slider per screen, heart then head, each
+/// answered fresh without seeing the old answer, and
 /// then the waves from then above the waves from now. The first answers are
 /// never changed: they're how you can see whether anything moved.
 struct RevisitView: View {
@@ -12,6 +13,8 @@ struct RevisitView: View {
 
     private enum Step { case heart, head, compare }
     @State private var step: Step = .heart
+    /// Both start in the middle, not at last time's answers, so the new reading is
+    /// your own and not anchored to the old one. The two only meet at the end.
     @State private var heart = 0.5
     @State private var head = 0.5
 
@@ -44,11 +47,6 @@ struct RevisitView: View {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 }
             }
-        }
-        .onAppear {
-            // Start where you were last time, so moving it means something shifted.
-            heart = reframe.hasLater ? reframe.laterHeart : reframe.heartValue
-            head = reframe.hasLater ? reframe.laterHead : reframe.headValue
         }
     }
 
@@ -127,6 +125,7 @@ struct RevisitView: View {
         if now < n && then >= n { return "They've come together. Sometimes it just takes time." }
         if now < n { return "Still in tune." }
         if now < then - 0.1 { return "A little closer than before. Still settling, and that's okay." }
+        if now > then + 0.1 { return "Further apart than before. Feelings move both ways, and that isn't a step back." }
         return "Still settling. Some things take longer, and that's okay."
     }
 }
