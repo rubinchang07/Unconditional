@@ -44,7 +44,11 @@ struct ThoughtResetView: View {
     var body: some View {
         NavigationStack {
             ZStack {
+                ThemeBackground()
+                // The sunset only fades in for the water and cloud, slowly, like evening arriving.
                 SunsetBackground()
+                    .opacity(step == .release ? 1 : 0)
+                    .animation(.easeInOut(duration: 1.8), value: step)
                 switch step {
                 case .breathe: breatheStep
                 case .pick: pickStep
