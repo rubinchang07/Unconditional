@@ -5,7 +5,7 @@ import SwiftData
 /// without writing a full entry.
 ///
 /// Tap the thought closest to yours, read a gentler perspective, then pick
-/// one of four: let it be, park it for later, breathe, or make it silly.
+/// one of three: let it be, park it for later, or breathe.
 /// Not every thought needs to be analyzed. Acknowledging it is enough.
 struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
@@ -28,7 +28,6 @@ struct ThoughtResetView: View {
     @State private var editingPerspective = false
     @State private var showBreathing = false
     @State private var showReview = false
-    @State private var showSilly = false
     /// After a reset, one thing that made you laugh, if you asked for something lighter.
     @State private var lighter: Laugh?
 
@@ -61,12 +60,7 @@ struct ThoughtResetView: View {
             }
             .keyboardDoneButton()
             .sheet(isPresented: $showBreathing) { BreathingView() }
-            .sheet(isPresented: $showSilly) {
-                SillyThoughtView(thought: chosen?.text ?? customThought) {
-                    showSilly = false
-                    finish("Same words, sillier voice. Still just a thought.")
-                }
-            }
+
             .sheet(isPresented: $showReview) {
                 NavigationStack { ParkedReviewView() }
             }
@@ -179,7 +173,6 @@ struct ThoughtResetView: View {
                         finish("Parked. You can look at it calmly later, not in the middle of a spiral.")
                     }
                     choice("Breathe", symbol: "wind") { showBreathing = true }
-                    choice("Make it silly", symbol: "face.smiling") { showSilly = true }
                 }
 
                 Text("Every option is optional. Doing none of them is fine too.")

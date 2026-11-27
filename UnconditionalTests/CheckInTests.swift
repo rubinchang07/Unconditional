@@ -130,17 +130,6 @@ struct TideTests {
     }
 }
 
-/// Make it silly.
-@MainActor
-struct SillyThoughtTests {
-    @Test("The thought reads naturally after “I'm having the thought that”")
-    func lowercasedFirst() {
-        #expect(SillyThoughtView.lowercasedFirst("Everyone is ahead of me") == "everyone is ahead of me")
-        #expect(SillyThoughtView.lowercasedFirst("I always mess up") == "I always mess up")
-        #expect(SillyThoughtView.lowercasedFirst("I'm behind") == "I'm behind")
-    }
-}
-
 /// Reflect, on your mind lately, and the map's sun.
 @MainActor
 struct ReflectTests {
