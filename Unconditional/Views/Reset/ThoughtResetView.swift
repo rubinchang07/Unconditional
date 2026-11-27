@@ -4,7 +4,10 @@ import SwiftData
 /// "I'm spiraling": three calm moments, one at a time, with as little to read as possible.
 /// 1. Breathe: the orb breathes three slow breaths, and you breathe with it.
 /// 2. Pick: a few heavy words drift by (your loops among them). Tap what's in your head.
-/// 3. Release: drag each word down into the water to let it go, or up into the
+/// 3. Order: put the words in the order they lead into each other.
+/// 4. The stream: the words sit along a stream in that order. Drag across between two
+///    of them to dam it: above, a still pool; below, the cut-off words stay on a dry bed.
+/// 5. Release (only the words above the dam): drag each word down into the water to let it go, or up into the
 ///    cloud to save it for Sunday, when the cloud rains it back for a calm look.
 struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
@@ -13,8 +16,12 @@ struct ThoughtResetView: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
     @Query private var laughs: [Laugh]
+    @Query private var photos: [GroundingPhoto]
+    @Query private var wins: [Win]
+    @Query private var values: [PersonalValue]
+    @Query private var reminders: [SavedReminder]
 
-    private enum Step: Equatable { case breathe, pick, release, closing }
+    private enum Step: Equatable { case breathe, pick, order, stream, release, closing }
     enum Destination { case water, cloud }
 
     @State private var step: Step = .breathe
@@ -28,17 +35,21 @@ struct ThoughtResetView: View {
     @State private var rippleX: CGFloat = 0.5
     @State private var closingRipple = 0
     @State private var breathStart = Date.now
+    /// The orb breaking into light at the end of the breaths, which becomes the words.
+    @State private var scattering = false
     @State private var cloudPuff = 0
     @State private var fuseTarget: String?
     @State private var fuseCount = 0
     @State private var bursts: [Burst] = []
+    /// Whether the dam cut some words off.
+    @State private var cutOff = false
 
     struct Burst: Identifiable {
         let id = UUID()
         let point: CGPoint
     }
-    /// After a reset, one thing that made you laugh, if you asked for something lighter.
-    @State private var lighter: Laugh?
+    /// After a reset, one thing from Anchors, if you asked for something lighter.
+    @State private var lighter: AnyAnchor?
     @FocusState private var typing: Bool
 
     var body: some View {
@@ -53,6 +64,18 @@ struct ThoughtResetView: View {
                 switch step {
                 case .breathe: breatheStep
                 case .pick: pickStep
+                case .order:
+                    StreamOrderView(words: $picked) { go(.stream) }
+                        .transition(.opacity)
+                case .stream:
+                    // Only the words above the dam go on to the water and the cloud.
+                    // The ones you cut off stay behind on the dry bed.
+                    StreamDamView(words: picked) { kept in
+                        cutOff = kept.count < picked.count
+                        picked = kept
+                        go(kept.isEmpty ? .closing : .release)
+                    }
+                    .transition(.opacity)
                 case .release: releaseStep
                 case .closing: closingStep
                 }
@@ -84,9 +107,9 @@ struct ThoughtResetView: View {
             let done = min(Int(time / ResetWords.breathLength), 3)
             VStack(spacing: 30) {
                 Spacer()
-                OrbView(palette: orbPalette, speed: 0.5, state: .breathing, exercise: true)
+                DispersingOrb(palette: orbPalette, state: .breathing, dispersed: scattering)
                     .frame(width: 220, height: 220)
-                    .scaleEffect(0.7 + 0.35 * (reduceMotion ? 0.5 : ResetWords.breath(at: time)))
+                    .scaleEffect(scattering ? 1 : 0.7 + 0.35 * (reduceMotion ? 0.5 : ResetWords.breath(at: time)))
                 Text(inhaling ? "breathe in as it grows" : "breathe out as it shrinks")
                     .font(.system(.title3, design: .serif))
                     .contentTransition(.opacity)
@@ -103,20 +126,31 @@ struct ThoughtResetView: View {
                 Spacer()
                 Text("tap to skip")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .padding(.bottom, 24)
             }
             .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: inhaling)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture { go(.pick) }
+        .onTapGesture { finishBreathing() }
         .transition(.opacity)
         .onAppear { breathStart = .now }
         .task {
             // Three breaths, then on to the words.
             try? await Task.sleep(for: .seconds(reduceMotion ? 3 : ResetWords.breathLength * 3 + 0.3))
-            if step == .breathe { go(.pick) }
+            finishBreathing()
+        }
+    }
+
+    /// The orb breaks into specks of light, and the words float in where they were.
+    private func finishBreathing() {
+        guard step == .breathe, !scattering else { return }
+        if reduceMotion { go(.pick); return }
+        scattering = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.1))
+            go(.pick)
         }
     }
 
@@ -150,8 +184,8 @@ struct ThoughtResetView: View {
                                     .fixedSize()
                             }
                             .buttonStyle(.plain)
-                            .position(x: home.x + 10 * sin(t * 0.35 + Double(index) * 1.3),
-                                      y: home.y + 8 * cos(t * 0.3 + Double(index) * 0.9))
+                            .position(x: home.x + 10 * Rhythm.sway(t, beats: 0.5, phase: Double(index) * 1.3),
+                                      y: home.y + 8 * Rhythm.sway(t, beats: 0.5, phase: Double(index) * 0.9 + .pi / 2))
                             .accessibilityAddTraits(isPicked ? .isSelected : [])
                         }
                     }
@@ -170,7 +204,7 @@ struct ThoughtResetView: View {
             }
             .paperCard(padding: 14)
 
-            Button(picked.isEmpty ? "Skip" : "Next") { go(picked.isEmpty ? .closing : .release) }
+            Button(picked.isEmpty ? "Skip" : "Next") { go(picked.isEmpty ? .closing : picked.count > 1 ? .order : .stream) }
                 .buttonStyle(.paper)
                 .padding(.bottom, 8)
         }
@@ -223,7 +257,7 @@ struct ThoughtResetView: View {
                             }
                         Text("sunday")
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                     }
                     .position(x: cloudCenter.x + 6 * sin(t * 0.25), y: cloudCenter.y + 10 + 3 * sin(t * 0.4))
                     .animation(.spring(duration: 0.4), value: nearCloud)
@@ -250,7 +284,7 @@ struct ThoughtResetView: View {
                     let spots = homes(in: size)
                     ForEach(Array(picked.enumerated()), id: \.element) { index, word in
                         if let home = spots[word] {
-                            releaseWord(word, home: home, bob: CGFloat(5 * sin(t * 0.9 + Double(index) * 1.7)),
+                            releaseWord(word, home: home, bob: CGFloat(5 * Rhythm.sway(t, beats: 1.5, phase: Double(index) * 1.7)),
                                         cloud: cloudCenter, waterTop: waterTop, size: size)
                         }
                     }
@@ -393,19 +427,27 @@ struct ThoughtResetView: View {
     private var closingStep: some View {
         VStack(spacing: 18) {
             Spacer()
-            OrbView(palette: orbPalette, state: .settling, ripple: closingRipple)
-                .frame(width: 140, height: 140)
-                .task { closingRipple += 1 }
+            // Everything the orb became on the way (words, water, stones) gathers back into it.
+            GatheringOrb(palette: orbPalette) {
+                OrbView(palette: orbPalette, state: .settling, ripple: closingRipple)
+            }
+            .frame(width: 140, height: 140)
+            .task {
+                try? await Task.sleep(for: .seconds(GatheringOrb<EmptyView>.duration))
+                closingRipple += 1
+            }
             Text(closingMessage)
                 .font(.system(.title3, design: .serif))
                 .multilineTextAlignment(.center)
             if let lighter {
-                LaughCard(laugh: lighter)
+                AnchorCard(anchor: lighter)
+                    .frame(maxWidth: .infinity)
                     .paperCard(padding: 14)
                     .transition(.scale(scale: 0.9).combined(with: .opacity))
-            } else if !laughs.isEmpty {
+            } else if let any = AnyAnchor.random(laughs: laughs, photos: photos, wins: wins,
+                                                 values: values, words: reminders) {
                 Button("Want something lighter?", systemImage: "face.smiling") {
-                    withAnimation(.calm) { lighter = laughs.randomElement() }
+                    withAnimation(.calm) { lighter = any }
                 }
                 .font(.subheadline)
             }
@@ -419,7 +461,7 @@ struct ThoughtResetView: View {
     }
 
     private var closingMessage: String {
-        if picked.isEmpty { return "You slowed down. That's enough for now." }
+        if picked.isEmpty { return cutOff ? "You stopped it there. That's enough for now." : "You slowed down. That's enough for now." }
         if saved.isEmpty { return "Let go, for now. It can come back, and that's okay." }
         return "Saved for Sunday. You don't have to carry it until then."
     }
@@ -432,7 +474,7 @@ struct ThoughtResetView: View {
 /// The words and timings behind "i'm spiraling".
 enum ResetWords {
     /// One breath: four seconds in, six out.
-    static let breathLength = 10.0
+    static let breathLength = Rhythm.breath
 
     /// The first four seconds of each breath are breathing in.
     static func isInhaling(at time: Double) -> Bool {

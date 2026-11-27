@@ -113,6 +113,7 @@ struct StepPathsView: View {
 /// is part of the walk, never a step backward and never an eraser.
 struct PathView: View {
     @Environment(\.modelContext) private var context
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let path: StepPath
     @State private var takingStep = false
@@ -166,7 +167,7 @@ struct PathView: View {
                     }
                     Text("started \(path.createdAt.formatted(.dateTime.month(.wide).day()))")
                         .font(.caption)
-                        .foregroundStyle(Sand.ink.opacity(0.6))
+                        .foregroundStyle(Sand.inkSoft)
                         .padding(.vertical, 28)
                 }
                 .frame(maxWidth: .infinity)
@@ -192,7 +193,7 @@ struct PathView: View {
                                 .buttonStyle(.paper)
                             Button("a hard day", systemImage: "water.waves") { markingTide = true }
                                 .font(.subheadline)
-                                .foregroundStyle(Sand.ink.opacity(0.8))
+                                .foregroundStyle(Sand.inkSoft)
                                 .frame(minHeight: 44)
                         }
                         .disabled(surgeAt != nil)
@@ -235,16 +236,19 @@ struct PathView: View {
     /// No distance, no percentage: just the direction.
     private var horizon: some View {
         VStack(spacing: 6) {
+            // The orb, set low on its own horizon above the words.
+            HorizonSun()
+                .padding(.bottom, 8)
             Text("toward")
                 .font(.caption)
-                .foregroundStyle(Sand.ink.opacity(0.6))
+                .foregroundStyle(Sand.inkSoft)
             Text(path.title)
                 .font(.system(.title3, design: .serif).weight(.semibold))
-                .foregroundStyle(Sand.ink.opacity(0.8))
+                .foregroundStyle(Sand.ink)
                 .multilineTextAlignment(.center)
             Text("Every print counts the same, however it went.")
                 .font(.footnote)
-                .foregroundStyle(Sand.ink.opacity(0.65))
+                .foregroundStyle(Sand.inkSoft)
         }
         .padding(.horizontal, 32)
         .padding(.top, 28)
@@ -285,7 +289,7 @@ struct PathView: View {
                         Text(step.shell)
                             .font(.caption)
                             .italic()
-                            .foregroundStyle(Sand.ink.opacity(0.75))
+                            .foregroundStyle(Sand.inkSoft)
                             .lineLimit(2)
                     }
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
@@ -318,20 +322,20 @@ struct PathView: View {
     private func tideRow(_ tide: Footstep) -> some View {
         VStack(spacing: 5) {
             TideLine()
-                .stroke(Sand.water.opacity(0.45 + 0.5 * tide.heaviness),
+                .stroke(orbPalette.world.water.opacity(0.45 + 0.5 * tide.heaviness),
                         style: StrokeStyle(lineWidth: 1.5 + 2 * tide.heaviness, lineCap: .round))
                 .frame(height: 12)
                 .padding(.horizontal, 70)
             Text(tide.text.isEmpty ? "a hard day" : tide.text)
                 .font(.system(.footnote, design: .serif))
                 .italic()
-                .foregroundStyle(Sand.ink.opacity(0.8))
+                .foregroundStyle(Sand.inkSoft)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
             if !tide.learned.isEmpty {
                 Label(tide.learned, systemImage: "leaf")
                     .font(.caption)
-                    .foregroundStyle(Sand.ink.opacity(0.7))
+                    .foregroundStyle(Sand.inkSoft)
                     .multilineTextAlignment(.center)
             }
         }
@@ -457,12 +461,12 @@ struct PathView: View {
                 Text(hasNext ? path.nextStep : (path.walked.isEmpty ? "your first step?" : "next?"))
                     .font(.system(.footnote, design: .serif))
                     .italic()
-                    .foregroundStyle(Sand.ink.opacity(hasNext ? 0.65 : 0.45))
+                    .foregroundStyle(hasNext ? Sand.ink : Sand.inkSoft)
                     .lineLimit(3)
                 if path.nextFeelsBig() {
                     Button("too big?") { startNext(.smaller) }
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(Sand.ink.opacity(0.8))
+                        .foregroundStyle(Sand.inkSoft)
                         .padding(.horizontal, 12)
                         .frame(minHeight: 30)
                         .background(Sand.rim.opacity(0.8), in: Capsule())
@@ -634,8 +638,10 @@ enum Sand {
     /// A pressed print: a little darker than the sand around it.
     static let print = Color(light: 0xD7C3A4, dark: 0x3A3228)
     static let rim = Color(light: 0xFBF5EC, dark: 0x4A4136)
-    static let ink = Color(light: 0x5B4A36, dark: 0xE4D6C2)
-    static let water = Color(light: 0x8FBFCB, dark: 0x4D7A86)
+    /// Text on sand, in two levels only, both comfortably readable:
+    /// `ink` for what matters, `inkSoft` for labels and dates. Never fainter for words.
+    static let ink = Color(light: 0x4A3B2A, dark: 0xEFE3D1)
+    static let inkSoft = Color(light: 0x6B5A45, dark: 0xCDBFAA)
     /// Sand with water in it.
     static let wet = Color(light: 0xA8906D, dark: 0x1E1A15)
 }
@@ -735,6 +741,7 @@ struct TideLine: Shape {
 /// Warm sand, with a soft wash of water easing in and out along the bottom.
 /// On a hard day the tide surges up the sand, as high as `surgeReach`, and recedes.
 struct SandBackground: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     var reduceMotion: Bool
     var surgeAt: Date? = nil
     /// How far up the screen the tide reaches at its height, 0 to 1.
@@ -762,7 +769,8 @@ struct SandBackground: View {
                                                startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
                 // The wash: a slow, wavy edge of water that comes up a little and goes back.
                 let tide = surgeAt.map { Self.surge(elapsed: timeline.date.timeIntervalSince($0)) * surgeReach } ?? 0
-                let reach = size.height * (0.05 + 0.025 * (reduceMotion ? 0 : sin(t * 0.35)) + tide)
+                // The wash comes up and goes back once per breath.
+                let reach = size.height * (0.05 + 0.025 * (reduceMotion ? 0 : Rhythm.sway(t)) + tide)
                 var water = Path()
                 water.move(to: CGPoint(x: 0, y: size.height))
                 for x in stride(from: 0, through: size.width, by: 6) {
@@ -771,7 +779,7 @@ struct SandBackground: View {
                 }
                 water.addLine(to: CGPoint(x: size.width, y: size.height))
                 water.closeSubpath()
-                ctx.fill(water, with: .color(Color(light: 0xCFE3E8, dark: 0x1F2C30).opacity(0.55)))
+                ctx.fill(water, with: .color(orbPalette.world.stillWater.opacity(0.6)))
                 ctx.stroke(water, with: .color(.white.opacity(0.5)), lineWidth: 1.5)
             }
         }

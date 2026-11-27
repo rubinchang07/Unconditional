@@ -837,7 +837,14 @@ struct ReframePromptView: View {
                                 onCompassion: { withAnimation { step = .compassion } })
                 case .shift:
                     if let reframe = entry.reframe {
-                        ShiftView(reframe: reframe) { withAnimation { step = .win } }
+                        if reframe.headTrue >= 0 {
+                            // Head and heart, side by side for the first time.
+                            HeadAndHeart(head: reframe.headTrue, heart: 1 - reframe.distressBefore / 10) {
+                                withAnimation { step = .win }
+                            }
+                        } else {
+                            ShiftView(reframe: reframe) { withAnimation { step = .win } }
+                        }
                     }
                 case .compassion:
                     SelfCompassionView(entry: entry, onDone: { withAnimation { step = .win } })

@@ -57,14 +57,19 @@ enum LeafColor {
     /// When you didn't say how it sat.
     static let unsaid = Color(hex: 0x9DBF9E)
 
-    static func color(for entry: Entry) -> Color {
-        if let lightness = entry.lightness { return heavy.mix(with: light, by: min(max(lightness, 0), 1)) }
-        return entry.isGood ? light : unsaid
+    /// Heavy to light, tinted a little toward your orb's colors so Reflect
+    /// belongs to the same world (heavy toward its outer glow, light toward its inner light).
+    static func color(for entry: Entry, palette: OrbPalette = .emberSage) -> Color {
+        let c = palette.colors
+        let low = Self.heavy.mix(with: c[0], by: 0.3), high = Self.light.mix(with: c[2], by: 0.25)
+        if let lightness = entry.lightness { return low.mix(with: high, by: min(max(lightness, 0), 1)) }
+        return entry.isGood ? high : unsaid.mix(with: c[0], by: 0.25)
     }
 }
 
 /// A gently swaying stem with leaves on alternating sides.
 private struct MonthBranch: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     let entries: [Entry]
     let namespace: Namespace.ID
     let onRemove: (Entry) -> Void
@@ -96,12 +101,13 @@ private struct MonthBranch: View {
                 let y = CGFloat(index) * row + row / 2 + 6
                 let left = index.isMultiple(of: 2)
                 NavigationLink(value: entry.persistentModelID) {
+                    let color = LeafColor.color(for: entry, palette: orbPalette)
                     Leaf()
-                        .fill(LeafColor.color(for: entry).gradient)
+                        .fill(color.gradient)
                         .overlay(Leaf().stroke(.white.opacity(0.35), lineWidth: 0.8))
                         .frame(width: 44, height: 22)
                         .rotationEffect(.degrees(left ? 200 : -20))
-                        .shadow(color: .black.opacity(0.08), radius: 3, y: 2)
+                        .ownGlow(color, radius: 5)
                         .frame(width: 60, height: 44)
                         .contentShape(Rectangle())
                         .matchedTransitionSource(id: entry.persistentModelID, in: namespace)
@@ -118,7 +124,7 @@ private struct MonthBranch: View {
                 .overlay {
                     Text(entry.createdAt, format: .dateTime.day())
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .position(x: stemX(y) + (left ? -76 : 76), y: y)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -128,7 +134,8 @@ private struct MonthBranch: View {
         .frame(width: width, height: height)
         .frame(maxWidth: .infinity)
         .onAppear {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.8)) { grown = true }
+            // Just after the orb breaks into light above.
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.8).delay(0.45)) { grown = true }
         }
     }
 

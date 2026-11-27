@@ -80,7 +80,8 @@ enum InsightSummary {
         let start = now.addingTimeInterval(-Double(days) * 86_400)
         let previousStart = start.addingTimeInterval(-Double(days) * 86_400)
         let recent = entries.filter { $0.createdAt >= start && $0.createdAt <= now }
-        let recentReframes = reframes.filter { $0.createdAt >= start && $0.createdAt <= now }
+        // Only older reframes asked heaviness twice; newer ones compare head and heart instead.
+        let recentReframes = reframes.filter { $0.createdAt >= start && $0.createdAt <= now && $0.headTrue < 0 }
 
         guard recent.count >= 3 else {
             return ["After a few more check-ins, a sentence or two about your month will show up here."]

@@ -7,14 +7,32 @@ import SwiftData
 /// Words: feeling words offered after a slide, and how kept words are written down.
 @MainActor
 struct FeelingWordsTests {
+    /// Every heavier (or lighter) word Words can offer: the general lists and every theme.
+    private var anyHeavy: Set<String> { Set(FeelingWords.heavy + WordThemes.all.flatMap(\.heavy)) }
+    private var anyLight: Set<String> { Set(FeelingWords.light + WordThemes.all.flatMap(\.light)) }
+
     @Test("Sliding heavier offers heavier words, and lighter offers lighter ones")
     func sideMatchesSlide() {
-        let heavy = FeelingWords.related(to: "tired", leaning: -0.7)
-        let light = FeelingWords.related(to: "tired", leaning: 0.7)
+        let heavy = FeelingWords.related(to: "exam", leaning: -0.7)
+        let light = FeelingWords.related(to: "exam", leaning: 0.7)
         #expect(heavy.count == 6)
-        #expect(heavy.allSatisfy(FeelingWords.heavy.contains))
-        #expect(light.allSatisfy(FeelingWords.light.contains))
-        #expect(!heavy.contains("tired"))
+        #expect(heavy.allSatisfy(anyHeavy.contains))
+        #expect(light.allSatisfy(anyLight.contains))
+        #expect(!heavy.contains("exam"))
+    }
+
+    @Test("Your word's theme comes first: failure offers words about failing")
+    func specificToTheWord() throws {
+        let failure = try #require(WordThemes.all.first { $0.name == "failure" })
+        #expect(WordThemes.theme(for: "Failure", embedding: nil)?.name == "failure")
+        #expect(WordThemes.theme(for: "my job", embedding: nil)?.name == "work")
+        #expect(WordThemes.theme(for: "father", embedding: nil)?.name == "family")
+        #expect(WordThemes.theme(for: "worthless", embedding: nil)?.name == "self-worth")
+        #expect(WordThemes.theme(for: "not good enough", embedding: nil)?.name == "self-worth")
+        let heavy = FeelingWords.related(to: "failure", leaning: -0.4, count: 5)
+        let light = FeelingWords.related(to: "failure", leaning: 0.4, count: 5)
+        #expect(heavy.filter(failure.heavy.contains).count >= 3)
+        #expect(light.filter(failure.light.contains).count >= 3)
     }
 
     @Test("Words you already kept aren't offered again, and 'show others' changes them")
@@ -28,13 +46,14 @@ struct FeelingWordsTests {
 
     @Test("A little heavier and a lot heavier offer different words")
     func strengths() {
-        let little = FeelingWords.related(to: "tired", leaning: -0.3)
-        let lot = FeelingWords.related(to: "tired", leaning: -0.9)
-        #expect(little.allSatisfy(FeelingWords.heavyMild.contains))
-        #expect(lot.allSatisfy(FeelingWords.heavyStrong.contains))
+        let little = FeelingWords.related(to: "exam", leaning: -0.3)
+        let lot = FeelingWords.related(to: "exam", leaning: -0.9)
         #expect(Set(little).isDisjoint(with: lot))
         #expect(Set(FeelingWords.light).count == FeelingWords.light.count)
         #expect(Set(FeelingWords.heavy).count == FeelingWords.heavy.count)
+        for theme in WordThemes.all {
+            #expect(Set(theme.heavy).isDisjoint(with: theme.light), "\(theme.name)")
+        }
     }
 
     @Test("The same word brings different suggestions from one slide to the next")
@@ -58,8 +77,8 @@ struct FeelingWordsTests {
     func inBetween() {
         #expect(FeelingWords.describe(0.05) == "in between")
         let both = FeelingWords.related(to: "okay", leaning: 0, count: 12)
-        #expect(both.contains(where: FeelingWords.heavy.contains))
-        #expect(both.contains(where: FeelingWords.light.contains))
+        #expect(both.contains(where: anyHeavy.contains))
+        #expect(both.contains(where: anyLight.contains))
     }
 
     @Test("How far you slide is written in plain words")
@@ -287,5 +306,71 @@ struct SpiralingTests {
                 #expect(!boxes[i].intersects(boxes[j]))
             }
         }
+    }
+}
+
+/// Head and heart, and damming the stream in i'm spiraling.
+@MainActor
+struct HeadHeartAndStreamTests {
+    @Test("Head and heart: in tune is no gap, far apart is a big one")
+    func gap() {
+        #expect(HeadAndHeart.gap(head: 0.8, heart: 0.8) == 0)
+        #expect(HeadAndHeart.gap(head: 0.9, heart: 0.2) > HeadAndHeart.noticeable)
+        #expect(HeadAndHeart.gap(head: 2, heart: -1) == 1)
+    }
+
+    @Test("The message names a gap only when there is one")
+    func message() {
+        #expect(HeadAndHeart.message(gap: 0.6).contains("different stories"))
+        #expect(HeadAndHeart.message(gap: 0.05).contains("close"))
+    }
+
+    @Test("Only a line across most of the stream builds the dam")
+    func crossing() {
+        let size = CGSize(width: 390, height: 760)
+        let y: CGFloat = 400
+        let c = StreamDrawing.centerX(y: y, size: size)
+        let w = StreamDrawing.width(size: size)
+        let across = [CGPoint(x: c - w, y: y), CGPoint(x: c + w, y: y + 10)]
+        let short = [CGPoint(x: c - 10, y: y), CGPoint(x: c + 10, y: y)]
+        let down = [CGPoint(x: c - w, y: y - 300), CGPoint(x: c + w, y: y + 300)]
+        #expect(StreamDrawing.crossesStream(across, size: size))
+        #expect(!StreamDrawing.crossesStream(short, size: size))
+        #expect(!StreamDrawing.crossesStream(down, size: size))
+        #expect(!StreamDrawing.crossesStream([], size: size))
+    }
+
+    @Test("The dam goes between two words: the ones above stay, the rest are cut off")
+    func damBetweenWords() {
+        let size = CGSize(width: 390, height: 760)
+        let spots = StreamDrawing.wordSpots(count: 4, size: size)
+        #expect(spots.count == 4)
+        #expect(zip(spots, spots.dropFirst()).allSatisfy { $0.y < $1.y })
+        let between = (spots[1].y + spots[2].y) / 2
+        #expect(StreamDrawing.cutIndex(atY: between, spots: spots) == 2)
+        #expect(StreamDrawing.cutIndex(atY: 0, spots: spots) == 0)
+        #expect(StreamDrawing.cutIndex(atY: size.height, spots: spots) == 4)
+        let dam = StreamDrawing.damY(cut: 2, spots: spots, size: size)
+        #expect(dam > spots[1].y && dam < spots[2].y)
+    }
+}
+
+/// One world around the orb: shared rhythm, colors, and anchors.
+@MainActor
+struct WorldTests {
+    @Test("Everything sways at the orb's breath")
+    func rhythm() {
+        #expect(abs(Rhythm.sway(0)) < 0.0001)
+        #expect(abs(Rhythm.sway(Rhythm.breath) - Rhythm.sway(0)) < 0.0001)
+        #expect(abs(Rhythm.sway(Rhythm.breath / 4) - 1) < 0.0001)
+        #expect(Rhythm.breath == ResetWords.breathLength)
+    }
+
+    @Test("Something lighter can be any kind of anchor, and nothing when Anchors is empty")
+    func anyAnchor() {
+        #expect(AnyAnchor.random(laughs: [], photos: [], wins: [], values: [], words: []) == nil)
+        let only = AnyAnchor.random(laughs: [], photos: [], wins: [], values: [],
+                                    words: [SavedReminder(text: "One step is enough")])
+        if case .words(let reminder) = only { #expect(reminder.text == "One step is enough") } else { Issue.record("expected words") }
     }
 }

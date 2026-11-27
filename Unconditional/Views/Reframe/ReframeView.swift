@@ -1,9 +1,10 @@
 import SwiftUI
 import SwiftData
 
-/// A short CBT reframe in two quiet screens, one thing to write on each:
-/// 1. the thought, and how heavy it feels
-/// 2. what you'd tell a friend, and how heavy it feels now
+/// A short reframe in two quiet screens, one thing to write on each:
+/// 1. heart: how it feels, in your words, and how heavy
+/// 2. head: step back and describe it as objectively as you can, and how true that seems
+/// Afterwards (in `HeadAndHeart`) the two are shown together as waves for the first time.
 /// Older reframes keep anything they had (evidence, a small step), untouched.
 struct ReframeView: View {
     @Environment(\.modelContext) private var context
@@ -23,6 +24,7 @@ struct ReframeView: View {
     @State private var distressAfter = 5.0
     @State private var beliefBefore = 70.0
     @State private var beliefAfter = 70.0
+    @State private var headTrue = 0.5
     @State private var showBreathing = false
     @State private var saveFailed = false
 
@@ -86,15 +88,15 @@ struct ReframeView: View {
 
     private var thoughtStep: some View {
         VStack(alignment: .leading, spacing: 28) {
-            Text("What's the thought?")
+            Label("In your heart, how does it feel?", systemImage: "heart")
                 .font(.system(.title2, design: .serif).weight(.semibold))
                 .softCase()
-            TextField("In your own words", text: $coreBelief, axis: .vertical)
+            TextField("Describe it however it comes", text: $coreBelief, axis: .vertical)
                 .font(.system(.title3, design: .serif))
                 .lineLimit(2...6)
                 .focused($writing)
                 .paperCard(padding: 16)
-            heaviness("How heavy does it feel?", value: $distressBefore)
+            heaviness("How heavy is it?", value: $distressBefore)
             if distressBefore >= 7 {
                 Button("That's a lot. Breathe for a minute first?", systemImage: "wind") { showBreathing = true }
                     .font(.subheadline)
@@ -106,21 +108,29 @@ struct ReframeView: View {
 
     private var anotherStep: some View {
         VStack(alignment: .leading, spacing: 28) {
-            Text("What would you tell a friend?")
+            Label("Now step back. Looking at it logically, how would you describe it?", systemImage: "brain.head.profile")
                 .font(.system(.title2, design: .serif).weight(.semibold))
                 .softCase()
-            if !coreBelief.isEmpty {
-                Text("“\(coreBelief)”")
-                    .font(.system(.body, design: .serif))
-                    .italic()
-                    .foregroundStyle(.secondary)
-            }
-            TextField("Something kinder, and a little more accurate", text: $kinderRead, axis: .vertical)
+            TextField("Just the facts, as an outsider might see them", text: $kinderRead, axis: .vertical)
                 .font(.system(.title3, design: .serif))
                 .lineLimit(3...8)
                 .focused($writing)
                 .paperCard(padding: 16)
-            heaviness("And now?", value: $distressAfter)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("In your head, how true does this seem?")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Slider(value: $headTrue, in: 0...1)
+                    .accessibilityLabel("How true does this seem")
+                    .accessibilityValue(headTrue < 0.5 ? "not really" : "mostly")
+                HStack {
+                    Text("not really")
+                    Spacer()
+                    Text("completely")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -160,6 +170,7 @@ struct ReframeView: View {
             distressAfter = existing.distressAfter
             beliefBefore = existing.beliefBefore
             beliefAfter = existing.beliefAfter
+            if existing.headTrue >= 0 { headTrue = existing.headTrue }
         } else {
             // Start from the loop's core belief, so you can see it written down and question it.
             coreBelief = entry.loop?.coreBelief ?? ""
@@ -182,9 +193,11 @@ struct ReframeView: View {
         reframe.kinderRead = kinderRead
         reframe.smallStep = smallStep
         reframe.distressBefore = distressBefore
-        reframe.distressAfter = distressAfter
+        // Heaviness is asked once now, on the heart screen; head and heart are compared instead.
+        reframe.distressAfter = reframe.headTrue >= 0 || entry.reframe == nil ? distressBefore : distressAfter
         reframe.beliefBefore = beliefBefore
         reframe.beliefAfter = beliefAfter
+        reframe.headTrue = headTrue
         if entry.reframe == nil {
             context.insert(reframe)
             entry.reframe = reframe

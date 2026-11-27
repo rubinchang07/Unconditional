@@ -4,6 +4,9 @@ import SwiftData
 /// Reflect: your entries as a branch with leaves, and Insights one quiet tap away.
 struct HistoryView: View {
     @Query(sort: \Entry.createdAt, order: .reverse) private var entries: [Entry]
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @State private var released = false
+    @State private var settled = false
 
     var body: some View {
         NavigationStack {
@@ -26,6 +29,20 @@ struct HistoryView: View {
                                     message: "Every check-in becomes a leaf here. There's no schedule to keep up with.")
                             .padding(.top, 40)
                     } else {
+                        // The orb's light breaks apart in its own small space, which then
+                        // closes up, and the leaves grow from where it was.
+                        if !settled {
+                            DispersingOrb(palette: orbPalette, dispersed: released)
+                                .frame(width: 44, height: 44)
+                                .allowsHitTesting(false)
+                                .transition(.opacity)
+                                .task {
+                                    try? await Task.sleep(for: .milliseconds(200))
+                                    released = true
+                                    try? await Task.sleep(for: .milliseconds(900))
+                                    withAnimation(.easeInOut(duration: 0.6)) { settled = true }
+                                }
+                        }
                         EntryBranch(entries: entries)
                     }
                 }

@@ -69,6 +69,7 @@ struct ShellRidges: Shape {
 
 /// A shell lying in the sand.
 struct ShellMark: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     var body: some View {
         ZStack {
             ScallopShell().fill(Sand.rim)
@@ -76,6 +77,7 @@ struct ShellMark: View {
             ShellRidges().stroke(Sand.ink.opacity(0.35), lineWidth: 0.6)
         }
         .frame(width: 16, height: 12)
+        .ownGlow(orbPalette.world.light, radius: 4)
         .accessibilityHidden(true)
     }
 }
@@ -110,6 +112,8 @@ enum TrailLayout {
 /// from the first step upward. No count, no distance: just how far you've walked.
 struct TrailOverview: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    private var water: Color { orbPalette.world.water }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let path: StepPath
     @State private var start = Date.now
@@ -139,10 +143,10 @@ struct TrailOverview: View {
                 VStack(spacing: 4) {
                     Text("toward")
                         .font(.caption)
-                        .foregroundStyle(Sand.ink.opacity(0.6))
+                        .foregroundStyle(Sand.inkSoft)
                     Text(path.title)
                         .font(.system(.title3, design: .serif).weight(.semibold))
-                        .foregroundStyle(Sand.ink.opacity(0.85))
+                        .foregroundStyle(Sand.inkSoft)
                         .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 60)
@@ -150,7 +154,7 @@ struct TrailOverview: View {
                 Spacer()
                 Text("started \(path.createdAt.formatted(.dateTime.month(.wide).day().year()))")
                     .font(.caption)
-                    .foregroundStyle(Sand.ink.opacity(0.6))
+                    .foregroundStyle(Sand.inkSoft)
                     .padding(.bottom, 12)
             }
         }
@@ -158,7 +162,7 @@ struct TrailOverview: View {
             Button("Close", systemImage: "xmark") { dismiss() }
                 .labelStyle(.iconOnly)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Sand.ink.opacity(0.7))
+                .foregroundStyle(Sand.inkSoft)
                 .frame(width: 44, height: 44)
                 .padding(.trailing, 8)
         }
@@ -194,7 +198,7 @@ struct TrailOverview: View {
                 ctx.drawLayer { layer in
                     layer.addFilter(.blur(radius: 10))
                     layer.fill(Path(ellipseIn: CGRect(x: p.x - w / 2, y: p.y - h / 2, width: w, height: h)),
-                               with: .color(Sand.water.opacity(0.25 + 0.3 * item.heaviness)))
+                               with: .color(water.opacity(0.25 + 0.3 * item.heaviness)))
                 }
                 continue
             }
@@ -219,6 +223,48 @@ struct TrailOverview: View {
                 ctx.stroke(ScallopShell().path(in: rect), with: .color(Sand.ink.opacity(0.45)), lineWidth: 0.7)
                 ctx.stroke(ShellRidges().path(in: rect), with: .color(Sand.ink.opacity(0.35)), lineWidth: 0.5)
             }
+        }
+    }
+}
+
+// MARK: - The orb as the sun on the horizon
+
+/// When a path opens, the orb drops into its own small band above the title and
+/// sinks halfway below a thin horizon line, where it stays as a low sun: the light
+/// you walk toward. It has its own space, so it never sits behind any words.
+struct HorizonSun: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var set = false
+
+    /// The band's height; the horizon line is at its bottom.
+    static let height: CGFloat = 64
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottom) {
+                OrbView(palette: orbPalette, speed: 0.4, state: .settling)
+                    .frame(width: 84, height: 84)
+                    // Comes in from above, then sets: half of it below the line.
+                    .offset(y: set ? 42 : -30)
+                    .opacity(set ? 0.9 : 0)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.height, alignment: .bottom)
+            // Only what's above the horizon shows, fading softly into the sky at the top.
+            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.35),
+                                         .init(color: .black, location: 1)],
+                                 startPoint: .top, endPoint: .bottom))
+            Capsule()
+                .fill(Sand.inkSoft.opacity(0.35))
+                .frame(width: 150, height: 1)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .task {
+            if reduceMotion { set = true; return }
+            try? await Task.sleep(for: .milliseconds(250))
+            withAnimation(.easeOut(duration: 1.8)) { set = true }
         }
     }
 }
