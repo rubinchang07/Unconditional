@@ -126,6 +126,13 @@ enum FeelingWords {
         return words.map(\.lean).reduce(0, +) / Double(words.count)
     }
 
+    /// An orb that fits its word: big enough for the letters with a soft margin,
+    /// never tiny and never huge.
+    static func orbSize(for word: String, small: Bool) -> CGFloat {
+        let letters = CGFloat(word.count)
+        return small ? min(max(letters * 7.2 + 34, 60), 108) : min(max(letters * 11.5 + 48, 100), 180)
+    }
+
     /// A small, steady difference for each bubble: hue, brightness, glow, and size.
     /// Based on the word, so the same word always looks the same.
     static func bubbleShade(index: Int, word: String) -> (hue: Double, brightness: Double, glow: CGFloat, size: CGFloat) {
@@ -312,7 +319,7 @@ struct WordScramble: View {
     }
 
     private func orbSize(_ word: String) -> CGFloat {
-        min(170, max(120, CGFloat(word.count) * 13 + 50))
+        FeelingWords.orbSize(for: word, small: false)
     }
 
     // MARK: 3. More words bubble out
@@ -342,7 +349,7 @@ struct WordScramble: View {
                 Button { pick(word) } label: {
                     // Each bubble its own shade and glow, like no two feelings are quite alike.
                     let tint = FeelingWords.bubbleShade(index: index, word: word)
-                    WordOrb(word: word, color: FeelingWords.color(for: lastLean * 0.6, palette: palette), size: 70 + tint.size,
+                    WordOrb(word: word, color: FeelingWords.color(for: lastLean * 0.6, palette: palette), size: FeelingWords.orbSize(for: word, small: true) + tint.size * 0.4,
                             ink: FeelingWords.ink(on: palette), small: true)
                         .hueRotation(.degrees(tint.hue))
                         .brightness(tint.brightness)
@@ -430,7 +437,7 @@ private struct WordOrb: View {
                 .foregroundStyle(ink)
                 .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.85)
                 .padding(.horizontal, size * 0.12)
         }
         .frame(width: size, height: size)

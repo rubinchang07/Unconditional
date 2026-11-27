@@ -220,6 +220,16 @@ struct SpiralingTests {
         #expect(!words.contains("wasted time"))
     }
 
+    @Test("Each orb fits its word: never tiny, never huge")
+    func orbSizes() {
+        #expect(ResetWords.orbSize(for: "alone") >= 66)
+        #expect(ResetWords.orbSize(for: "alone") < ResetWords.orbSize(for: "career indecision"))
+        #expect(ResetWords.orbSize(for: String(repeating: "a", count: 60)) == 140)
+        #expect(ResetWords.orbSize(for: "not enough + alone") > ResetWords.orbSize(for: "not enough"))
+        #expect(FeelingWords.orbSize(for: "ok", small: true) == 60)
+        #expect(FeelingWords.orbSize(for: "overwhelmed", small: true) < 108)
+    }
+
     @Test("Floating words stay fully on screen and never sit on each other")
     func homes() {
         let size = CGSize(width: 350, height: 420)

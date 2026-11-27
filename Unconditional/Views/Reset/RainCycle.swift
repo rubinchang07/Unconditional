@@ -163,3 +163,61 @@ struct BubbleBurst: View {
         }
     }
 }
+
+/// A soft sunset behind "i'm spiraling", in the colors of your theme: the sky
+/// fades from pale above to warm near the horizon, and a low sun glows there,
+/// sinking very slightly over time. Behind the water, it looks like it's setting into it.
+struct SunsetBackground: View {
+    @AppStorage(Theme.storageKey) private var theme: Theme = .white
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let colors = Self.colors(for: theme)
+        TimelineView(.animation(minimumInterval: 1 / 15, paused: reduceMotion)) { timeline in
+            let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+            GeometryReader { proxy in
+                let size = proxy.size
+                let sunY = size.height * 0.74 + CGFloat(4 * sin(t * 0.05))
+                ZStack {
+                    LinearGradient(stops: [.init(color: colors.top, location: 0),
+                                           .init(color: colors.middle, location: 0.5),
+                                           .init(color: colors.horizon, location: 0.82)],
+                                   startPoint: .top, endPoint: .bottom)
+                    // The glow around the sun, wide and faint.
+                    RadialGradient(colors: [colors.sun.opacity(0.55), colors.sun.opacity(0)],
+                                   center: UnitPoint(x: 0.5, y: sunY / max(size.height, 1)),
+                                   startRadius: 10, endRadius: size.width * 0.8)
+                    Circle()
+                        .fill(RadialGradient(colors: [.white.opacity(0.9), colors.sun],
+                                             center: .center, startRadius: 0, endRadius: 70))
+                        .frame(width: 130, height: 130)
+                        .blur(radius: 2)
+                        .position(x: size.width / 2, y: sunY)
+                        .opacity(0.9)
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+
+    struct Colors { let top: Color; let middle: Color; let horizon: Color; let sun: Color }
+
+    /// One sunset for each theme, with a deeper one in dark mode.
+    static func colors(for theme: Theme) -> Colors {
+        switch theme {
+        case .white:
+            Colors(top: Color(light: 0xFDF8F2, dark: 0x14131C), middle: Color(light: 0xFCE6D4, dark: 0x2B2233),
+                   horizon: Color(light: 0xF6C7A9, dark: 0x4A2E36), sun: Color(light: 0xFFD49A, dark: 0xE9A07A))
+        case .sage:
+            Colors(top: Color(light: 0xF3F1E4, dark: 0x161A15), middle: Color(light: 0xF2E4C8, dark: 0x2A2A20),
+                   horizon: Color(light: 0xE6C59E, dark: 0x45352A), sun: Color(light: 0xF6D38F, dark: 0xD9A266))
+        case .dusk:
+            Colors(top: Color(light: 0xE6DDF5, dark: 0x1C1828), middle: Color(light: 0xF2D6E0, dark: 0x34233A),
+                   horizon: Color(light: 0xF5BDA8, dark: 0x5A3040), sun: Color(light: 0xFFC9A1, dark: 0xEE9A86))
+        case .sky:
+            Colors(top: Color(light: 0xDCEBF7, dark: 0x0F1A26), middle: Color(light: 0xF3E6DE, dark: 0x22304A),
+                   horizon: Color(light: 0xF7C6AF, dark: 0x523A4A), sun: Color(light: 0xFFE0AE, dark: 0xF0B07E))
+        }
+    }
+}

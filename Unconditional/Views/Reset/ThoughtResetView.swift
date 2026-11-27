@@ -44,7 +44,7 @@ struct ThoughtResetView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ThemeBackground()
+                SunsetBackground()
                 switch step {
                 case .breathe: breatheStep
                 case .pick: pickStep
@@ -261,12 +261,14 @@ struct ThoughtResetView: View {
     private func homes(in size: CGSize) -> [String: CGPoint] {
         var result: [String: CGPoint] = [:]
         let count = picked.count
-        let perRow = min(max(count, 1), 3)
+        // Fewer to a row when the orbs are big, so they never overlap.
+        let biggest = picked.map(ResetWords.orbSize(for:)).max() ?? 90
+        let perRow = min(max(count, 1), biggest > size.width / 3.4 ? 2 : 3)
         for (index, word) in picked.enumerated() {
             let row = index / perRow, col = index % perRow
             let inRow = min(perRow, count - row * perRow)
             let x = size.width * CGFloat(col + 1) / CGFloat(inRow + 1)
-            let y = size.height * 0.42 + CGFloat(row) * 110 + (col.isMultiple(of: 2) ? -14 : 14)
+            let y = size.height * 0.4 + CGFloat(row) * (biggest + 24) + (col.isMultiple(of: 2) ? -12 : 12)
             result[word] = CGPoint(x: x, y: y)
         }
         return result
@@ -284,17 +286,18 @@ struct ThoughtResetView: View {
         // Stretch a little in the direction it's being pulled, like something soft.
         let stretch = isDragging ? min(hypot(dragOffset.width, dragOffset.height) / 900, 0.12) : 0
         let fused = word.contains(" + ")
+        let diameter = ResetWords.orbSize(for: word)
         return ZStack {
             MiniOrb(color: fused ? orbPalette.colors[0] : orbPalette.colors[1], seed: Double(word.count))
-            Text(word)
+            Text(word.replacingOccurrences(of: " + ", with: "\n+ "))
                 .font(.system(.footnote, design: .serif).weight(.semibold))
                 .foregroundStyle(FeelingWords.ink(on: orbPalette))
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.6)
-                .padding(.horizontal, 12)
+                .lineLimit(fused ? 3 : 2)
+                .minimumScaleFactor(0.85)
+                .padding(.horizontal, diameter * 0.14)
         }
-        .frame(width: fused ? 110 : 90, height: fused ? 110 : 90)
+        .frame(width: diameter, height: diameter)
         .contentShape(Circle())
         .scaleEffect(x: 1 + stretch, y: 1 - stretch * 0.6)
         .scaleEffect(destination == nil ? (isDragging ? 1.1 : isFuseTarget ? 1.15 : 1) : (destination == .water ? 0.5 : 0.2))
@@ -455,6 +458,15 @@ enum ResetWords {
             if !result.contains(word) && taken.isDisjoint(with: parts) { result.append(word) }
         }
         return result
+    }
+
+    /// An orb just big enough for its word: the longest line plus a soft margin,
+    /// never tiny and never huge. A melted pair stacks its words, so it's a little taller.
+    static func orbSize(for word: String) -> CGFloat {
+        let parts = word.components(separatedBy: " + ")
+        let longest = CGFloat(parts.map(\.count).max() ?? 0)
+        let size = longest * 7.8 + 40 + CGFloat(parts.count - 1) * 18
+        return min(max(size, 66), 140)
     }
 
     /// About how wide a word's capsule is, so it can be kept on screen.
