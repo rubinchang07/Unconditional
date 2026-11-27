@@ -100,8 +100,14 @@ struct OnboardingView: View {
                     }
                     .padding(.horizontal, pages[i].picksLoops || pages[i].picksValues ? 20 : 32)
                     .padding(.top, 24)
+                    // Room under the last row, so the text field never sits right on the edge.
+                    .padding(.bottom, 28)
                     }
                     .scrollIndicators(.hidden)
+                    // Rows scrolling past the top or bottom fade softly instead of being sliced off.
+                    .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.05),
+                                                 .init(color: .black, location: 0.93), .init(color: .clear, location: 1)],
+                                         startPoint: .top, endPoint: .bottom))
                     .scrollDismissesKeyboard(.interactively)
                     .tag(i)
                 }
