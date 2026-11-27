@@ -178,6 +178,11 @@ struct ReframeView: View {
             beliefBefore = existing.beliefBefore
             beliefAfter = existing.beliefAfter
             if existing.headLight >= 0 { headLight = existing.headLight }
+        } else if let lightness = entry.lightness {
+            // Start the heart where you left the check-in slider, so it's a glance, not a repeat.
+            // Move it only if the feeling shifted as you wrote.
+            distressBefore = 10 * (1 - min(max(lightness, 0), 1))
+            distressAfter = distressBefore
         }
     }
 
