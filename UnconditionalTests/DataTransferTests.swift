@@ -78,7 +78,7 @@ struct DataTransferTests {
         let file = try DataTransfer.encode(DataTransfer.snapshot(from: old))
 
         let new = newPhone.mainContext
-        let summary = DataTransfer.restore(try DataTransfer.decode(file), into: new)
+        let summary = try DataTransfer.restore(DataTransfer.decode(file), into: new)
 
         #expect(summary == .init(added: 14, skipped: 0))
         #expect(try count(Entry.self, in: new) == 2)
@@ -126,7 +126,7 @@ struct DataTransferTests {
         try fill(context)
         let snapshot = try DataTransfer.decode(DataTransfer.encode(DataTransfer.snapshot(from: context)))
 
-        let summary = DataTransfer.restore(snapshot, into: context)
+        let summary = try DataTransfer.restore(snapshot, into: context)
         #expect(summary.added == 0)
         #expect(try count(Entry.self, in: context) == 2)
         #expect(try count(Loop.self, in: context) == 2)
@@ -147,8 +147,8 @@ struct DataTransferTests {
         let file = try DataTransfer.encode(DataTransfer.snapshot(from: old))
 
         let new = newPhone.mainContext
-        _ = DataTransfer.restore(try DataTransfer.decode(file), into: new)
-        _ = DataTransfer.restore(try DataTransfer.decode(file), into: new)
+        _ = try DataTransfer.restore(DataTransfer.decode(file), into: new)
+        _ = try DataTransfer.restore(DataTransfer.decode(file), into: new)
 
         let paths = try new.fetch(FetchDescriptor<StepPath>())
         #expect(paths.count == 1)
@@ -183,8 +183,8 @@ struct DataTransferTests {
 
         let file = try DataTransfer.encode(DataTransfer.snapshot(from: old))
         let new = newPhone.mainContext
-        _ = DataTransfer.restore(try DataTransfer.decode(file), into: new)
-        _ = DataTransfer.restore(try DataTransfer.decode(file), into: new)
+        _ = try DataTransfer.restore(DataTransfer.decode(file), into: new)
+        _ = try DataTransfer.restore(DataTransfer.decode(file), into: new)
 
         let restored = try #require(try new.fetch(FetchDescriptor<StepPath>()).first)
         #expect(restored.walked.map(\.text) == ["Sent one email"])
@@ -216,7 +216,7 @@ struct DataTransferTests {
         """
         let snapshot = try DataTransfer.decode(Data(json.utf8))
         let new = newPhone.mainContext
-        DataTransfer.restore(snapshot, into: new)
+        try DataTransfer.restore(snapshot, into: new)
         #expect(try new.fetch(FetchDescriptor<Entry>()).first?.lightness == nil)
         #expect(try new.fetch(FetchDescriptor<StepPath>()).first?.walked.count == 1)
     }
@@ -229,7 +229,7 @@ struct DataTransferTests {
 
         let new = newPhone.mainContext
         new.insert(Loop(name: "falling BEHIND", coreBelief: "", pattern: "", sortOrder: 0))
-        DataTransfer.restore(snapshot, into: new)
+        try DataTransfer.restore(snapshot, into: new)
 
         #expect(try count(Loop.self, in: new) == 2)
         let entry = try #require(try new.fetch(FetchDescriptor<Entry>()).first { $0.loop != nil })

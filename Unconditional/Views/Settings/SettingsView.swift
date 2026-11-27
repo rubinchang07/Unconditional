@@ -134,7 +134,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Your data")
                 } footer: {
-                    Text("Your journal lives only on this phone. Export saves all of it to one file you control. Restoring adds what's in a file and skips anything you already have, so nothing is overwritten.")
+                    Text("Your journal lives only on this phone. Export saves all of it, photos included, to one file you control. The file isn't encrypted: anyone who opens it can read your entries. Restoring adds what's in a file and skips anything you already have, so nothing is overwritten.")
                 }
 
                 Section {
@@ -155,7 +155,7 @@ struct SettingsView: View {
             }
             .fileExporter(isPresented: $showingExporter, document: exportDocument, contentType: .json,
                           defaultFilename: "Unconditional-\(Date.now.formatted(.iso8601.year().month().day()))") { result in
-                if case .success = result { dataMessage = "Exported. Keep the file somewhere private." }
+                if case .success = result { dataMessage = "Exported. The file isn't encrypted, so keep it somewhere private." }
             }
             .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in
                 restore(result)
@@ -168,14 +168,21 @@ struct SettingsView: View {
         // Files picked from outside the app need permission to be read.
         let allowed = url.startAccessingSecurityScopedResource()
         defer { if allowed { url.stopAccessingSecurityScopedResource() } }
+        let snapshot: DataTransfer.Snapshot
         do {
-            let snapshot = try DataTransfer.decode(Data(contentsOf: url))
-            let summary = DataTransfer.restore(snapshot, into: context)
+            snapshot = try DataTransfer.decode(Data(contentsOf: url))
+        } catch {
+            dataMessage = "That file couldn't be read. It may not be an Unconditional export."
+            return
+        }
+        do {
+            let summary = try DataTransfer.restore(snapshot, into: context)
             dataMessage = summary.added == 0
                 ? "Everything in that file is already here."
                 : "Restored \(summary.added) \(summary.added == 1 ? "item" : "items"). \(summary.skipped) were already here."
         } catch {
-            dataMessage = "That file couldn't be read. It may not be an Unconditional export."
+            // Nothing from the file was kept, so the journal is exactly as it was.
+            dataMessage = "Restoring didn't finish, so nothing was changed. Your journal is as it was. Try again in a moment."
         }
     }
 

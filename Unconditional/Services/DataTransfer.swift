@@ -276,10 +276,23 @@ enum DataTransfer {
     }
 
     /// Adds everything in the snapshot that isn't already here. Never deletes.
+    /// All or nothing: if reading what's here or saving fails, everything this restore
+    /// added is rolled back and the error is passed on, so it never reports records it didn't keep.
     @discardableResult
-    static func restore(_ s: Snapshot, into context: ModelContext) -> RestoreSummary {
-        func all<T: PersistentModel>(_ type: T.Type) -> [T] {
-            (try? context.fetch(FetchDescriptor<T>())) ?? []
+    static func restore(_ s: Snapshot, into context: ModelContext) throws -> RestoreSummary {
+        do {
+            let summary = try insertAll(s, into: context)
+            try context.save()
+            return summary
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
+    private static func insertAll(_ s: Snapshot, into context: ModelContext) throws -> RestoreSummary {
+        func all<T: PersistentModel>(_ type: T.Type) throws -> [T] {
+            try context.fetch(FetchDescriptor<T>())
         }
         /// Dates are compared to the second, since JSON keeps whole seconds.
         func key(_ date: Date, _ text: String) -> String { "\(Int(date.timeIntervalSince1970))|\(text)" }
@@ -288,7 +301,7 @@ enum DataTransfer {
 
         // Loops first, so entries and reset thoughts can link to them by name.
         var loopsByName: [String: Loop] = [:]
-        for loop in all(Loop.self) { loopsByName[loop.name.lowercased()] = loop }
+        for loop in try all(Loop.self) { loopsByName[loop.name.lowercased()] = loop }
         for record in s.loops.sorted(by: { $0.sortOrder < $1.sortOrder }) {
             if loopsByName[record.name.lowercased()] != nil { summary.skipped += 1; continue }
             let order = (loopsByName.values.map(\.sortOrder).max() ?? -1) + 1
@@ -299,7 +312,7 @@ enum DataTransfer {
         }
         func loop(named name: String?) -> Loop? { name.flatMap { loopsByName[$0.lowercased()] } }
 
-        let entryKeys = Set(all(Entry.self).map { key($0.createdAt, $0.text) })
+        let entryKeys = try Set(all(Entry.self).map { key($0.createdAt, $0.text) })
         for r in s.entries {
             if entryKeys.contains(key(r.createdAt, r.text)) { summary.skipped += 1; continue }
             let entry = Entry(kind: r.kind, text: r.text, drawingData: r.drawingData, createdAt: r.createdAt)
@@ -328,7 +341,7 @@ enum DataTransfer {
             summary.added += 1
         }
 
-        let winKeys = Set(all(Win.self).map { key($0.createdAt, $0.text) })
+        let winKeys = try Set(all(Win.self).map { key($0.createdAt, $0.text) })
         for r in s.wins {
             if winKeys.contains(key(r.createdAt, r.text)) { summary.skipped += 1; continue }
             let win = Win(text: r.text, meaning: r.meaning, effortToOutcome: r.effortToOutcome, createdAt: r.createdAt)
@@ -338,7 +351,7 @@ enum DataTransfer {
         }
 
         var valuesByName: [String: PersonalValue] = [:]
-        for value in all(PersonalValue.self) { valuesByName[value.name.lowercased()] = value }
+        for value in try all(PersonalValue.self) { valuesByName[value.name.lowercased()] = value }
         for r in s.values {
             if valuesByName[r.name.lowercased()] != nil { summary.skipped += 1; continue }
             let value = PersonalValue(name: r.name, meaning: r.meaning, createdAt: r.createdAt)
@@ -350,14 +363,14 @@ enum DataTransfer {
             summary.added += 1
         }
 
-        let reminderTexts = Set(all(SavedReminder.self).map(\.text))
+        let reminderTexts = try Set(all(SavedReminder.self).map(\.text))
         for r in s.reminders {
             if reminderTexts.contains(r.text) { summary.skipped += 1; continue }
             context.insert(SavedReminder(text: r.text, createdAt: r.createdAt))
             summary.added += 1
         }
 
-        let thoughtTexts = Set(all(ResetThought.self).map(\.text))
+        let thoughtTexts = try Set(all(ResetThought.self).map(\.text))
         for r in s.resetThoughts {
             if thoughtTexts.contains(r.text) { summary.skipped += 1; continue }
             let thought = ResetThought(text: r.text, perspective: r.perspective, sortOrder: r.sortOrder)
@@ -366,7 +379,7 @@ enum DataTransfer {
             summary.added += 1
         }
 
-        let parkedKeys = Set(all(ParkedThought.self).map { key($0.createdAt, $0.text) })
+        let parkedKeys = try Set(all(ParkedThought.self).map { key($0.createdAt, $0.text) })
         for r in s.parkedThoughts {
             if parkedKeys.contains(key(r.createdAt, r.text)) { summary.skipped += 1; continue }
             let parked = ParkedThought(text: r.text, createdAt: r.createdAt)
@@ -377,7 +390,7 @@ enum DataTransfer {
             summary.added += 1
         }
 
-        let stepKeys = Set(all(TinyStep.self).map { key($0.createdAt, $0.text) })
+        let stepKeys = try Set(all(TinyStep.self).map { key($0.createdAt, $0.text) })
         for r in s.tinySteps {
             if stepKeys.contains(key(r.createdAt, r.text)) { summary.skipped += 1; continue }
             let step = TinyStep(text: r.text, createdAt: r.createdAt)
@@ -387,7 +400,7 @@ enum DataTransfer {
             summary.added += 1
         }
 
-        let careerKeys = Set(all(CareerReflection.self).map { key($0.createdAt, $0.topic) })
+        let careerKeys = try Set(all(CareerReflection.self).map { key($0.createdAt, $0.topic) })
         for r in s.careerReflections {
             if careerKeys.contains(key(r.createdAt, r.topic)) { summary.skipped += 1; continue }
             let c = CareerReflection(moment: r.moment, topic: r.topic, createdAt: r.createdAt)
@@ -401,7 +414,7 @@ enum DataTransfer {
             summary.added += 1
         }
 
-        let photoKeys = Set(all(GroundingPhoto.self).map { key($0.createdAt, $0.caption) })
+        let photoKeys = try Set(all(GroundingPhoto.self).map { key($0.createdAt, $0.caption) })
         for r in s.photos ?? [] {
             if photoKeys.contains(key(r.createdAt, r.caption)) { summary.skipped += 1; continue }
             context.insert(GroundingPhoto(imageData: r.imageData, isCutout: r.isCutout, caption: r.caption, createdAt: r.createdAt))
@@ -409,7 +422,7 @@ enum DataTransfer {
         }
 
         // Paths are matched by name and start date; their steps are merged in.
-        var pathsByKey = Dictionary(all(StepPath.self).map { (key($0.createdAt, $0.title), $0) }, uniquingKeysWith: { a, _ in a })
+        var pathsByKey = try Dictionary(all(StepPath.self).map { (key($0.createdAt, $0.title), $0) }, uniquingKeysWith: { a, _ in a })
         for r in s.paths ?? [] {
             let path: StepPath
             if let existing = pathsByKey[key(r.createdAt, r.title)] {
@@ -436,7 +449,7 @@ enum DataTransfer {
             }
         }
 
-        let laughKeys = Set(all(Laugh.self).map { key($0.createdAt, $0.text) })
+        let laughKeys = try Set(all(Laugh.self).map { key($0.createdAt, $0.text) })
         for r in s.laughs ?? [] {
             if laughKeys.contains(key(r.createdAt, r.text)) { summary.skipped += 1; continue }
             context.insert(Laugh(text: r.text, imageData: r.imageData, createdAt: r.createdAt))
@@ -449,7 +462,7 @@ enum DataTransfer {
             let loops = [a, b].compactMap { $0?.lowercased() }.sorted()
             return loops.joined(separator: "|") + "|" + (v?.lowercased() ?? "")
         }
-        var linkKeys = Set(all(MapLink.self).map { linkKey($0.loopA?.name, $0.loopB?.name, $0.value?.name) })
+        var linkKeys = try Set(all(MapLink.self).map { linkKey($0.loopA?.name, $0.loopB?.name, $0.value?.name) })
         for r in s.mapLinks ?? [] {
             let key = linkKey(r.loopA, r.loopB, r.value)
             let loopA = loop(named: r.loopA)
@@ -471,7 +484,6 @@ enum DataTransfer {
             summary.added += 1
         }
 
-        try? context.save()
         return summary
     }
 }
