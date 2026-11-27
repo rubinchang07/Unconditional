@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 /// A short reframe in two quiet screens, one thing to write on each:
-/// 1. heart: how it feels, in your words, and how heavy
+/// 1. heart: your check-in, shown back to you, and how heavy it feels
 /// 2. head: step back and describe it as objectively as you can, and how heavy it is seen that way
 /// Afterwards (in `HeadAndHeart`) the two are shown together as waves for the first time.
 /// Older reframes keep anything they had (evidence, a small step), untouched.
@@ -91,11 +91,15 @@ struct ReframeView: View {
             Label("In your heart, how does it feel?", systemImage: "heart")
                 .font(.system(.title2, design: .serif).weight(.semibold))
                 .softCase()
-            TextField("Describe it however it comes", text: $coreBelief, axis: .vertical)
-                .font(.system(.title3, design: .serif))
-                .lineLimit(2...6)
-                .focused($writing)
-                .paperCard(padding: 16)
+            // You already wrote it in the check-in, so it's shown, not asked again.
+            if entry.kind.isText, !entry.text.isEmpty {
+                Text("“\(entry.text)”")
+                    .font(.system(.body, design: .serif))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .paperCard(padding: 16)
+            }
             heaviness("How heavy does the situation feel?", value: $distressBefore)
             if distressBefore >= 7 {
                 Button("That's a lot. Breathe for a minute first?", systemImage: "wind") { showBreathing = true }
@@ -174,9 +178,6 @@ struct ReframeView: View {
             beliefBefore = existing.beliefBefore
             beliefAfter = existing.beliefAfter
             if existing.headLight >= 0 { headLight = existing.headLight }
-        } else {
-            // Start from the loop's core belief, so you can see it written down and question it.
-            coreBelief = entry.loop?.coreBelief ?? ""
         }
     }
 

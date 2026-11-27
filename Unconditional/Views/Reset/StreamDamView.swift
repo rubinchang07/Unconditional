@@ -6,7 +6,7 @@ import SwiftUI
 /// leading to the next (by intensity, or however feels right). Drag to reorder.
 /// A faint line of water runs through them, so it already looks like a stream.
 struct StreamOrderView: View {
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     @Binding var words: [String]
     let onNext: () -> Void
     @State private var dragging: String?
@@ -116,7 +116,7 @@ struct StreamOrderView: View {
 /// back stronger). It's a pause, not a fight.
 struct StreamDamView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     let words: [String]
     /// Move on by itself a moment after the dam is built.
     var autoContinue = true

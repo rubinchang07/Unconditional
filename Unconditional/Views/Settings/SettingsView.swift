@@ -9,7 +9,7 @@ struct SettingsView: View {
     @AppStorage(ReminderScheduler.enabledKey) private var reminderEnabled = false
     @AppStorage(ReminderScheduler.timeKey) private var reminderMinutes = ReminderScheduler.defaultMinutes
     @AppStorage(AppLock.enabledKey) private var lockEnabled = false
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = true
     @AppStorage("eveningWarmth") private var eveningWarmth = true
     @AppStorage(OrbMotion.storageKey) private var orbMotion: OrbMotion = .always

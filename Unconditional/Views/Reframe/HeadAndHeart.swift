@@ -11,7 +11,7 @@ import SwiftUI
 /// more the waves clash and shimmer; as they come together they lock into one calm
 /// wave. Nothing asks you to make them match. Knowing often comes before feeling.
 struct HeadAndHeart: View {
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// How heavy it looks stepped back, 0 heavy to 1 light (same scale as the heart).
     let head: Double
@@ -75,7 +75,7 @@ struct HeadAndHeart: View {
 
 /// The same waves, still and small, for looking back at a past reframe.
 struct HeadAndHeartStill: View {
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     let head: Double
     let heart: Double
 

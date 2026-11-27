@@ -4,7 +4,7 @@ import SwiftUI
 /// A longer out-breath helps the body settle, so the mind has room to think.
 struct BreathingView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .midnight
 
     private let inhale = 4.0
     private let exhale = 6.0

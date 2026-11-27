@@ -4,7 +4,7 @@ import SwiftData
 /// The welcome tour: one idea per screen, so nothing arrives all at once.
 /// Shown on first launch, and again any time from Settings.
 struct OnboardingView: View {
-    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .midnight
     @Environment(\.modelContext) private var context
     @Query private var loops: [Loop]
     let onFinish: () -> Void

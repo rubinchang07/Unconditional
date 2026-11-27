@@ -5,7 +5,7 @@ import SwiftData
 /// it's to make them from a calm place instead of a spiral.
 struct ParkedReviewView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .midnight
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt == nil },
            sort: \ParkedThought.createdAt) private var waiting: [ParkedThought]
     @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt != nil },

@@ -6,7 +6,7 @@ import SwiftUI
 struct TensionReleaseView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
+    @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .midnight
 
     private struct Area {
         let name: String
