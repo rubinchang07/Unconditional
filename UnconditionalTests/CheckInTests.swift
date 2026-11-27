@@ -354,3 +354,23 @@ struct HeadHeartAndStreamTests {
         #expect(dam > spots[1].y && dam < spots[2].y)
     }
 }
+
+/// One world around the orb: shared rhythm, colors, and anchors.
+@MainActor
+struct WorldTests {
+    @Test("Everything sways at the orb's breath")
+    func rhythm() {
+        #expect(abs(Rhythm.sway(0)) < 0.0001)
+        #expect(abs(Rhythm.sway(Rhythm.breath) - Rhythm.sway(0)) < 0.0001)
+        #expect(abs(Rhythm.sway(Rhythm.breath / 4) - 1) < 0.0001)
+        #expect(Rhythm.breath == ResetWords.breathLength)
+    }
+
+    @Test("Something lighter can be any kind of anchor, and nothing when Anchors is empty")
+    func anyAnchor() {
+        #expect(AnyAnchor.random(laughs: [], photos: [], wins: [], values: [], words: []) == nil)
+        let only = AnyAnchor.random(laughs: [], photos: [], wins: [], values: [],
+                                    words: [SavedReminder(text: "One step is enough")])
+        if case .words(let reminder) = only { #expect(reminder.text == "One step is enough") } else { Issue.record("expected words") }
+    }
+}

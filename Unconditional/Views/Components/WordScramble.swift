@@ -344,7 +344,7 @@ struct WordScramble: View {
                 Text("lighter")
             }
             .font(.footnote)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 4)
 
             WordOrb(word: word, color: FeelingWords.color(for: lean, palette: palette), size: orbSize(word), ink: FeelingWords.ink(on: palette))
@@ -390,9 +390,11 @@ struct WordScramble: View {
         return ZStack {
             VStack(spacing: 4) {
                 ForEach(kept) { item in
+                    // Dark text for reading, with the orb's light around it: it's yours now.
                     Text(item.word)
-                        .font(.system(.callout, design: .serif))
-                        .foregroundStyle(FeelingWords.color(for: item.lean, palette: palette))
+                        .font(.system(.callout, design: .serif).weight(.medium))
+                        .foregroundStyle(.primary)
+                        .ownGlow(FeelingWords.color(for: item.lean, palette: palette), radius: 6)
                         .contextMenu {
                             Button("Remove", systemImage: "minus.circle") {
                                 withAnimation(.calm) { kept.removeAll { $0.id == item.id } }

@@ -6,6 +6,7 @@ import SwiftUI
 /// leading to the next (by intensity, or however feels right). Drag to reorder.
 /// A faint line of water runs through them, so it already looks like a stream.
 struct StreamOrderView: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Binding var words: [String]
     let onNext: () -> Void
     @State private var dragging: String?
@@ -24,7 +25,7 @@ struct StreamOrderView: View {
             ZStack(alignment: .top) {
                 // The stream so far: a soft line through every word.
                 Capsule()
-                    .fill(StreamDrawing.water.opacity(0.45))
+                    .fill(orbPalette.world.water.opacity(0.45))
                     .frame(width: 10, height: max(rowHeight * CGFloat(words.count - 1), 0))
                     .padding(.top, rowHeight / 2)
                 ForEach(Array(words.enumerated()), id: \.element) { index, word in
@@ -40,7 +41,7 @@ struct StreamOrderView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(.background, in: Capsule())
-                    .overlay(Capsule().stroke(StreamDrawing.water.opacity(0.6), lineWidth: 1))
+                    .overlay(Capsule().stroke(orbPalette.world.water.opacity(0.6), lineWidth: 1))
                     .shadow(color: .black.opacity(isDragging ? 0.18 : 0.06), radius: isDragging ? 10 : 4, y: 2)
                     .scaleEffect(isDragging ? 1.06 : 1)
                     .frame(height: rowHeight)
@@ -104,6 +105,7 @@ struct StreamOrderView: View {
 /// back stronger). It's a pause, not a fight.
 struct StreamDamView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     let words: [String]
     /// Move on by itself a moment after the dam is built.
     var autoContinue = true
@@ -130,12 +132,12 @@ struct StreamDamView: View {
                 let settle = damAt.map { StreamDrawing.ease(min(timeline.date.timeIntervalSince($0) / 2.2, 1)) } ?? 0
                 ZStack {
                     Canvas { ctx, canvasSize in
-                        StreamDrawing.draw(in: &ctx, size: canvasSize, t: t,
+                        StreamDrawing.draw(in: &ctx, size: canvasSize, t: t, water: orbPalette.world.water,
                                            damY: damAt == nil ? nil : damY, settle: settle)
                     }
                     ForEach(Array(words.enumerated()), id: \.offset) { i, word in
                         let cut = damAt != nil && i >= cutIndex
-                        let bob = CGFloat(sin(t * 0.9 + Double(i) * 1.7)) * (cut ? 3 * (1 - settle) : 3)
+                        let bob = CGFloat(Rhythm.sway(t, beats: 1.5, phase: Double(i) * 1.7)) * (cut ? 3 * (1 - settle) : 3)
                         Text(word)
                             .font(.system(.subheadline, design: .serif))
                             .foregroundStyle(cut ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
@@ -146,7 +148,8 @@ struct StreamDamView: View {
                             .shadow(color: .black.opacity(cut ? 0 : 0.12), radius: 4, y: 2)
                             .saturation(cut ? 0 : 1)
                             .opacity(cut ? 1 - 0.45 * settle : 1)
-                            .rotationEffect(.degrees(sin(t * 0.6 + Double(i)) * 2))
+                            .ownGlow(cut ? .clear : orbPalette.world.light, radius: 6)
+                            .rotationEffect(.degrees(Rhythm.sway(t, phase: Double(i)) * 2))
                             .position(x: spots[i].x, y: spots[i].y + bob)
                     }
                     if damAt != nil {
@@ -252,7 +255,6 @@ private struct SwipeAcrossCue: View {
 
 /// The geometry and drawing of the stream, kept apart so it can be tested.
 enum StreamDrawing {
-    static let water = Color(light: 0x8FBFCB, dark: 0x3F6F7C)
     /// The dry bed below the dam.
     static let dry = Color(light: 0xE8DFD0, dark: 0x2E2A25)
 
@@ -317,7 +319,7 @@ enum StreamDrawing {
     /// The stream: a band of water with streaks of current running down past the
     /// words. Once dammed, the water above goes still and widens a little into a
     /// pool; below, it drains to a dry bed.
-    static func draw(in ctx: inout GraphicsContext, size: CGSize, t: Double, damY: CGFloat?, settle: Double) {
+    static func draw(in ctx: inout GraphicsContext, size: CGSize, t: Double, water: Color, damY: CGFloat?, settle: Double) {
         let half = width(size: size) / 2
         func halfWidth(at y: CGFloat) -> CGFloat {
             guard let damY else { return half }
@@ -328,7 +330,7 @@ enum StreamDrawing {
         var left: [CGPoint] = [], right: [CGPoint] = []
         for y in stride(from: CGFloat(-10), through: size.height + 10, by: 8) {
             let c = centerX(y: y, size: size)
-            let w = halfWidth(at: y) + CGFloat(sin(Double(y) / 40 + t * 0.7)) * 3
+            let w = halfWidth(at: y) + CGFloat(Rhythm.sway(t, beats: 1, phase: Double(y) / 40)) * 3
             left.append(CGPoint(x: c - w, y: y))
             right.append(CGPoint(x: c + w, y: y))
         }
@@ -371,7 +373,8 @@ enum StreamDrawing {
         // Rings on the still pool.
         if let damY, settle > 0 {
             for i in 0..<3 {
-                let phase = (t * 0.25 + Double(i) / 3).truncatingRemainder(dividingBy: 1)
+                // One ring per breath, so the pool breathes with the orb.
+                let phase = (t / Rhythm.breath * 2 + Double(i) / 3).truncatingRemainder(dividingBy: 1)
                 let r = 10 + 50 * phase
                 let c = CGPoint(x: centerX(y: damY - 90, size: size) + CGFloat(i - 1) * 36, y: damY - 110 + CGFloat(i) * 26)
                 ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r * 0.4, width: r * 2, height: r * 0.8)),

@@ -69,6 +69,7 @@ struct ShellRidges: Shape {
 
 /// A shell lying in the sand.
 struct ShellMark: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     var body: some View {
         ZStack {
             ScallopShell().fill(Sand.rim)
@@ -76,6 +77,7 @@ struct ShellMark: View {
             ShellRidges().stroke(Sand.ink.opacity(0.35), lineWidth: 0.6)
         }
         .frame(width: 16, height: 12)
+        .ownGlow(orbPalette.world.light, radius: 4)
         .accessibilityHidden(true)
     }
 }
@@ -110,6 +112,8 @@ enum TrailLayout {
 /// from the first step upward. No count, no distance: just how far you've walked.
 struct TrailOverview: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    private var water: Color { orbPalette.world.water }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let path: StepPath
     @State private var start = Date.now
@@ -139,10 +143,10 @@ struct TrailOverview: View {
                 VStack(spacing: 4) {
                     Text("toward")
                         .font(.caption)
-                        .foregroundStyle(Sand.ink.opacity(0.6))
+                        .foregroundStyle(Sand.inkSoft)
                     Text(path.title)
                         .font(.system(.title3, design: .serif).weight(.semibold))
-                        .foregroundStyle(Sand.ink.opacity(0.85))
+                        .foregroundStyle(Sand.inkSoft)
                         .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 60)
@@ -150,7 +154,7 @@ struct TrailOverview: View {
                 Spacer()
                 Text("started \(path.createdAt.formatted(.dateTime.month(.wide).day().year()))")
                     .font(.caption)
-                    .foregroundStyle(Sand.ink.opacity(0.6))
+                    .foregroundStyle(Sand.inkSoft)
                     .padding(.bottom, 12)
             }
         }
@@ -158,7 +162,7 @@ struct TrailOverview: View {
             Button("Close", systemImage: "xmark") { dismiss() }
                 .labelStyle(.iconOnly)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(Sand.ink.opacity(0.7))
+                .foregroundStyle(Sand.inkSoft)
                 .frame(width: 44, height: 44)
                 .padding(.trailing, 8)
         }
@@ -194,7 +198,7 @@ struct TrailOverview: View {
                 ctx.drawLayer { layer in
                     layer.addFilter(.blur(radius: 10))
                     layer.fill(Path(ellipseIn: CGRect(x: p.x - w / 2, y: p.y - h / 2, width: w, height: h)),
-                               with: .color(Sand.water.opacity(0.25 + 0.3 * item.heaviness)))
+                               with: .color(water.opacity(0.25 + 0.3 * item.heaviness)))
                 }
                 continue
             }
@@ -220,5 +224,30 @@ struct TrailOverview: View {
                 ctx.stroke(ShellRidges().path(in: rect), with: .color(Sand.ink.opacity(0.35)), lineWidth: 0.5)
             }
         }
+    }
+}
+
+// MARK: - The orb as the sun on the horizon
+
+/// When a path opens, the orb comes in large and bright, then sinks behind the
+/// horizon line and stays there as a low, soft sun: the light you walk toward.
+struct HorizonSun: View {
+    @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var set = false
+
+    var body: some View {
+        OrbView(palette: orbPalette, speed: 0.4, state: .settling)
+            .frame(width: 110, height: 110)
+            .scaleEffect(set ? 0.85 : 1.25)
+            .offset(y: set ? 26 : -40)
+            .opacity(set ? 0.38 : 0.9)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .task {
+                if reduceMotion { set = true; return }
+                try? await Task.sleep(for: .milliseconds(250))
+                withAnimation(.easeInOut(duration: 1.8)) { set = true }
+            }
     }
 }

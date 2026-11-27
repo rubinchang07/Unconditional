@@ -770,7 +770,7 @@ private struct PhotoCloseUp: View {
 }
 
 /// Decodes a grounding photo once, not on every scroll, and shows it as a sticker.
-private struct PhotoSticker: View {
+struct PhotoSticker: View {
     let photo: GroundingPhoto
     let glow: Color
     var border: CGFloat = 6
