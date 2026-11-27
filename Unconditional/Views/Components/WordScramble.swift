@@ -75,13 +75,35 @@ enum FeelingWords {
     /// Nil on the rare device without it; then words come in list order.
     private static let embedding = NLEmbedding.wordEmbedding(for: .english)
 
-    /// Words to offer next: from the side you slid toward (both sides when it was
-    /// in between), closest in meaning to your word first. `shuffle` steps through
-    /// the rest of the list, so "show others" never repeats until it runs out.
-    /// `seed` picks where the spread-out words start, for variety between slides.
+    /// Words to offer next. If your word belongs to a theme (failure, work, the future,
+    /// someone you miss...), most come from that theme, on the side you slid toward: so
+    /// "failure" slid heavier offers "not good enough" or "like a fraud", and slid lighter
+    /// "still learning" or "allowed to try again". The rest come from the general list
+    /// for that side and strength, closest in meaning first, with one wildcard further out.
+    /// `shuffle` steps through for "other words"; `seed` varies the wildcard between slides.
     static func related(to word: String, leaning lean: Double, excluding used: Set<String> = [],
                         count: Int = 6, shuffle: Int = 0, seed: Int = 0) -> [String] {
-        let key = word.lowercased()
+        let key = word.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let skip = used.union([key])
+
+        // 1. Words from your word's theme, on your side.
+        var themed: [String] = []
+        if let theme = WordThemes.theme(for: key, embedding: embedding) {
+            switch lean {
+            case ...(-middle): themed = theme.heavy
+            case middle...: themed = theme.light
+            default: themed = zip(theme.heavy, theme.light).flatMap { [$0, $1] }
+            }
+            // A big slide starts from the other half of the theme, so "a little"
+            // and "a lot" still offer different words.
+            if abs(lean) >= strong, !themed.isEmpty {
+                let half = themed.count / 2
+                themed = Array(themed[half...] + themed[..<half])
+            }
+            themed = themed.filter { !skip.contains($0) }
+        }
+
+        // 2. The general list for that side and strength, closest in meaning first.
         let pool: [String]
         switch lean {
         case ...(-strong): pool = heavyStrong
@@ -90,9 +112,7 @@ enum FeelingWords {
         case middle...: pool = lightMild
         default: pool = interleaved
         }
-        let candidates = pool.filter { $0 != key && !used.contains($0) }
-        guard !candidates.isEmpty else { return [] }
-
+        let candidates = pool.filter { !skip.contains($0) && !themed.contains($0) }
         let ranked: [String]
         if let embedding, embedding.contains(key) {
             ranked = candidates.enumerated()
@@ -102,22 +122,27 @@ enum FeelingWords {
         } else {
             ranked = candidates
         }
-        // A couple close in meaning, the rest spread across the whole list
-        // (from a different spot each time), so the words don't all say the same thing.
-        let start = (shuffle * count) % ranked.count
-        let rotated = Array(ranked[start...] + ranked[..<start])
-        let near = max(1, count / 3)
-        var picks = Array(rotated.prefix(near))
-        var rest = Array(rotated.dropFirst(near))
-        if !rest.isEmpty {
-            let offset = abs(seed) % rest.count
-            rest = Array(rest[offset...] + rest[..<offset])
+        guard !themed.isEmpty || !ranked.isEmpty else { return [] }
+
+        // Mostly specific: a few from the theme, then the nearest general
+        // words, and one wildcard from further down the list for a little range.
+        func rotate(_ list: [String], by n: Int) -> [String] {
+            guard !list.isEmpty else { return list }
+            let i = ((n % list.count) + list.count) % list.count
+            return Array(list[i...] + list[..<i])
         }
-        let wanted = min(count - picks.count, rest.count)
-        if wanted > 0 {
-            let stride = Double(rest.count) / Double(wanted)
-            picks += (0..<wanted).map { rest[Int(Double($0) * stride)] }
+        let themeCount = min(themed.count, max(count - 2, 1), max(themed.count / 2, 1))
+        var picks = Array(rotate(themed, by: shuffle * themeCount).prefix(themeCount))
+        let nearCount = max(count - picks.count - 1, 0)
+        let general = rotate(ranked, by: shuffle * max(nearCount, 1))
+        picks += general.prefix(nearCount)
+        let further = Array(general.dropFirst(nearCount))
+        if picks.count < count, !further.isEmpty {
+            let wild = Array(further.dropFirst(min(further.count - 1, further.count / 3)))
+            picks.append(wild[abs(seed) % wild.count])
         }
+        // If the theme and the nearest words ran short, fill from what's left.
+        for extra in further where picks.count < count && !picks.contains(extra) { picks.append(extra) }
         return picks
     }
 

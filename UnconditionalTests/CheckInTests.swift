@@ -7,14 +7,32 @@ import SwiftData
 /// Words: feeling words offered after a slide, and how kept words are written down.
 @MainActor
 struct FeelingWordsTests {
+    /// Every heavier (or lighter) word Words can offer: the general lists and every theme.
+    private var anyHeavy: Set<String> { Set(FeelingWords.heavy + WordThemes.all.flatMap(\.heavy)) }
+    private var anyLight: Set<String> { Set(FeelingWords.light + WordThemes.all.flatMap(\.light)) }
+
     @Test("Sliding heavier offers heavier words, and lighter offers lighter ones")
     func sideMatchesSlide() {
-        let heavy = FeelingWords.related(to: "tired", leaning: -0.7)
-        let light = FeelingWords.related(to: "tired", leaning: 0.7)
+        let heavy = FeelingWords.related(to: "exam", leaning: -0.7)
+        let light = FeelingWords.related(to: "exam", leaning: 0.7)
         #expect(heavy.count == 6)
-        #expect(heavy.allSatisfy(FeelingWords.heavy.contains))
-        #expect(light.allSatisfy(FeelingWords.light.contains))
-        #expect(!heavy.contains("tired"))
+        #expect(heavy.allSatisfy(anyHeavy.contains))
+        #expect(light.allSatisfy(anyLight.contains))
+        #expect(!heavy.contains("exam"))
+    }
+
+    @Test("Your word's theme comes first: failure offers words about failing")
+    func specificToTheWord() throws {
+        let failure = try #require(WordThemes.all.first { $0.name == "failure" })
+        #expect(WordThemes.theme(for: "Failure", embedding: nil)?.name == "failure")
+        #expect(WordThemes.theme(for: "my job", embedding: nil)?.name == "work")
+        #expect(WordThemes.theme(for: "father", embedding: nil)?.name == "family")
+        #expect(WordThemes.theme(for: "worthless", embedding: nil)?.name == "self-worth")
+        #expect(WordThemes.theme(for: "not good enough", embedding: nil)?.name == "self-worth")
+        let heavy = FeelingWords.related(to: "failure", leaning: -0.4, count: 5)
+        let light = FeelingWords.related(to: "failure", leaning: 0.4, count: 5)
+        #expect(heavy.filter(failure.heavy.contains).count >= 3)
+        #expect(light.filter(failure.light.contains).count >= 3)
     }
 
     @Test("Words you already kept aren't offered again, and 'show others' changes them")
@@ -28,13 +46,14 @@ struct FeelingWordsTests {
 
     @Test("A little heavier and a lot heavier offer different words")
     func strengths() {
-        let little = FeelingWords.related(to: "tired", leaning: -0.3)
-        let lot = FeelingWords.related(to: "tired", leaning: -0.9)
-        #expect(little.allSatisfy(FeelingWords.heavyMild.contains))
-        #expect(lot.allSatisfy(FeelingWords.heavyStrong.contains))
+        let little = FeelingWords.related(to: "exam", leaning: -0.3)
+        let lot = FeelingWords.related(to: "exam", leaning: -0.9)
         #expect(Set(little).isDisjoint(with: lot))
         #expect(Set(FeelingWords.light).count == FeelingWords.light.count)
         #expect(Set(FeelingWords.heavy).count == FeelingWords.heavy.count)
+        for theme in WordThemes.all {
+            #expect(Set(theme.heavy).isDisjoint(with: theme.light), "\(theme.name)")
+        }
     }
 
     @Test("The same word brings different suggestions from one slide to the next")
@@ -58,8 +77,8 @@ struct FeelingWordsTests {
     func inBetween() {
         #expect(FeelingWords.describe(0.05) == "in between")
         let both = FeelingWords.related(to: "okay", leaning: 0, count: 12)
-        #expect(both.contains(where: FeelingWords.heavy.contains))
-        #expect(both.contains(where: FeelingWords.light.contains))
+        #expect(both.contains(where: anyHeavy.contains))
+        #expect(both.contains(where: anyLight.contains))
     }
 
     @Test("How far you slide is written in plain words")
