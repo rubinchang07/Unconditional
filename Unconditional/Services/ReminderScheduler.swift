@@ -34,4 +34,32 @@ enum ReminderScheduler {
     static func cancel() {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
     }
+
+    // MARK: Sunday look-back
+
+    private static let sundayID = "sunday-review"
+
+    /// Sunday is the day to look calmly at parked thoughts.
+    static func isReviewDay(_ date: Date, calendar: Calendar = .current) -> Bool {
+        calendar.component(.weekday, from: date) == 1
+    }
+
+    /// One quiet note on the coming Sunday morning, only while thoughts are parked.
+    /// Uses the permission from the daily reminder; without it, nothing is shown.
+    static func scheduleSundayReview() {
+        let content = UNMutableNotificationContent()
+        content.title = "It's Sunday"
+        content.body = "A few thoughts you set aside are waiting, if you'd like a calm look."
+        var time = DateComponents()
+        time.weekday = 1
+        time.hour = 10
+        let trigger = UNCalendarNotificationTrigger(dateMatching: time, repeats: false)
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [sundayID])
+        center.add(UNNotificationRequest(identifier: sundayID, content: content, trigger: trigger))
+    }
+
+    static func cancelSundayReview() {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [sundayID])
+    }
 }

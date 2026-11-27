@@ -56,7 +56,9 @@ struct MapView: View {
                                withAnimation(.spring(duration: 0.45, bounce: 0.15)) { handsOn = on }
                            },
                            onSpin: { spin = $0 },
-                           root: root, onTapSun: { editingRoot = true },
+                           root: root,
+                           sunGrowth: SunGrowth.amount(checkIns: entries.count, threads: links.filter(\.isConfirmed).count),
+                           onTapSun: { editingRoot = true },
                            showDemo: !hasSeenThreadDemo, onDemoDone: { hasSeenThreadDemo = true },
                            selectedLink: $selectedLink, selectedHint: $selectedHint)
                         .aspectRatio(1, contentMode: .fit)
@@ -105,8 +107,8 @@ struct MapView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $selected) { loop in
-            LoopMapDetail(loop: loop, loops: loops, values: values, color: color(for: loop))
-                .presentationDetents([.large])
+            LoopMapDetail(loop: loop, color: color(for: loop))
+                .presentationDetents([.medium, .large])
         }
         .animation(.calm, value: links.count)
     }
@@ -310,6 +312,8 @@ private struct MapWeb: View, Animatable {
     var onSpin: (Double) -> Void = { _ in }
     /// Your guess at a shared root belief, glowing at the middle like a sun.
     var root: String = ""
+    /// How far the sun has grown, 0 to 1. See `SunGrowth`.
+    var sunGrowth: Double = 0
     var onTapSun: () -> Void = {}
     /// Play the one-time "pull a thread" demo.
     var showDemo = false
@@ -502,7 +506,7 @@ private struct MapWeb: View, Animatable {
                 }
 
                 // Your root guess at the middle, like a sun. Tap to write or change it.
-                RootSun(root: root)
+                RootSun(root: root, growth: sunGrowth)
                     .position(center)
                     .onTapGesture(perform: onTapSun)
                     .accessibilityElement(children: .ignore)
@@ -1118,65 +1122,34 @@ extension MapLink {
 // MARK: - One loop up close
 
 private struct LoopMapDetail: View {
-    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     let loop: Loop
-    let loops: [Loop]
-    let values: [PersonalValue]
     let color: Color
-    /// Its own query, so a new link shows up here straight away while you slide.
-    @Query private var links: [MapLink]
     @State private var words: [String] = []
 
+    /// Two things only: the belief it runs on, and the words you keep using in it.
+    /// Connections are made on the map itself, by pulling threads.
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Text(loop.coreBelief.isEmpty ? "No core belief written yet." : loop.coreBelief)
-                        .font(.system(.body, design: .serif))
-                } header: {
-                    Text("Core belief")
-                } footer: {
-                    Text("The belief this loop runs on, in your words. You can edit it in Settings → Your loops.")
-                }
-
-                Section {
-                    if words.isEmpty {
-                        Text("After a few more written entries in this loop, the words you keep using will show here.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        FlowWords(words: words, color: color)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    Text(loop.coreBelief.isEmpty ? "No belief written yet." : "“\(loop.coreBelief)”")
+                        .font(.system(.title3, design: .serif))
+                        .italic(!loop.coreBelief.isEmpty)
+                        .foregroundStyle(loop.coreBelief.isEmpty ? .secondary : .primary)
+                    if !words.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("words that keep coming up")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            FlowWords(words: words, color: color)
+                        }
                     }
-                } header: {
-                    Text("Words that keep coming up")
-                } footer: {
-                    Text("Found on your phone. Nothing leaves it.")
                 }
-
-                Section {
-                    if values.isEmpty {
-                        Text("Add values in Anchors, then connect them here.")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(values) { value in
-                        RatingSlider(title: value.name, value: valueBinding(value), range: 0...1, step: 0.05,
-                                     lowLabel: "not really", highLabel: "a lot", valueText: MapLink.strengthLabel)
-                    }
-                } header: {
-                    Text("Values underneath")
-                } footer: {
-                    Text("A loop often hurts because it touches something you care about. How much does this one touch each value?")
-                }
-
-                Section {
-                    ForEach(loops.filter { $0 != loop }) { other in
-                        RatingSlider(title: other.name, value: loopBinding(other), range: 0...1, step: 0.05,
-                                     lowLabel: "not really", highLabel: "a lot", valueText: MapLink.strengthLabel)
-                    }
-                } header: {
-                    Text("Connected loops")
-                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .themedBackground()
             .navigationTitle(loop.name.lowercased())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1185,42 +1158,6 @@ private struct LoopMapDetail: View {
                 }
             }
             .task { words = RecurringWords.top(in: loop.entries) }
-        }
-    }
-
-    private func valueBinding(_ value: PersonalValue) -> Binding<Double> {
-        binding(for: links.first { $0.loopA == loop && $0.value == value }) { link in
-            link.loopA = loop
-            link.value = value
-        }
-    }
-
-    private func loopBinding(_ other: Loop) -> Binding<Double> {
-        binding(for: links.first { $0.value == nil && $0.joins(loop, other) }) { link in
-            link.loopA = loop
-            link.loopB = other
-        }
-    }
-
-    /// Slide up from zero to create a link, back to zero to remove it.
-    private func binding(for existing: MapLink?, attach: @escaping (MapLink) -> Void) -> Binding<Double> {
-        Binding {
-            guard let existing, existing.isConfirmed else { return 0 }
-            return existing.strength
-        } set: { newValue in
-            if let existing {
-                if newValue < 0.05 {
-                    context.delete(existing)
-                } else {
-                    existing.strength = newValue
-                    existing.status = "confirmed"
-                }
-            } else if newValue >= 0.05 {
-                let link = MapLink()
-                context.insert(link)
-                attach(link)
-                link.strength = newValue
-            }
         }
     }
 }

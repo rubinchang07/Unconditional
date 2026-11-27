@@ -55,6 +55,9 @@ struct TodayView: View {
     /// Becomes true the first time you hold the orb, and the hint under it goes away for good.
     @AppStorage("hasHeldOrb") private var hasHeldOrb = false
     @Query(sort: \PersonalValue.createdAt) private var values: [PersonalValue]
+    /// Parked thoughts. On Sundays, a quiet note on Today offers a calm look at them.
+    @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt == nil }) private var parked: [ParkedThought]
+    @State private var showReview = false
 
     private var hasContent: Bool {
         if recorder.isRecording { return false }
@@ -140,6 +143,7 @@ struct TodayView: View {
             .sheet(isPresented: $showSteps) { StepPathsView() }
             .fullScreenCover(isPresented: $showReset) { ThoughtResetView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(isPresented: $showReview) { NavigationStack { ParkedReviewView() } }
             .sheet(item: $savedGood) { entry in GoodMomentSheet(entry: entry) }
             .sheet(isPresented: $showPrompts) {
                 VStack(alignment: .leading, spacing: 14) {
@@ -217,6 +221,18 @@ struct TodayView: View {
             }
             .buttonStyle(.plain)
             .padding(.vertical, 4)
+
+            // Only on Sundays, and only when something's waiting. No section of its own.
+            if ReminderScheduler.isReviewDay(.now) && !parked.isEmpty {
+                Button { showReview = true } label: {
+                    Label("it's sunday. \(parked.count) parked thought\(parked.count == 1 ? "" : "s") to look at",
+                          systemImage: "tray")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+            }
 
             // Everything else stays tucked away until you want it.
             Menu {
@@ -789,7 +805,7 @@ struct ReframePromptView: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     let entry: Entry
 
-    private enum Step { case ask, reframe, compassion, win }
+    private enum Step { case ask, reframe, shift, compassion, win }
     @State private var step: Step = .ask
 
     var body: some View {
@@ -817,8 +833,12 @@ struct ReframePromptView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(ThemeBackground())
                 case .reframe:
-                    ReframeView(entry: entry, onDone: { withAnimation { step = .win } },
+                    ReframeView(entry: entry, onDone: { withAnimation { step = entry.reframe == nil ? .win : .shift } },
                                 onCompassion: { withAnimation { step = .compassion } })
+                case .shift:
+                    if let reframe = entry.reframe {
+                        ShiftView(reframe: reframe) { withAnimation { step = .win } }
+                    }
                 case .compassion:
                     SelfCompassionView(entry: entry, onDone: { withAnimation { step = .win } })
                 case .win:
@@ -828,6 +848,37 @@ struct ReframePromptView: View {
         }
         .presentationDetents(step == .ask ? [.medium] : [.large])
         .presentationCornerRadius(28)
+    }
+}
+
+/// Right after a reframe, once: how heavy it felt before, and now, as two orbs.
+/// It's only here, in the moment it means something, not saved up into a chart.
+private struct ShiftView: View {
+    let reframe: Reframe
+    let onDone: () -> Void
+
+    private var message: String {
+        let change = reframe.distressBefore - reframe.distressAfter
+        if change >= 1 { return "It feels a little lighter than when you started." }
+        if change <= -1 { return "It feels heavier right now. Looking closely can stir things up, and that's okay." }
+        return "About the same. Some thoughts take more than one look."
+    }
+
+    var body: some View {
+        VStack(spacing: 28) {
+            Spacer()
+            DistressOrbs(before: reframe.distressBefore, after: reframe.distressAfter)
+            Text(message)
+                .font(.system(.title3, design: .serif))
+                .multilineTextAlignment(.center)
+            Spacer()
+            Button("Continue", action: onDone)
+                .buttonStyle(.paper)
+                .padding(.bottom, 8)
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ThemeBackground())
     }
 }
 

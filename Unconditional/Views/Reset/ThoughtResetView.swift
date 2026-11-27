@@ -123,7 +123,7 @@ struct ThoughtResetView: View {
                     Button {
                         showReview = true
                     } label: {
-                        Label("\(parked.count) parked thought\(parked.count == 1 ? "" : "s") waiting for your weekly review",
+                        Label("\(parked.count) parked thought\(parked.count == 1 ? "" : "s") waiting for Sunday",
                               systemImage: "tray")
                             .font(.subheadline)
                     }
@@ -174,6 +174,7 @@ struct ThoughtResetView: View {
                     choice("Park it for later", symbol: "tray.and.arrow.down") {
                         context.insert(ParkedThought(text: thoughtText))
                         try? context.save()
+                        ReminderScheduler.scheduleSundayReview()
                         closing = .park
                         finish("Parked. You can look at it calmly later, not in the middle of a spiral.")
                     }

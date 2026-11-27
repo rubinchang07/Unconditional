@@ -84,8 +84,9 @@ struct ParkedReviewView: View {
                 }
             }
         }
-        .navigationTitle("weekly review")
+        .navigationTitle("sunday look-back")
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { if waiting.isEmpty { ReminderScheduler.cancelSundayReview() } }
         .themedBackground()
         .paperList()
         .keyboardDoneButton()

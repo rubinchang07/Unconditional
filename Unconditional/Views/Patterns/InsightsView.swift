@@ -39,7 +39,7 @@ struct InsightsView: View {
                 NavigationLink {
                     PatternsView()
                 } label: {
-                    Label("Explore patterns", systemImage: "circle.dashed")
+                    Label("On your mind lately", systemImage: "circle.dashed")
                 }
                 NavigationLink {
                     MapView()
@@ -47,15 +47,11 @@ struct InsightsView: View {
                     Label("Your map", systemImage: "point.3.connected.trianglepath.dotted")
                 }
             } footer: {
-                Text("Loops as rings, and how reframes shift things. Your map shows how loops and values connect.")
+                Text("Which loops have come up more or less lately, and how your loops and values connect.")
             }
 
+            if !careerReflections.isEmpty {
             Section {
-                NavigationLink {
-                    ParkedReviewView()
-                } label: {
-                    Label("Weekly review", systemImage: "tray")
-                }
                 if !careerReflections.isEmpty {
                     NavigationLink {
                         CareerHistoryView()
@@ -63,6 +59,7 @@ struct InsightsView: View {
                         Label("Career reflections", systemImage: "briefcase")
                     }
                 }
+            }
             }
         }
         .themedBackground()
