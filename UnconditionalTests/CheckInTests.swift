@@ -308,3 +308,55 @@ struct SpiralingTests {
         }
     }
 }
+
+/// Head and heart, and stopping the stream.
+@MainActor
+struct HeadHeartAndStreamTests {
+    @Test("Head and heart: in tune is no gap, far apart is a big one")
+    func gap() {
+        #expect(HeadAndHeart.gap(head: 0.8, heart: 0.8) == 0)
+        #expect(HeadAndHeart.gap(head: 0.9, heart: 0.2) > HeadAndHeart.noticeable)
+        #expect(HeadAndHeart.gap(head: 2, heart: -1) == 1)
+    }
+
+    @Test("The stream carries pieces of what you wrote, short and without repeats")
+    func pieces() {
+        let text = "I failed the exam. Everyone else is ahead and I'm wasting my time, failed the exam"
+        let pieces = StreamWords.pieces(text: text, kind: .write, loop: "Falling behind")
+        #expect(pieces.contains("I failed the exam"))
+        #expect(pieces.contains("Everyone else is ahead"))
+        #expect(pieces.contains("falling behind"))
+        #expect(pieces.allSatisfy { $0.split(separator: " ").count <= 4 })
+        #expect(Set(pieces.map { $0.lowercased() }).count == pieces.count)
+        #expect(pieces.count <= StreamWords.limit)
+        // A drawing still gets a few words to flow.
+        #expect(StreamWords.pieces(text: "", kind: .draw, loop: nil).count >= 4)
+        let kept = FeelingWords.compose([KeptWord(word: "tired", lean: -0.9)])
+        #expect(StreamWords.pieces(text: kept, kind: .words, loop: nil).first == "tired")
+    }
+
+    @Test("Only a line across most of the stream builds the dam")
+    func crossing() {
+        let size = CGSize(width: 390, height: 760)
+        let y: CGFloat = 400
+        let c = StreamDrawing.centerX(y: y, size: size)
+        let w = StreamDrawing.width(size: size)
+        let across = [CGPoint(x: c - w, y: y), CGPoint(x: c + w, y: y + 10)]
+        let short = [CGPoint(x: c - 10, y: y), CGPoint(x: c + 10, y: y)]
+        let down = [CGPoint(x: c - w, y: y - 300), CGPoint(x: c + w, y: y + 300)]
+        #expect(StreamDrawing.crossesStream(across, size: size))
+        #expect(!StreamDrawing.crossesStream(short, size: size))
+        #expect(!StreamDrawing.crossesStream(down, size: size))
+        #expect(!StreamDrawing.crossesStream([], size: size))
+    }
+
+    @Test("Thoughts speed up the longer they flow, up to a limit")
+    func speedsUp() {
+        let early = StreamDrawing.travelled(2) - StreamDrawing.travelled(1)
+        let later = StreamDrawing.travelled(13) - StreamDrawing.travelled(12)
+        let much = StreamDrawing.travelled(41) - StreamDrawing.travelled(40)
+        let more = StreamDrawing.travelled(61) - StreamDrawing.travelled(60)
+        #expect(later > early)
+        #expect(abs(much - more) < 0.001)
+    }
+}

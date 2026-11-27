@@ -805,7 +805,7 @@ struct ReframePromptView: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     let entry: Entry
 
-    private enum Step { case ask, reframe, shift, compassion, win }
+    private enum Step { case ask, reframe, stream, shift, compassion, win }
     @State private var step: Step = .ask
 
     var body: some View {
@@ -819,11 +819,13 @@ struct ReframePromptView: View {
                             .frame(width: 110, height: 110)
                         Text("Saved.")
                             .font(.system(.title, design: .serif).weight(.semibold))
-                        Text("Getting it out counts. Want to look at it from another angle?")
+                        Text("Getting it out counts. What would help now?")
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Look at it another way") { withAnimation { step = .reframe } }
+                            .buttonStyle(.paper)
+                        Button("Stop the stream here") { withAnimation { step = .stream } }
                             .buttonStyle(.paper)
                         Button("Not today") { dismiss() }
                             .foregroundStyle(.secondary)
@@ -835,6 +837,9 @@ struct ReframePromptView: View {
                 case .reframe:
                     ReframeView(entry: entry, onDone: { withAnimation { step = entry.reframe == nil ? .win : .shift } },
                                 onCompassion: { withAnimation { step = .compassion } })
+                case .stream:
+                    StreamDamView(words: StreamWords.pieces(text: entry.text, kind: entry.kind, loop: entry.loop?.name),
+                                  onDone: { dismiss() })
                 case .shift:
                     if let reframe = entry.reframe {
                         ShiftView(reframe: reframe) { withAnimation { step = .win } }
@@ -846,7 +851,7 @@ struct ReframePromptView: View {
                 }
             }
         }
-        .presentationDetents(step == .ask ? [.medium] : [.large])
+        .presentationDetents(step == .ask ? [.fraction(0.62)] : [.large])
         .presentationCornerRadius(28)
     }
 }

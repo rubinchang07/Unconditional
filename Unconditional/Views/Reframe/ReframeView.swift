@@ -3,7 +3,8 @@ import SwiftData
 
 /// A short CBT reframe in two quiet screens, one thing to write on each:
 /// 1. the thought, and how heavy it feels
-/// 2. what you'd tell a friend, and how heavy it feels now
+/// 2. what you'd tell a friend, then head and heart: how true it seems, and how it feels
+///    (two waves that clash when they're apart, see `HeadAndHeart`)
 /// Older reframes keep anything they had (evidence, a small step), untouched.
 struct ReframeView: View {
     @Environment(\.modelContext) private var context
@@ -23,6 +24,7 @@ struct ReframeView: View {
     @State private var distressAfter = 5.0
     @State private var beliefBefore = 70.0
     @State private var beliefAfter = 70.0
+    @State private var headTrue = 0.5
     @State private var showBreathing = false
     @State private var saveFailed = false
 
@@ -120,7 +122,8 @@ struct ReframeView: View {
                 .lineLimit(3...8)
                 .focused($writing)
                 .paperCard(padding: 16)
-            heaviness("And now?", value: $distressAfter)
+            HeadAndHeart(head: $headTrue,
+                         heart: Binding(get: { 1 - distressAfter / 10 }, set: { distressAfter = 10 * (1 - $0) }))
         }
     }
 
@@ -160,6 +163,7 @@ struct ReframeView: View {
             distressAfter = existing.distressAfter
             beliefBefore = existing.beliefBefore
             beliefAfter = existing.beliefAfter
+            if existing.headTrue >= 0 { headTrue = existing.headTrue }
         } else {
             // Start from the loop's core belief, so you can see it written down and question it.
             coreBelief = entry.loop?.coreBelief ?? ""
@@ -185,6 +189,7 @@ struct ReframeView: View {
         reframe.distressAfter = distressAfter
         reframe.beliefBefore = beliefBefore
         reframe.beliefAfter = beliefAfter
+        reframe.headTrue = headTrue
         if entry.reframe == nil {
             context.insert(reframe)
             entry.reframe = reframe

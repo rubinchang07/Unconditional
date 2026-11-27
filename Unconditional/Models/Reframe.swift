@@ -27,6 +27,9 @@ final class Reframe {
     /// How much you believed the core belief, 0 to 100%, before and after.
     var beliefBefore: Double = 70
     var beliefAfter: Double = 70
+    /// After the reframe: how true the kinder thought seems in your head, 0 to 1.
+    /// Shown beside how light it feels (from `distressAfter`), as two waves. -1 when not asked.
+    var headTrue: Double = -1
 
     var entry: Entry?
 
