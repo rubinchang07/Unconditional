@@ -22,14 +22,15 @@ struct ParkedReviewView: View {
         List {
             if !waiting.isEmpty {
                 Section {
-                    FloatingOrbs(count: waiting.count, palette: orbPalette)
-                        .frame(height: 110)
+                    // The cloud from "i'm spiraling" rains the saved thoughts back down.
+                    SundayRain(count: waiting.count, color: orbPalette.colors[0])
+                        .frame(height: 140)
                         .listRowBackground(Color.clear)
                 }
             }
 
             Section {
-                Text("Look at each thought with fresh eyes. Has it shifted? What have you learned or enjoyed since? A thought that still feels important after a calm look deserves real attention.")
+                Text("With fresh eyes: has it shifted?")
                     .foregroundStyle(.secondary)
             }
 
@@ -55,7 +56,7 @@ struct ParkedReviewView: View {
 
             if waiting.isEmpty {
                 Section {
-                    Text("Nothing waiting. When a big-decision thought shows up mid-spiral, you can park it from Thought Reset.")
+                    Text("Nothing waiting.")
                         .foregroundStyle(.secondary)
                 }
             }

@@ -1,241 +1,290 @@
 import SwiftUI
 import SwiftData
 
-/// "I'm spiraling." A quick way to interrupt a loop in one or two taps,
-/// without writing a full entry.
-///
-/// Tap the thought closest to yours, read a gentler perspective, then pick
-/// one of three: let it be, park it for later, or breathe.
-/// Not every thought needs to be analyzed. Acknowledging it is enough.
+/// "I'm spiraling": three calm moments, one at a time, with as little to read as possible.
+/// 1. Breathe: the orb breathes three slow breaths, and you breathe with it.
+/// 2. Pick: a few heavy words drift by (your loops among them). Tap what's in your head.
+/// 3. Release: drag each word down into the water to let it go, or up into the
+///    cloud to save it for Sunday, when the cloud rains it back for a calm look.
 struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
-    @Query(sort: \ResetThought.sortOrder) private var thoughts: [ResetThought]
-    @Query(filter: #Predicate<ParkedThought> { $0.reviewedAt == nil }) private var parked: [ParkedThought]
+    @Query(sort: \Loop.sortOrder) private var loops: [Loop]
     @Query private var laughs: [Laugh]
 
-    private enum Step: Equatable { case pick, perspective, closing(String) }
-    /// How the closing orb behaves: the thought drifts into it, or a small orb pinches off.
-    private enum Closing { case plain, absorb(String), park }
-    @State private var closing: Closing = .plain
-    @State private var absorbed = false
-    @State private var ripple = 0
-    @State private var step: Step = .pick
+    private enum Step: Equatable { case breathe, pick, release, closing }
+    enum Destination { case water, cloud }
 
-    @State private var chosen: ResetThought?
-    @State private var customThought = ""
-    @State private var editingPerspective = false
-    @State private var showBreathing = false
-    @State private var showReview = false
+    @State private var step: Step = .breathe
+    @State private var pool: [String] = []
+    @State private var picked: [String] = []
+    @State private var own = ""
+    @State private var placed: [String: Destination] = [:]
+    @State private var dragging: String?
+    @State private var dragOffset: CGSize = .zero
+    @State private var ripple = 0
+    @State private var rippleX: CGFloat = 0.5
+    @State private var closingRipple = 0
     /// After a reset, one thing that made you laugh, if you asked for something lighter.
     @State private var lighter: Laugh?
-
-    /// The perspective for "Something else": no argument with the thought, just room around it.
-    private let generalPerspective = "This thought is here, and it's heavy. You don't have to argue with it or obey it. You can notice it, and choose your next step."
+    @FocusState private var typing: Bool
 
     var body: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                ThemeBackground()
                 switch step {
+                case .breathe: breatheStep
                 case .pick: pickStep
-                case .perspective: perspectiveStep
-                case .closing(let message): closingStep(message)
+                case .release: releaseStep
+                case .closing: closingStep
                 }
             }
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(ThemeBackground())
-            .navigationTitle("thought reset")
+            .animation(.calm, value: step)
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                 }
-                if step == .perspective {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Back", systemImage: "chevron.left") { go(.pick) }
-                    }
-                }
             }
             .keyboardDoneButton()
-            .sheet(isPresented: $showBreathing) { BreathingView() }
-
-            .sheet(isPresented: $showReview) {
-                NavigationStack { ParkedReviewView() }
-            }
-            .sheet(isPresented: $editingPerspective) {
-                if let chosen {
-                    NavigationStack { PerspectiveEditor(thought: chosen) }
-                }
-            }
+            .onAppear { if pool.isEmpty { pool = ResetWords.pool(loops: loops.map(\.name)) } }
         }
     }
 
-    // MARK: - Step 1: pick the closest thought
+    // MARK: - 1. Breathe
+
+    private var breatheStep: some View {
+        VStack(spacing: 30) {
+            Spacer()
+            TimelineView(.animation(paused: reduceMotion)) { timeline in
+                let scale = reduceMotion ? 1 : ResetWords.breath(at: timeline.date.timeIntervalSinceReferenceDate)
+                OrbView(palette: orbPalette, speed: 0.5, state: .breathing, exercise: true)
+                    .frame(width: 220, height: 220)
+                    .scaleEffect(0.75 + 0.3 * scale)
+            }
+            Text("slow down with me")
+                .font(.system(.title3, design: .serif))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text("tap to skip")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .padding(.bottom, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { go(.pick) }
+        .transition(.opacity)
+        .task {
+            // Three breaths, then on to the words.
+            try? await Task.sleep(for: .seconds(reduceMotion ? 3 : ResetWords.breathLength * 3))
+            if step == .breathe { go(.pick) }
+        }
+        .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.4), trigger: step)
+    }
+
+    // MARK: - 2. Pick from floating words
 
     private var pickStep: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                PaperHeading(title: "What's weighing on you?",
-                             subtitle: "Tap the thought that feels closest. You don't have to explain everything.")
-                    .padding(.vertical, 8)
+        VStack(spacing: 16) {
+            Text("what's in your head?")
+                .font(.system(.title2, design: .serif).weight(.semibold))
+                .padding(.top, 12)
 
-                ForEach(thoughts) { thought in
-                    Button {
-                        chosen = thought
-                        customThought = ""
-                        go(.perspective)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(thought.text)
-                                .font(.system(.body, design: .serif))
-                            if let loop = thought.loop {
-                                Text(loop.name)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+            GeometryReader { proxy in
+                TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
+                    let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                    ZStack {
+                        ForEach(Array(pool.enumerated()), id: \.element) { index, word in
+                            let home = ResetWords.home(index: index, count: pool.count, in: proxy.size)
+                            let isPicked = picked.contains(word)
+                            Button {
+                                withAnimation(.calm) {
+                                    if isPicked { picked.removeAll { $0 == word } } else { picked.append(word) }
+                                }
+                            } label: {
+                                Text(word)
+                                    .font(.system(.callout, design: .serif))
+                                    .foregroundStyle(isPicked ? AnyShapeStyle(.white) : AnyShapeStyle(.primary.opacity(0.75)))
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 9)
+                                    .background(isPicked ? AnyShapeStyle(.tint) : AnyShapeStyle(.tint.opacity(0.1)), in: Capsule())
+                                    .fixedSize()
                             }
+                            .buttonStyle(.plain)
+                            .position(x: home.x + 10 * sin(t * 0.35 + Double(index) * 1.3),
+                                      y: home.y + 8 * cos(t * 0.3 + Double(index) * 0.9))
+                            .accessibilityAddTraits(isPicked ? .isSelected : [])
                         }
-                        .paperCard(padding: 16)
                     }
-                    .buttonStyle(.plain)
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Something else")
-                        .font(.system(.body, design: .serif))
-                    TextField("In a few words…", text: $customThought)
-                        .onSubmit(useCustomThought)
-                    if !customThought.trimmingCharacters(in: .whitespaces).isEmpty {
-                        Button("Continue", action: useCustomThought)
-                            .font(.subheadline.weight(.semibold))
-                    }
-                }
-                .paperCard(padding: 16)
-
-                if !parked.isEmpty {
-                    Button {
-                        showReview = true
-                    } label: {
-                        Label("\(parked.count) parked thought\(parked.count == 1 ? "" : "s") waiting for Sunday",
-                              systemImage: "tray")
-                            .font(.subheadline)
-                    }
-                    .padding(.top, 8)
                 }
             }
-            .padding(.bottom, 24)
-        }
-        .scrollIndicators(.hidden)
-    }
+            .sensoryFeedback(.selection, trigger: picked.count)
 
-    // MARK: - Step 2: a different perspective, and what to do with it
-
-    private var perspectiveStep: some View {
-        let thoughtText = chosen?.text ?? customThought
-        let perspective = chosen?.perspective ?? generalPerspective
-
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("“\(thoughtText)”")
-                    .font(.system(.title3, design: .serif))
-                    .italic()
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text((chosen?.loop?.name ?? "Another angle").uppercased())
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tint)
-                    Text(perspective)
-                        .font(.system(.title3, design: .serif))
-                        .lineSpacing(4)
-                    if chosen != nil {
-                        Button("Rewrite in my own words", systemImage: "pencil") { editingPerspective = true }
-                            .font(.footnote)
-                    }
+            HStack {
+                TextField("or a word of your own", text: $own)
+                    .focused($typing)
+                    .submitLabel(.done)
+                    .onSubmit(addOwn)
+                if !own.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button("Add", action: addOwn).font(.subheadline.weight(.semibold))
                 }
-                .paperCard()
+            }
+            .paperCard(padding: 14)
 
-                // The main action is the gentlest one: just letting it be.
-                Button("Okay. I can let it be here.") {
-                    closing = .absorb(thoughtText)
-                    finish("Noticed. You don't have to solve it right now.")
-                }
+            Button(picked.isEmpty ? "Skip" : "Next") { go(picked.isEmpty ? .closing : .release) }
                 .buttonStyle(.paper)
+                .padding(.bottom, 8)
+        }
+        .padding(.horizontal, 20)
+        .transition(.opacity)
+    }
 
-                HStack(spacing: 12) {
-                    choice("Park it for later", symbol: "tray.and.arrow.down") {
-                        context.insert(ParkedThought(text: thoughtText))
-                        try? context.save()
-                        ReminderScheduler.scheduleSundayReview()
-                        closing = .park
-                        finish("Parked. You can look at it calmly later, not in the middle of a spiral.")
-                    }
-                    choice("Breathe", symbol: "wind") { showBreathing = true }
+    private func addOwn() {
+        let word = own.trimmingCharacters(in: .whitespacesAndNewlines)
+        own = ""
+        typing = false
+        guard !word.isEmpty else { return }
+        withAnimation(.calm) {
+            if !pool.contains(word) { pool.append(word) }
+            if !picked.contains(word) { picked.append(word) }
+        }
+    }
+
+    // MARK: - 3. Water or cloud
+
+    private var releaseStep: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let cloudCenter = CGPoint(x: size.width / 2, y: 70)
+            let waterTop = size.height - 150
+            ZStack {
+                // The cloud: a little fuller for each thought it holds.
+                VStack(spacing: 4) {
+                    Cloud()
+                        .fill(Color(light: 0xE6EBF2, dark: 0x3A4152))
+                        .frame(width: 150, height: 60)
+                        .scaleEffect(1 + 0.06 * CGFloat(saved.count))
+                        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+                    Text("sunday")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
+                .position(x: cloudCenter.x, y: cloudCenter.y + 10)
 
-                Text("Every option is optional. Doing none of them is fine too.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                ReleaseWater(color: orbPalette.colors[0], ripple: ripple, rippleX: rippleX)
+                    .frame(height: 150)
+                    .overlay(alignment: .bottom) {
+                        Text("let go")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.8))
+                            .padding(.bottom, 30)
+                    }
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .ignoresSafeArea(edges: .bottom)
+
+                ForEach(Array(picked.enumerated()), id: \.element) { index, word in
+                    let home = CGPoint(x: size.width * CGFloat(index + 1) / CGFloat(picked.count + 1),
+                                       y: size.height * 0.45 + (index.isMultiple(of: 2) ? -16 : 16))
+                    releaseWord(word, home: home, cloud: cloudCenter, waterTop: waterTop, width: size.width)
+                }
             }
-            .padding(.bottom, 24)
         }
-        .scrollIndicators(.hidden)
+        .transition(.opacity)
     }
 
-    /// A square card with an icon, so the two extra choices read at a glance.
-    private func choice(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 10) {
-                Image(systemName: symbol)
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-                Text(title)
-                    .font(.subheadline)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity, minHeight: 96)
-            .paperCard(padding: 12)
+    private var saved: [String] { placed.filter { $0.value == .cloud }.map(\.key) }
+
+    private func releaseWord(_ word: String, home: CGPoint, cloud: CGPoint, waterTop: CGFloat, width: CGFloat) -> some View {
+        let destination = placed[word]
+        let live = dragging == word ? dragOffset : .zero
+        let target: CGSize = switch destination {
+        case .water: CGSize(width: 0, height: waterTop + 60 - home.y)
+        case .cloud: CGSize(width: cloud.x - home.x, height: cloud.y - home.y)
+        case nil: live
         }
-        .buttonStyle(.plain)
+        return ZStack {
+            MiniOrb(color: orbPalette.colors[1], seed: Double(word.count))
+            Text(word)
+                .font(.system(.footnote, design: .serif).weight(.semibold))
+                .foregroundStyle(FeelingWords.ink(on: orbPalette))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.horizontal, 10)
+        }
+        .frame(width: 86, height: 86)
+        .contentShape(Circle())
+        .scaleEffect(destination == nil ? (dragging == word ? 1.1 : 1) : 0.25)
+        .opacity(destination == nil ? 1 : 0)
+        .offset(target)
+        .position(home)
+        .gesture(
+            DragGesture(minimumDistance: 2)
+                .onChanged { value in
+                    guard placed[word] == nil else { return }
+                    dragging = word
+                    dragOffset = value.translation
+                }
+                .onEnded { value in
+                    let y = home.y + value.translation.height
+                    if y > waterTop {
+                        rippleX = min(max((home.x + value.translation.width) / max(width, 1), 0.1), 0.9)
+                        place(word, .water)
+                    } else if y < cloud.y + 50 {
+                        place(word, .cloud)
+                    } else {
+                        withAnimation(.spring(duration: 0.5, bounce: 0.35)) { dragOffset = .zero }
+                        dragging = nil
+                    }
+                }
+        )
+        .allowsHitTesting(destination == nil)
+        .accessibilityElement()
+        .accessibilityLabel(word)
+        .accessibilityHint("Drag down to let it go, or up to save it for Sunday")
+        .accessibilityAction(named: "Let it go") { rippleX = home.x / max(width, 1); place(word, .water) }
+        .accessibilityAction(named: "Save for Sunday") { place(word, .cloud) }
     }
 
-    // MARK: - Step 3: a calm close
+    private func place(_ word: String, _ destination: Destination) {
+        withAnimation(.easeIn(duration: 0.6)) {
+            placed[word] = destination
+            dragging = nil
+            dragOffset = .zero
+        }
+        if destination == .cloud {
+            context.insert(ParkedThought(text: word))
+            try? context.save()
+            ReminderScheduler.scheduleSundayReview()
+        } else {
+            Task {
+                try? await Task.sleep(for: .milliseconds(450))
+                ripple += 1
+            }
+        }
+        if picked.allSatisfy({ placed[$0] != nil }) {
+            Task {
+                try? await Task.sleep(for: .seconds(1.4))
+                go(.closing)
+            }
+        }
+    }
 
-    private func closingStep(_ message: String) -> some View {
+    // MARK: - A calm close
+
+    private var closingStep: some View {
         VStack(spacing: 18) {
             Spacer()
-            ZStack {
-                if case .park = closing {
-                    PinchOffOrb(palette: orbPalette)
-                        .frame(width: 160, height: 160)
-                } else {
-                    OrbView(palette: orbPalette, state: .settling, ripple: ripple)
-                        .frame(width: 140, height: 140)
-                }
-                // "Let it be": the thought softens and drifts into the orb, which ripples once.
-                if case .absorb(let thought) = closing {
-                    Text("“\(thought)”")
-                        .font(.system(.body, design: .serif))
-                        .italic()
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                        .scaleEffect(absorbed ? 0.2 : 1)
-                        .blur(radius: absorbed ? 8 : 0)
-                        .opacity(absorbed ? 0 : 1)
-                        .offset(y: absorbed ? 0 : -150)
-                        .task {
-                            withAnimation(.easeIn(duration: 1.4)) { absorbed = true }
-                            try? await Task.sleep(for: .seconds(1.25))
-                            ripple += 1
-                        }
-                }
-            }
-            Text(message)
+            OrbView(palette: orbPalette, state: .settling, ripple: closingRipple)
+                .frame(width: 140, height: 140)
+                .task { closingRipple += 1 }
+            Text(closingMessage)
                 .font(.system(.title3, design: .serif))
                 .multilineTextAlignment(.center)
-            // Something you once kept because it made you laugh, only if you ask.
             if let lighter {
                 LaughCard(laugh: lighter)
                     .paperCard(padding: 14)
@@ -249,80 +298,58 @@ struct ThoughtResetView: View {
             Spacer()
             Button("Done") { dismiss() }
                 .buttonStyle(.paper)
-            Button("Reset another thought") {
-                closing = .plain
-                absorbed = false
-                lighter = nil
-                chosen = nil
-                customThought = ""
-                go(.pick)
-            }
-            .padding(.bottom, 12)
+                .padding(.bottom, 12)
         }
+        .padding(.horizontal, 28)
+        .transition(.opacity)
     }
 
-    // MARK: - Actions
-
-    private func go(_ newStep: Step) {
-        withAnimation(.easeInOut(duration: 0.3)) { step = newStep }
+    private var closingMessage: String {
+        if picked.isEmpty { return "You slowed down. That's enough for now." }
+        if saved.isEmpty { return "Let go, for now. It can come back, and that's okay." }
+        return "Saved for Sunday. You don't have to carry it until then."
     }
 
-    private func useCustomThought() {
-        guard !customThought.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        chosen = nil
-        go(.perspective)
-    }
-
-    private func finish(_ message: String) {
-        go(.closing(message))
+    private func go(_ next: Step) {
+        withAnimation(.calm) { step = next }
     }
 }
 
-/// Rewrite a perspective so it sounds like you.
-private struct PerspectiveEditor: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var context
-    @Bindable var thought: ResetThought
-    /// What it said before you started, so a real rewrite can be kept in Anchors.
-    @State private var original = ""
+/// The words and timings behind "i'm spiraling".
+enum ResetWords {
+    /// One breath: four seconds in, six out.
+    static let breathLength = 10.0
 
-    var body: some View {
-        Form {
-            Section("The thought") {
-                TextField("Thought", text: $thought.text, axis: .vertical)
-            }
-            Section {
-                TextField("Perspective", text: $thought.perspective, axis: .vertical)
-            } header: {
-                Text("A different perspective")
-            } footer: {
-                Text("Write what you'd want to hear in that moment. It doesn't have to be positive, just kind and fair. Your rewrite is also kept in Anchors.")
-            }
-        }
-        .onAppear { if original.isEmpty { original = thought.perspective } }
-        .navigationTitle("edit")
-        .navigationBarTitleDisplayMode(.inline)
-        .themedBackground()
-        .paperList()
-        .keyboardDoneButton()
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Done") {
-                    keepRewrite()
-                    dismiss()
-                }
-            }
-        }
+    /// How full the breath is, 0 to 1, at a moment in time.
+    static func breath(at time: Double) -> Double {
+        func ease(_ x: Double) -> Double { let x = min(max(x, 0), 1); return x * x * (3 - 2 * x) }
+        let phase = time.truncatingRemainder(dividingBy: breathLength)
+        return phase < 4 ? ease(phase / 4) : 1 - ease((phase - 4) / 6)
     }
 
-    /// A perspective you rewrote in your own words becomes one of your
-    /// "words to come back to" in Anchors.
-    private func keepRewrite() {
-        let text = thought.perspective.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text != original else { return }
-        let existing = (try? context.fetch(FetchDescriptor<SavedReminder>())) ?? []
-        guard !existing.contains(where: { $0.text == text }) else { return }
-        context.insert(SavedReminder(text: text))
-        try? context.save()
+    /// The heavy words that drift by: your loops, then a few common ones, about a dozen in all.
+    static func pool(loops: [String], extra: Int = 12) -> [String] {
+        let common = ["behind", "not enough", "wasted time", "what if", "alone", "failing",
+                      "too late", "should", "overwhelmed", "stuck", "unsure", "pressure", "tired", "ashamed"]
+        var result: [String] = []
+        for word in loops.map({ $0.lowercased() }) + common where !result.contains(word) {
+            result.append(word)
+            if result.count >= max(extra, min(loops.count, 6) + 6) { break }
+        }
+        return result
+    }
+
+    /// A loose, scattered spot for each word, so they never line up like a list.
+    static func home(index: Int, count: Int, in size: CGSize) -> CGPoint {
+        let columns = 3
+        let rows = max(1, Int(ceil(Double(count) / Double(columns))))
+        let col = index % columns, row = index / columns
+        let cellW = size.width / CGFloat(columns), cellH = size.height / CGFloat(rows)
+        // A small, steady nudge per word so the grid doesn't show.
+        let nudgeX = CGFloat(((index * 37) % 21) - 10) * cellW / 60
+        let nudgeY = CGFloat(((index * 53) % 17) - 8) * cellH / 50
+        let stagger = row.isMultiple(of: 2) ? -cellW * 0.12 : cellW * 0.12
+        return CGPoint(x: cellW * (CGFloat(col) + 0.5) + stagger + nudgeX,
+                       y: cellH * (CGFloat(row) + 0.5) + nudgeY)
     }
 }

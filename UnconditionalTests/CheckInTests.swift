@@ -198,3 +198,32 @@ struct ReflectTests {
         #expect(!ReminderScheduler.isReviewDay(sunday.addingTimeInterval(86_400), calendar: calendar))
     }
 }
+
+/// I'm spiraling: breathing, floating words.
+@MainActor
+struct SpiralingTests {
+    @Test("A breath fills over four seconds and empties over six")
+    func breath() {
+        #expect(ResetWords.breath(at: 0) == 0)
+        #expect(ResetWords.breath(at: 4) == 1)
+        #expect(ResetWords.breath(at: 7) > 0 && ResetWords.breath(at: 7) < 1)
+        #expect(ResetWords.breath(at: 10) == 0)
+    }
+
+    @Test("Your loops float first, without repeats, about a dozen words in all")
+    func pool() {
+        let words = ResetWords.pool(loops: ["Falling behind", "Stuck"])
+        #expect(words.first == "falling behind")
+        #expect(Set(words).count == words.count)
+        #expect(words.count == 12)
+    }
+
+    @Test("Floating words stay on screen")
+    func homes() {
+        let size = CGSize(width: 350, height: 420)
+        for i in 0..<12 {
+            let p = ResetWords.home(index: i, count: 12, in: size)
+            #expect(p.x > 0 && p.x < size.width && p.y > 0 && p.y < size.height)
+        }
+    }
+}
