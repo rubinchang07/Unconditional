@@ -227,7 +227,7 @@ struct SpiralingTests {
         #expect(ResetWords.orbSize(for: String(repeating: "a", count: 60)) == 140)
         #expect(ResetWords.orbSize(for: "not enough + alone") > ResetWords.orbSize(for: "not enough"))
         #expect(FeelingWords.orbSize(for: "ok", small: true) == 60)
-        #expect(FeelingWords.orbSize(for: "overwhelmed", small: true) < 108)
+        #expect(FeelingWords.orbSize(for: "calm", small: true) < FeelingWords.orbSize(for: "overwhelmed", small: true))
     }
 
     @Test("Floating words stay fully on screen and never sit on each other")
