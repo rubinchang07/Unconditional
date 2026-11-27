@@ -173,6 +173,14 @@ struct ReflectTests {
         #expect(months.first?.entries.first?.text == "a")
     }
 
+    @Test("With many values, names show only when lit or in use")
+    func quietValues() {
+        #expect(MapLayout.showsValueName(count: 3, lit: false, active: false))
+        #expect(!MapLayout.showsValueName(count: 9, lit: false, active: false))
+        #expect(MapLayout.showsValueName(count: 9, lit: true, active: false))
+        #expect(MapLayout.showsValueName(count: 9, lit: false, active: true))
+    }
+
     @Test("Sunday is the day for the look-back")
     func sunday() {
         var calendar = Calendar(identifier: .gregorian)

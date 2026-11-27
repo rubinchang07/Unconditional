@@ -49,7 +49,7 @@ struct MapView: View {
                         visible.contains(loop) || suggestions.contains { $0.a == loop || $0.b == loop }
                     }
                     MapWeb(loops: shown, values: values, links: links.filter(\.isConfirmed),
-                           hints: suggestions.filter { shown.contains($0.a) && shown.contains($0.b) },
+                           hints: Array(suggestions.filter { shown.contains($0.a) && shown.contains($0.b) }.prefix(MapLayout.hintLimit)),
                            color: color(for:), onSelect: { selected = $0 },
                            tilt: tilted && !handsOn ? 0.8 : 0, spin: spin,
                            onHandsOn: { on in
@@ -518,16 +518,32 @@ private struct MapWeb: View, Animatable {
                     let isDragging = dragging?.id == value.persistentModelID
                     let isTarget = hovering == .value(value)
                     let depth = projector.scale(at: planePositions[index])
-                    // The capsule hugs the word, however long or short it is.
-                    Text(MapLayout.shortName(value.name))
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.92))
-                        .lineLimit(1)
-                        .fixedSize()
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(.white.opacity(isDragging || isTarget ? 0.2 : 0.1), in: Capsule())
-                        .overlay(Capsule().stroke(.white.opacity(isDragging || isTarget ? 0.7 : 0.25), lineWidth: isTarget ? 1.5 : 0.8))
+                    // With more than a few values, they rest as small stars and show their
+                    // names when lit (tap a loop or value) or while you're working with them.
+                    let named = MapLayout.showsValueName(count: values.count, lit: focus != nil && lit.contains(value.persistentModelID),
+                                                         active: isDragging || isTarget)
+                    Group {
+                        if named {
+                            // The capsule hugs the word, however long or short it is.
+                            Text(MapLayout.shortName(value.name))
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.92))
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(.white.opacity(isDragging || isTarget ? 0.2 : 0.1), in: Capsule())
+                                .overlay(Capsule().stroke(.white.opacity(isDragging || isTarget ? 0.7 : 0.25), lineWidth: isTarget ? 1.5 : 0.8))
+                        } else {
+                            Circle()
+                                .fill(.white.opacity(0.9))
+                                .frame(width: 7, height: 7)
+                                .shadow(color: .white.opacity(0.8), radius: 4)
+                                .frame(width: 30, height: 30)
+                                .contentShape(Circle())
+                        }
+                    }
+                    .accessibilityLabel(value.name)
                         // Only the lift is animated. Animating the whole label made its
                         // position spring toward your finger, so it trailed behind.
                         .animation(.spring(duration: 0.3, bounce: 0.5)) {
@@ -956,7 +972,7 @@ enum MapLayout {
     /// Room a value label needs around it.
     static let labelHeight: CGFloat = 30
     /// Room kept free at the middle for the sun and its words.
-    static let sunSize = CGSize(width: 120, height: 58)
+    static let sunSize = CGSize(width: 130, height: 84)
 
     /// A root guess, shortened to fit under the sun.
     static func shortRoot(_ root: String) -> String {
@@ -976,7 +992,18 @@ enum MapLayout {
         CGSize(width: CGFloat(shortName(name).count) * 6.2 + 30, height: labelHeight)
     }
     /// About how many loop labels fit around the ring on an iPhone.
-    static let loopLimit = 8
+    static let loopLimit = 6
+
+    /// A few values always show their names. With more, they rest as small stars
+    /// and show names only when lit by a tap, or while you drag or aim at them.
+    static let namedValueLimit = 4
+
+    static func showsValueName(count: Int, lit: Bool, active: Bool) -> Bool {
+        count <= namedValueLimit || lit || active
+    }
+
+    /// At most this many of the app's dotted guesses at once, so they whisper.
+    static let hintLimit = 2
 
     /// The loops to show: every loop you've linked to something (so a connection
     /// never disappears), then the ones that came up most in the last three months,

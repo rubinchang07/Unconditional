@@ -192,8 +192,36 @@ struct WordScramble: View {
                 .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
         }
         .offset(y: -40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Tapping anywhere once there's a word moves it on, and so does putting the
+        // keyboard away, so Return isn't the only way forward.
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if FeelingWords.firstWord(of: draft) != nil { useDraft() } else { typing = true }
+        }
+        .overlay(alignment: .bottom) {
+            if FeelingWords.firstWord(of: draft) != nil {
+                Button("Slide it", systemImage: "arrow.left.and.right", action: useDraft)
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 44)
+                    .background(.tint.opacity(0.13), in: Capsule())
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                    .padding(.bottom, 16)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.calm, value: draft.isEmpty)
+        .onChange(of: typing) { _, focused in
+            if !focused && FeelingWords.firstWord(of: draft) != nil { useDraft() }
+        }
         .transition(.opacity)
-        .onAppear { typing = true }
+        .task {
+            // Focus after the step's own transition, or the keyboard may not come up.
+            try? await Task.sleep(for: .milliseconds(350))
+            typing = true
+        }
     }
 
     // MARK: 2. Slide it

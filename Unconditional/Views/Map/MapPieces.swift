@@ -8,7 +8,7 @@ import SwiftUI
 enum SunGrowth {
     static func amount(checkIns: Int, threads: Int) -> Double {
         let points = Double(max(checkIns, 0) + 3 * max(threads, 0))
-        return min(1, (points / 150).squareRoot())
+        return min(1, (points / 400).squareRoot())
     }
 
     /// A small red star, then orange, yellow, white, and at last a soft blue.
@@ -32,8 +32,8 @@ struct RootSun: View {
     private var hasRoot: Bool { !root.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
-        let core = 10 + 22 * growth
-        let glow = core * 2.8
+        let core = 16 + 34 * growth
+        let glow = core * 3
         let color = SunGrowth.color(growth)
         VStack(spacing: 5) {
             TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { timeline in
@@ -51,7 +51,7 @@ struct RootSun: View {
                         .frame(width: core, height: core)
                 }
             }
-            .frame(height: 34)
+            .frame(height: 52)
             if hasRoot {
                 Text(MapLayout.shortRoot(root))
                     .font(.system(.caption2, design: .serif).italic())
