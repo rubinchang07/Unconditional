@@ -21,12 +21,19 @@ struct Cloud: Shape {
 
 /// Calm water along the bottom, with a slow wave on its surface.
 /// Change `ripple` (with `rippleX` set) and a ring spreads where something landed.
-struct ReleaseWater: View {
+struct ReleaseWater: View, Animatable {
     var color: Color
     var ripple: Int = 0
     var rippleX: CGFloat = 0.5
+    /// 0 to 1: the water rises a little to meet a word that comes near.
+    var swell: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var rippledAt: Date?
+
+    var animatableData: Double {
+        get { swell }
+        set { swell = newValue }
+    }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion && rippledAt == nil)) { timeline in
@@ -34,14 +41,26 @@ struct ReleaseWater: View {
             Canvas { ctx, size in
                 var water = Path()
                 water.move(to: CGPoint(x: 0, y: size.height))
-                for x in stride(from: 0, through: size.width, by: 6) {
-                    water.addLine(to: CGPoint(x: x, y: 14 + 6 * sin(x / 44 + t * 0.7)))
+                // Two waves at different speeds, so the surface never looks mechanical.
+                let lift = 18 * swell
+                for x in stride(from: 0, through: size.width, by: 4) {
+                    let y = 34 - lift + 6 * sin(x / 44 + t * 0.7) + 3 * sin(x / 19 - t * 1.1)
+                    water.addLine(to: CGPoint(x: x, y: y))
                 }
                 water.addLine(to: CGPoint(x: size.width, y: size.height))
                 water.closeSubpath()
                 ctx.fill(water, with: .linearGradient(Gradient(colors: [color.opacity(0.35), color.opacity(0.6)]),
                                                       startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
-                ctx.stroke(water, with: .color(.white.opacity(0.5)), lineWidth: 1.5)
+                ctx.stroke(water, with: .color(.white.opacity(0.5 + 0.3 * swell)), lineWidth: 1.5)
+                // A softer second layer behind, drifting the other way.
+                var back = Path()
+                back.move(to: CGPoint(x: 0, y: size.height))
+                for x in stride(from: 0, through: size.width, by: 6) {
+                    back.addLine(to: CGPoint(x: x, y: 26 - lift + 5 * sin(x / 60 - t * 0.5)))
+                }
+                back.addLine(to: CGPoint(x: size.width, y: size.height))
+                back.closeSubpath()
+                ctx.fill(back, with: .color(color.opacity(0.18)))
 
                 if let rippledAt {
                     let e = timeline.date.timeIntervalSince(rippledAt)
@@ -50,7 +69,7 @@ struct ReleaseWater: View {
                             let p = min(max((e - Double(ring) * 0.25) / 1.3, 0), 1)
                             let rx = 20 + 110 * p, ry = 6 + 18 * p
                             let cx = size.width * rippleX
-                            ctx.stroke(Path(ellipseIn: CGRect(x: cx - rx, y: 22 - ry, width: rx * 2, height: ry * 2)),
+                            ctx.stroke(Path(ellipseIn: CGRect(x: cx - rx, y: 42 - ry, width: rx * 2, height: ry * 2)),
                                        with: .color(.white.opacity(0.7 * (1 - p))), lineWidth: 1.5)
                         }
                     }
@@ -106,5 +125,41 @@ struct SundayRain: View {
             start = .now
         }
         .accessibilityHidden(true)
+    }
+}
+
+/// A handful of small bubbles rising and fading where a word sank into the water.
+struct BubbleBurst: View {
+    let color: Color
+    @State private var start = Date.now
+    @State private var finished = false
+
+    private struct Bubble { var x: CGFloat; var size: CGFloat; var speed: Double; var delay: Double; var sway: Double }
+    @State private var bubbles: [Bubble] = (0..<14).map { _ in
+        Bubble(x: .random(in: -30...30), size: .random(in: 3...8), speed: .random(in: 40...90),
+               delay: .random(in: 0...0.5), sway: .random(in: 0...6))
+    }
+
+    var body: some View {
+        if !finished {
+            TimelineView(.animation) { timeline in
+                let e = timeline.date.timeIntervalSince(start)
+                Canvas { ctx, size in
+                    for b in bubbles {
+                        let t = e - b.delay
+                        guard t > 0 else { continue }
+                        let fade = max(0, 1 - t / 1.4)
+                        let x = size.width / 2 + b.x + CGFloat(sin(t * 4 + b.sway) * 4)
+                        let y = size.height * 0.75 - CGFloat(t * b.speed)
+                        ctx.stroke(Path(ellipseIn: CGRect(x: x - b.size / 2, y: y - b.size / 2, width: b.size, height: b.size)),
+                                   with: .color(color.opacity(0.8 * fade)), lineWidth: 1)
+                    }
+                }
+            }
+            .task {
+                try? await Task.sleep(for: .seconds(2))
+                finished = true
+            }
+        }
     }
 }

@@ -210,20 +210,31 @@ struct SpiralingTests {
         #expect(ResetWords.breath(at: 10) == 0)
     }
 
-    @Test("Your loops float first, without repeats, about a dozen words in all")
+    @Test("Your loops float first, then words that don't overlap them, nine at most")
     func pool() {
-        let words = ResetWords.pool(loops: ["Falling behind", "Stuck"])
+        let words = ResetWords.pool(loops: ["Falling behind", "Wasted effort"])
         #expect(words.first == "falling behind")
         #expect(Set(words).count == words.count)
-        #expect(words.count == 12)
+        #expect(words.count <= 9)
+        // "wasted time" shares a word with a loop, so it stays out.
+        #expect(!words.contains("wasted time"))
     }
 
-    @Test("Floating words stay on screen")
+    @Test("Floating words stay fully on screen and never sit on each other")
     func homes() {
         let size = CGSize(width: 350, height: 420)
-        for i in 0..<12 {
-            let p = ResetWords.home(index: i, count: 12, in: size)
-            #expect(p.x > 0 && p.x < size.width && p.y > 0 && p.y < size.height)
+        let words = ResetWords.pool(loops: ["Career indecision", "Not good enough", "Comparing myself"])
+        let spots = ResetWords.homes(for: words, in: size)
+        let boxes = zip(words, spots).map { word, p in
+            CGRect(x: p.x - ResetWords.width(of: word) / 2, y: p.y - 18, width: ResetWords.width(of: word), height: 36)
+        }
+        for box in boxes {
+            #expect(box.minX >= 0 && box.maxX <= size.width)
+        }
+        for i in boxes.indices {
+            for j in boxes.indices where j > i {
+                #expect(!boxes[i].intersects(boxes[j]))
+            }
         }
     }
 }

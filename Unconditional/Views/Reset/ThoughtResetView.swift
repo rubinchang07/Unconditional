@@ -27,6 +27,16 @@ struct ThoughtResetView: View {
     @State private var ripple = 0
     @State private var rippleX: CGFloat = 0.5
     @State private var closingRipple = 0
+    @State private var breathStart = Date.now
+    @State private var cloudPuff = 0
+    @State private var fuseTarget: String?
+    @State private var fuseCount = 0
+    @State private var bursts: [Burst] = []
+
+    struct Burst: Identifiable {
+        let id = UUID()
+        let point: CGPoint
+    }
     /// After a reset, one thing that made you laugh, if you asked for something lighter.
     @State private var lighter: Laugh?
     @FocusState private var typing: Bool
@@ -43,6 +53,9 @@ struct ThoughtResetView: View {
                 }
             }
             .animation(.calm, value: step)
+            .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: fuseCount)
+            .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: ripple)
+            .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: cloudPuff)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -57,34 +70,49 @@ struct ThoughtResetView: View {
 
     // MARK: - 1. Breathe
 
+    /// The orb grows as you breathe in and shrinks as you breathe out, with the
+    /// words to match and three small dots for the three breaths.
     private var breatheStep: some View {
-        VStack(spacing: 30) {
-            Spacer()
-            TimelineView(.animation(paused: reduceMotion)) { timeline in
-                let scale = reduceMotion ? 1 : ResetWords.breath(at: timeline.date.timeIntervalSinceReferenceDate)
+        TimelineView(.animation(paused: reduceMotion)) { timeline in
+            let time = timeline.date.timeIntervalSince(breathStart)
+            let inhaling = ResetWords.isInhaling(at: time)
+            let done = min(Int(time / ResetWords.breathLength), 3)
+            VStack(spacing: 30) {
+                Spacer()
                 OrbView(palette: orbPalette, speed: 0.5, state: .breathing, exercise: true)
                     .frame(width: 220, height: 220)
-                    .scaleEffect(0.75 + 0.3 * scale)
+                    .scaleEffect(0.7 + 0.35 * (reduceMotion ? 0.5 : ResetWords.breath(at: time)))
+                Text(inhaling ? "breathe in as it grows" : "breathe out as it shrinks")
+                    .font(.system(.title3, design: .serif))
+                    .contentTransition(.opacity)
+                    .animation(.easeInOut(duration: 0.6), value: inhaling)
+                HStack(spacing: 10) {
+                    ForEach(0..<3, id: \.self) { i in
+                        Circle()
+                            .fill(i < done ? AnyShapeStyle(.tint) : AnyShapeStyle(.tint.opacity(0.2)))
+                            .frame(width: 8, height: 8)
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Breath \(min(done + 1, 3)) of 3")
+                Spacer()
+                Text("tap to skip")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.bottom, 24)
             }
-            Text("slow down with me")
-                .font(.system(.title3, design: .serif))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text("tap to skip")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .padding(.bottom, 24)
+            .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: inhaling)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { go(.pick) }
         .transition(.opacity)
+        .onAppear { breathStart = .now }
         .task {
             // Three breaths, then on to the words.
-            try? await Task.sleep(for: .seconds(reduceMotion ? 3 : ResetWords.breathLength * 3))
+            try? await Task.sleep(for: .seconds(reduceMotion ? 3 : ResetWords.breathLength * 3 + 0.3))
             if step == .breathe { go(.pick) }
         }
-        .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.4), trigger: step)
     }
 
     // MARK: - 2. Pick from floating words
@@ -98,9 +126,10 @@ struct ThoughtResetView: View {
             GeometryReader { proxy in
                 TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
                     let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                    let spots = ResetWords.homes(for: pool, in: proxy.size)
                     ZStack {
                         ForEach(Array(pool.enumerated()), id: \.element) { index, word in
-                            let home = ResetWords.home(index: index, count: pool.count, in: proxy.size)
+                            let home = spots[index]
                             let isPicked = picked.contains(word)
                             Button {
                                 withAnimation(.calm) {
@@ -157,40 +186,69 @@ struct ThoughtResetView: View {
 
     // MARK: - 3. Water or cloud
 
+    /// Drag each word down into the water to let it go, or up into the cloud
+    /// for Sunday. Drop one word onto another and they melt into one thought.
+    /// Everything moves softly: words bob while they wait, the water rises a
+    /// little to meet a word near it, the cloud glows when one comes close, and
+    /// each landing has its own small moment (bubbles, or a puff of the cloud).
     private var releaseStep: some View {
         GeometryReader { proxy in
             let size = proxy.size
             let cloudCenter = CGPoint(x: size.width / 2, y: 70)
             let waterTop = size.height - 150
-            ZStack {
-                // The cloud: a little fuller for each thought it holds.
-                VStack(spacing: 4) {
-                    Cloud()
-                        .fill(Color(light: 0xE6EBF2, dark: 0x3A4152))
-                        .frame(width: 150, height: 60)
-                        .scaleEffect(1 + 0.06 * CGFloat(saved.count))
-                        .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
-                    Text("sunday")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .position(x: cloudCenter.x, y: cloudCenter.y + 10)
-
-                ReleaseWater(color: orbPalette.colors[0], ripple: ripple, rippleX: rippleX)
-                    .frame(height: 150)
-                    .overlay(alignment: .bottom) {
-                        Text("let go")
+            let live = dragging.flatMap { word in homes(in: size)[word].map { CGPoint(x: $0.x + dragOffset.width, y: $0.y + dragOffset.height) } }
+            let nearWater = live.map { $0.y > waterTop - 90 } ?? false
+            let nearCloud = live.map { $0.y < cloudCenter.y + 110 } ?? false
+            TimelineView(.animation(minimumInterval: 1 / 60, paused: reduceMotion)) { timeline in
+                let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                ZStack {
+                    // The cloud drifts a little, glows when a word comes near, and puffs when it takes one.
+                    VStack(spacing: 4) {
+                        Cloud()
+                            .fill(Color(light: 0xE6EBF2, dark: 0x3A4152))
+                            .frame(width: 150, height: 60)
+                            .shadow(color: orbPalette.colors[2].opacity(nearCloud ? 0.8 : 0), radius: nearCloud ? 18 : 0)
+                            .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
+                            .scaleEffect(1 + 0.05 * CGFloat(saved.count) + (nearCloud ? 0.05 : 0))
+                            .keyframeAnimator(initialValue: 1.0, trigger: cloudPuff) { content, scale in
+                                content.scaleEffect(scale)
+                            } keyframes: { _ in
+                                SpringKeyframe(1.18, duration: 0.25, spring: .bouncy)
+                                SpringKeyframe(1.0, duration: 0.6, spring: .smooth)
+                            }
+                        Text("sunday")
                             .font(.caption)
-                            .foregroundStyle(.white.opacity(0.8))
-                            .padding(.bottom, 30)
+                            .foregroundStyle(.tertiary)
                     }
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .ignoresSafeArea(edges: .bottom)
+                    .position(x: cloudCenter.x + 6 * sin(t * 0.25), y: cloudCenter.y + 10 + 3 * sin(t * 0.4))
+                    .animation(.spring(duration: 0.4), value: nearCloud)
 
-                ForEach(Array(picked.enumerated()), id: \.element) { index, word in
-                    let home = CGPoint(x: size.width * CGFloat(index + 1) / CGFloat(picked.count + 1),
-                                       y: size.height * 0.45 + (index.isMultiple(of: 2) ? -16 : 16))
-                    releaseWord(word, home: home, cloud: cloudCenter, waterTop: waterTop, width: size.width)
+                    ReleaseWater(color: orbPalette.colors[0], ripple: ripple, rippleX: rippleX, swell: nearWater ? 1 : 0)
+                        .frame(height: 170)
+                        .overlay(alignment: .bottom) {
+                            Text("let go")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.85))
+                                .padding(.bottom, 30)
+                        }
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .ignoresSafeArea(edges: .bottom)
+                        .animation(.spring(duration: 0.5), value: nearWater)
+
+                    ForEach(bursts) { burst in
+                        BubbleBurst(color: .white)
+                            .frame(width: 120, height: 160)
+                            .position(burst.point)
+                            .allowsHitTesting(false)
+                    }
+
+                    let spots = homes(in: size)
+                    ForEach(Array(picked.enumerated()), id: \.element) { index, word in
+                        if let home = spots[word] {
+                            releaseWord(word, home: home, bob: CGFloat(5 * sin(t * 0.9 + Double(index) * 1.7)),
+                                        cloud: cloudCenter, waterTop: waterTop, size: size)
+                        }
+                    }
                 }
             }
         }
@@ -199,59 +257,103 @@ struct ThoughtResetView: View {
 
     private var saved: [String] { placed.filter { $0.value == .cloud }.map(\.key) }
 
-    private func releaseWord(_ word: String, home: CGPoint, cloud: CGPoint, waterTop: CGFloat, width: CGFloat) -> some View {
-        let destination = placed[word]
-        let live = dragging == word ? dragOffset : .zero
-        let target: CGSize = switch destination {
-        case .water: CGSize(width: 0, height: waterTop + 60 - home.y)
-        case .cloud: CGSize(width: cloud.x - home.x, height: cloud.y - home.y)
-        case nil: live
+    /// Where each waiting word rests: spread across the middle in a soft zigzag.
+    private func homes(in size: CGSize) -> [String: CGPoint] {
+        var result: [String: CGPoint] = [:]
+        let count = picked.count
+        let perRow = min(max(count, 1), 3)
+        for (index, word) in picked.enumerated() {
+            let row = index / perRow, col = index % perRow
+            let inRow = min(perRow, count - row * perRow)
+            let x = size.width * CGFloat(col + 1) / CGFloat(inRow + 1)
+            let y = size.height * 0.42 + CGFloat(row) * 110 + (col.isMultiple(of: 2) ? -14 : 14)
+            result[word] = CGPoint(x: x, y: y)
         }
+        return result
+    }
+
+    private func releaseWord(_ word: String, home: CGPoint, bob: CGFloat, cloud: CGPoint, waterTop: CGFloat, size: CGSize) -> some View {
+        let destination = placed[word]
+        let isDragging = dragging == word
+        let isFuseTarget = fuseTarget == word
+        let target: CGSize = switch destination {
+        case .water: CGSize(width: 0, height: waterTop + 70 - home.y)
+        case .cloud: CGSize(width: cloud.x - home.x, height: cloud.y - home.y)
+        case nil: isDragging ? dragOffset : CGSize(width: 0, height: bob)
+        }
+        // Stretch a little in the direction it's being pulled, like something soft.
+        let stretch = isDragging ? min(hypot(dragOffset.width, dragOffset.height) / 900, 0.12) : 0
+        let fused = word.contains(" + ")
         return ZStack {
-            MiniOrb(color: orbPalette.colors[1], seed: Double(word.count))
+            MiniOrb(color: fused ? orbPalette.colors[0] : orbPalette.colors[1], seed: Double(word.count))
             Text(word)
                 .font(.system(.footnote, design: .serif).weight(.semibold))
                 .foregroundStyle(FeelingWords.ink(on: orbPalette))
-                .lineLimit(1)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
                 .minimumScaleFactor(0.6)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 12)
         }
-        .frame(width: 86, height: 86)
+        .frame(width: fused ? 110 : 90, height: fused ? 110 : 90)
         .contentShape(Circle())
-        .scaleEffect(destination == nil ? (dragging == word ? 1.1 : 1) : 0.25)
+        .scaleEffect(x: 1 + stretch, y: 1 - stretch * 0.6)
+        .scaleEffect(destination == nil ? (isDragging ? 1.1 : isFuseTarget ? 1.15 : 1) : (destination == .water ? 0.5 : 0.2))
+        .blur(radius: destination == .water ? 6 : 0)
         .opacity(destination == nil ? 1 : 0)
         .offset(target)
         .position(home)
+        .animation(.spring(duration: 0.35, bounce: 0.4), value: isFuseTarget)
         .gesture(
             DragGesture(minimumDistance: 2)
                 .onChanged { value in
                     guard placed[word] == nil else { return }
                     dragging = word
                     dragOffset = value.translation
+                    let point = CGPoint(x: home.x + value.translation.width, y: home.y + value.translation.height)
+                    fuseTarget = homes(in: size).first { other, spot in
+                        other != word && placed[other] == nil && hypot(spot.x - point.x, spot.y - point.y) < 60
+                    }?.key
                 }
                 .onEnded { value in
-                    let y = home.y + value.translation.height
-                    if y > waterTop {
-                        rippleX = min(max((home.x + value.translation.width) / max(width, 1), 0.1), 0.9)
+                    let point = CGPoint(x: home.x + value.translation.width, y: home.y + value.translation.height)
+                    if let other = fuseTarget {
+                        fuse(word, into: other)
+                    } else if point.y > waterTop - 20 {
+                        rippleX = min(max(point.x / max(size.width, 1), 0.1), 0.9)
+                        bursts.append(Burst(point: CGPoint(x: point.x, y: waterTop + 20)))
                         place(word, .water)
-                    } else if y < cloud.y + 50 {
+                    } else if point.y < cloud.y + 70 {
                         place(word, .cloud)
                     } else {
-                        withAnimation(.spring(duration: 0.5, bounce: 0.35)) { dragOffset = .zero }
+                        withAnimation(.spring(duration: 0.6, bounce: 0.4)) { dragOffset = .zero }
                         dragging = nil
                     }
+                    fuseTarget = nil
                 }
         )
         .allowsHitTesting(destination == nil)
+        .zIndex(isDragging ? 10 : 0)
         .accessibilityElement()
         .accessibilityLabel(word)
         .accessibilityHint("Drag down to let it go, or up to save it for Sunday")
-        .accessibilityAction(named: "Let it go") { rippleX = home.x / max(width, 1); place(word, .water) }
+        .accessibilityAction(named: "Let it go") { rippleX = home.x / max(size.width, 1); place(word, .water) }
         .accessibilityAction(named: "Save for Sunday") { place(word, .cloud) }
     }
 
+    /// Two words melt into one thought, where the second one was.
+    private func fuse(_ word: String, into other: String) {
+        withAnimation(.spring(duration: 0.6, bounce: 0.35)) {
+            guard let index = picked.firstIndex(of: other) else { return }
+            picked[index] = other + " + " + word
+            picked.removeAll { $0 == word }
+            dragging = nil
+            dragOffset = .zero
+        }
+        fuseCount += 1
+    }
+
     private func place(_ word: String, _ destination: Destination) {
-        withAnimation(.easeIn(duration: 0.6)) {
+        withAnimation(destination == .water ? .easeIn(duration: 0.9) : .spring(duration: 0.8, bounce: 0.2)) {
             placed[word] = destination
             dragging = nil
             dragOffset = .zero
@@ -260,15 +362,19 @@ struct ThoughtResetView: View {
             context.insert(ParkedThought(text: word))
             try? context.save()
             ReminderScheduler.scheduleSundayReview()
+            Task {
+                try? await Task.sleep(for: .milliseconds(550))
+                cloudPuff += 1
+            }
         } else {
             Task {
-                try? await Task.sleep(for: .milliseconds(450))
+                try? await Task.sleep(for: .milliseconds(500))
                 ripple += 1
             }
         }
         if picked.allSatisfy({ placed[$0] != nil }) {
             Task {
-                try? await Task.sleep(for: .seconds(1.4))
+                try? await Task.sleep(for: .seconds(1.8))
                 go(.closing)
             }
         }
@@ -320,6 +426,11 @@ enum ResetWords {
     /// One breath: four seconds in, six out.
     static let breathLength = 10.0
 
+    /// The first four seconds of each breath are breathing in.
+    static func isInhaling(at time: Double) -> Bool {
+        time.truncatingRemainder(dividingBy: breathLength) < 4
+    }
+
     /// How full the breath is, 0 to 1, at a moment in time.
     static func breath(at time: Double) -> Double {
         func ease(_ x: Double) -> Double { let x = min(max(x, 0), 1); return x * x * (3 - 2 * x) }
@@ -327,29 +438,53 @@ enum ResetWords {
         return phase < 4 ? ease(phase / 4) : 1 - ease((phase - 4) / 6)
     }
 
-    /// The heavy words that drift by: your loops, then a few common ones, about a dozen in all.
-    static func pool(loops: [String], extra: Int = 12) -> [String] {
-        let common = ["behind", "not enough", "wasted time", "what if", "alone", "failing",
-                      "too late", "should", "overwhelmed", "stuck", "unsure", "pressure", "tired", "ashamed"]
+    /// A few heavy words, each a different kind of weight, so none repeat each other.
+    static let common = ["not enough", "what if", "too late", "alone", "wasted time", "pressure", "ashamed", "tired"]
+
+    /// The words that drift by: your loops first, then common ones that don't
+    /// overlap with them (no "behind" when you have "Falling behind"). Nine at most,
+    /// so they fit on screen with room to breathe.
+    static func pool(loops: [String], limit: Int = 9) -> [String] {
         var result: [String] = []
-        for word in loops.map({ $0.lowercased() }) + common where !result.contains(word) {
-            result.append(word)
-            if result.count >= max(extra, min(loops.count, 6) + 6) { break }
+        for name in loops.map({ $0.lowercased() }) where !result.contains(name) && result.count < 4 {
+            result.append(name)
+        }
+        let taken = Set(result.flatMap { $0.split(separator: " ").map(String.init) })
+        for word in common where result.count < limit {
+            let parts = word.split(separator: " ").map(String.init)
+            if !result.contains(word) && taken.isDisjoint(with: parts) { result.append(word) }
         }
         return result
     }
 
-    /// A loose, scattered spot for each word, so they never line up like a list.
-    static func home(index: Int, count: Int, in size: CGSize) -> CGPoint {
-        let columns = 3
-        let rows = max(1, Int(ceil(Double(count) / Double(columns))))
-        let col = index % columns, row = index / columns
-        let cellW = size.width / CGFloat(columns), cellH = size.height / CGFloat(rows)
-        // A small, steady nudge per word so the grid doesn't show.
-        let nudgeX = CGFloat(((index * 37) % 21) - 10) * cellW / 60
-        let nudgeY = CGFloat(((index * 53) % 17) - 8) * cellH / 50
-        let stagger = row.isMultiple(of: 2) ? -cellW * 0.12 : cellW * 0.12
-        return CGPoint(x: cellW * (CGFloat(col) + 0.5) + stagger + nudgeX,
-                       y: cellH * (CGFloat(row) + 0.5) + nudgeY)
+    /// About how wide a word's capsule is, so it can be kept on screen.
+    static func width(of word: String) -> CGFloat { CGFloat(word.count) * 8.5 + 32 }
+
+    /// A loose, scattered spot for each word, always fully on screen and never
+    /// on top of each other: two short words share a row, a long one gets its own.
+    static func homes(for words: [String], in size: CGSize) -> [CGPoint] {
+        var rows: [[Int]] = []
+        for (index, word) in words.enumerated() {
+            let wide = width(of: word) > size.width * 0.44
+            if let last = rows.last, last.count == 1, !wide, width(of: words[last[0]]) <= size.width * 0.44 {
+                rows[rows.count - 1].append(index)
+            } else {
+                rows.append([index])
+            }
+        }
+        let cellH = size.height / CGFloat(max(rows.count, 1))
+        var result = Array(repeating: CGPoint.zero, count: words.count)
+        for (r, row) in rows.enumerated() {
+            let y = cellH * (CGFloat(r) + 0.5)
+            for (c, index) in row.enumerated() {
+                let stagger: CGFloat = r.isMultiple(of: 2) ? -0.05 : 0.05
+                var x = row.count == 1 ? size.width * (0.5 + stagger * 2) : size.width * ((c == 0 ? 0.27 : 0.73) + stagger)
+                let half = width(of: words[index]) / 2 + 12
+                x = min(max(x, half), max(half, size.width - half))
+                let nudgeY = CGFloat(((index * 53) % 17) - 8) * cellH / 70
+                result[index] = CGPoint(x: x, y: y + nudgeY)
+            }
+        }
+        return result
     }
 }
