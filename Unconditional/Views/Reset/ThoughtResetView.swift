@@ -75,7 +75,7 @@ struct ThoughtResetView: View {
                 case .pick: pickStep
                 case .order:
                     StreamOrderView(words: $picked) { go(.stream) }
-                        .transition(.opacity)
+                        .transition(.calmSwap())
                 case .stream:
                     // Only the words above the dam go on to the water and the cloud.
                     // The ones you cut off stay behind on the dry bed.
@@ -84,7 +84,7 @@ struct ThoughtResetView: View {
                         picked = kept
                         go(kept.isEmpty ? .closing : .release)
                     }
-                    .transition(.opacity)
+                    .transition(.calmSwap())
                 case .release: releaseStep
                 case .closing: closingStep
                 }
@@ -139,7 +139,7 @@ struct ThoughtResetView: View {
             .padding(.bottom, 16)
         }
         .padding(.horizontal, 28)
-        .transition(.opacity)
+        .transition(.calmSwap())
     }
 
     /// One breath with the orb, one kind sentence, one thing from Anchors, done.
@@ -155,7 +155,7 @@ struct ThoughtResetView: View {
                     Text("This is a hard moment, and it will pass. You don't have to solve anything right now.")
                         .font(.system(.title3, design: .serif))
                         .multilineTextAlignment(.center)
-                        .transition(.opacity)
+                        .transition(.calmSwap())
                     if let momentAnchor {
                         AnchorCard(anchor: momentAnchor)
                             .frame(maxWidth: .infinity)
@@ -173,7 +173,7 @@ struct ThoughtResetView: View {
                     Button("Done") { dismiss() }
                         .buttonStyle(.paper)
                         .padding(.bottom, 12)
-                        .transition(.opacity)
+                        .transition(.calmSwap())
                 } else {
                     // The breath is the default, never a wait: skip straight to the words.
                     Button("show me now") { withAnimation(.calm) { momentDone = true } }
@@ -185,7 +185,7 @@ struct ThoughtResetView: View {
             }
             .padding(.horizontal, 28)
         }
-        .transition(.opacity)
+        .transition(.calmSwap())
         .task {
             try? await Task.sleep(for: .seconds(reduceMotion ? 2 : ResetWords.breathLength))
             if !momentDone { withAnimation(.calm) { momentDone = true } }
@@ -230,7 +230,7 @@ struct ThoughtResetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { finishBreathing() }
-        .transition(.opacity)
+        .transition(.calmSwap())
         .onAppear { breathStart = .now }
         .task {
             // Three breaths, then on to the words.
@@ -305,7 +305,7 @@ struct ThoughtResetView: View {
                 .padding(.bottom, 8)
         }
         .padding(.horizontal, 20)
-        .transition(.opacity)
+        .transition(.calmSwap())
     }
 
     private func addOwn() {
@@ -387,7 +387,7 @@ struct ThoughtResetView: View {
                 }
             }
         }
-        .transition(.opacity)
+        .transition(.calmSwap())
         .confirmationDialog(choosing ?? "", isPresented: Binding(get: { choosing != nil }, set: { if !$0 { choosing = nil } }),
                             titleVisibility: .visible) {
             if let word = choosing {
@@ -561,7 +561,7 @@ struct ThoughtResetView: View {
                 .padding(.bottom, 12)
         }
         .padding(.horizontal, 28)
-        .transition(.opacity)
+        .transition(.calmSwap())
     }
 
     private var closingMessage: String {

@@ -26,6 +26,8 @@ struct TodayView: View {
     /// "How does this sit?", 0 heavy to 1 light. Only saved once something set it.
     @State private var lightness = 0.5
     @State private var lightnessSet = false
+    /// Whether the keyboard is showing, so the bottom button can make room for its Done button.
+    @State private var keyboardUp = false
     /// When set, the "kept" sheet for a good moment opens.
     @State private var savedGood: Entry?
 
@@ -68,8 +70,15 @@ struct TodayView: View {
 
     /// The check-in's screens for this kind of entry, after home.
     private var flow: [Step] {
-        kind == .words ? [.choose, .capture, .loop] : [.choose, .capture, .sit, .loop]
+        let steps: [Step] = kind == .words ? [.choose, .capture, .loop] : [.choose, .capture, .sit, .loop]
+        // A light moment isn't a loop to name, so it saves straight away.
+        return feelsLight ? steps.filter { $0 != .loop } : steps
     }
+
+    private var feelsLight: Bool { lightnessSet && lightness >= Entry.lightThreshold }
+
+    /// The last screen saves; every other one moves on.
+    private var isLastStep: Bool { flow.last == step }
 
     private func back() {
         guard let index = flow.firstIndex(of: step) else { return go(to: .home) }
@@ -77,6 +86,7 @@ struct TodayView: View {
     }
 
     private func next() {
+        if isLastStep { return save() }
         guard let index = flow.firstIndex(of: step), index + 1 < flow.count else { return }
         go(to: flow[index + 1])
     }
@@ -101,8 +111,7 @@ struct TodayView: View {
                 }
                 .id(step)
                 // A soft fade with a slight lift: calmer than sliding sideways.
-                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)),
-                                        removal: .opacity))
+                .transition(.calmSwap(lift: true))
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -128,6 +137,8 @@ struct TodayView: View {
                 }
             }
             .keyboardDoneButton()
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
             .onChange(of: recorder.transcript) { _, spoken in
                 text = textBeforeRecording.isEmpty ? spoken : textBeforeRecording + " " + spoken
             }
@@ -348,7 +359,7 @@ struct TodayView: View {
         // doesn't jump under your pen.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if hasContent || kind == .draw {
-                bottomBar("Next", action: next)
+                bottomBar(isLastStep ? "Save entry" : "Next", action: next)
                     .disabled(!hasContent)
                     .transition(.opacity)
             }
@@ -360,8 +371,10 @@ struct TodayView: View {
         Button(title, action: action)
             .buttonStyle(.paper)
             .padding(.top, 14)
-            .padding(.bottom, 8)
+            // With the keyboard up, sit above its Done button instead of under it.
+            .padding(.bottom, keyboardUp ? 56 : 8)
             .background { FadingThemeBar() }
+            .animation(.easeOut(duration: 0.2), value: keyboardUp)
     }
 
     /// The orb is the button: tap to talk, tap to stop. Your words appear under it.
@@ -430,7 +443,7 @@ struct TodayView: View {
     private var sitStep: some View {
         SitView(lightness: $lightness, isSet: lightnessSet) { lightnessSet = true }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                bottomBar(lightnessSet ? "Next" : "Skip", action: next)
+                bottomBar(isLastStep ? "Save entry" : (lightnessSet ? "Next" : "Skip"), action: next)
             }
     }
 
@@ -848,6 +861,8 @@ struct ReframePromptView: View {
                     WinReminderView(onDone: { dismiss() })
                 }
             }
+            .id(step)
+            .transition(.calmSwap())
         }
         .presentationDetents(step == .ask ? [.medium] : [.large])
         .presentationCornerRadius(28)

@@ -72,6 +72,16 @@ extension Animation {
     static let calm = Animation.easeInOut(duration: 0.45)
 }
 
+extension AnyTransition {
+    /// Moving between screens: the old one leaves quickly, then the new one fades in,
+    /// so the two never sit on top of each other mid-fade.
+    static func calmSwap(lift: Bool = false) -> AnyTransition {
+        let arrive: AnyTransition = lift ? AnyTransition.opacity.combined(with: .offset(y: 12)) : .opacity
+        return .asymmetric(insertion: arrive.animation(.easeInOut(duration: 0.4).delay(0.16)),
+                           removal: AnyTransition.opacity.animation(.easeOut(duration: 0.14)))
+    }
+}
+
 /// A kind message for screens with nothing on them yet.
 struct GentleEmpty: View {
     let symbol: String

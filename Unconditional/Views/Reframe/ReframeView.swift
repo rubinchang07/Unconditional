@@ -45,7 +45,7 @@ struct ReframeView: View {
                     }
                 }
                 .id(step)
-                .transition(.opacity)
+                .transition(.calmSwap())
                 .padding(.top, 12)
             }
             .scrollIndicators(.hidden)
