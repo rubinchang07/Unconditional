@@ -41,13 +41,8 @@ struct InsightsView: View {
                 } label: {
                     Label("On your mind lately", systemImage: "circle.dashed")
                 }
-                NavigationLink {
-                    MapView()
-                } label: {
-                    Label("Your map", systemImage: "point.3.connected.trianglepath.dotted")
-                }
             } footer: {
-                Text("Which loops have come up more or less lately, and how your loops and values connect.")
+                Text("Which loops have come up more or less lately.")
             }
 
             if !careerReflections.isEmpty {

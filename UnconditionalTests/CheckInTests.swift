@@ -193,19 +193,6 @@ struct TideTests {
 /// Reflect, on your mind lately, and the map's sun.
 @MainActor
 struct ReflectTests {
-    @Test("The sun only grows, and fills out over time")
-    func sunGrows() {
-        #expect(SunGrowth.amount(checkIns: 0, threads: 0) == 0)
-        #expect(SunGrowth.amount(checkIns: 10, threads: 0) < SunGrowth.amount(checkIns: 10, threads: 2))
-        #expect(SunGrowth.amount(checkIns: 1000, threads: 50) == 1)
-        var last = -1.0
-        for n in 0...200 {
-            let g = SunGrowth.amount(checkIns: n, threads: 0)
-            #expect(g >= last)
-            last = g
-        }
-    }
-
     @Test("Loops compare this month with the month before, in plain words")
     func trends() throws {
         let container = try AppSchema.inMemoryContainer()
@@ -239,14 +226,6 @@ struct ReflectTests {
         let months = BranchMonth.group([b, a], calendar: calendar)
         #expect(months.count == 2)
         #expect(months.first?.entries.first?.text == "a")
-    }
-
-    @Test("With many values, names show only when lit or in use")
-    func quietValues() {
-        #expect(MapLayout.showsValueName(count: 3, lit: false, active: false))
-        #expect(!MapLayout.showsValueName(count: 9, lit: false, active: false))
-        #expect(MapLayout.showsValueName(count: 9, lit: true, active: false))
-        #expect(MapLayout.showsValueName(count: 9, lit: false, active: true))
     }
 
     @Test("Sunday is the day for the look-back")

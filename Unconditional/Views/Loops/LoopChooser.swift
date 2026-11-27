@@ -73,6 +73,8 @@ struct LoopsManagerView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
     @State private var adding = false
+    /// Your own guess at what might sit underneath all the loops. Never decided by the app.
+    @AppStorage("mapRoot") private var root = ""
 
     var body: some View {
         List {
@@ -97,6 +99,15 @@ struct LoopsManagerView: View {
 
             Section {
                 Button("Add loops", systemImage: "plus") { adding = true }
+            }
+
+            Section {
+                TextField("For example: needing to earn being okay", text: $root, axis: .vertical)
+                    .lineLimit(1...4)
+            } header: {
+                Text("Underneath it all")
+            } footer: {
+                Text("Your own guess at what the loops might share. Optional, and only ever yours to change.")
             }
         }
         .navigationTitle("your loops")
