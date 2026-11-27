@@ -134,7 +134,6 @@ struct WordScramble: View {
     @State private var draft = ""
     @State private var drag: CGFloat = 0
     @State private var bubbles: [String] = []
-    @State private var bubblesOut = false
     @State private var shuffle = 0
     /// The last word you slid, and which way, so "other words" stays on the same side.
     @State private var lastWord = ""
@@ -215,7 +214,7 @@ struct WordScramble: View {
             WordOrb(word: word, color: FeelingWords.color(for: lean, palette: palette), size: orbSize(word), ink: FeelingWords.ink(on: palette))
                 .scaleEffect(1 + 0.12 * abs(lean))
                 .offset(x: drag)
-                .gesture(slide(word, reach: reach))
+                .allowsHitTesting(false)
                 .accessibilityElement()
                 .accessibilityLabel(word)
                 .accessibilityHint("Slide left for heavier, right for lighter")
@@ -225,19 +224,21 @@ struct WordScramble: View {
                 .accessibilityAction(named: "A lot lighter") { keep(word, lean: 0.9) }
         }
         .offset(y: -40)
+        // The whole screen is the slide, so you don't have to land on the orb itself.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .highPriorityGesture(slide(word, reach: reach))
         .transition(.scale(scale: 0.6).combined(with: .opacity))
     }
 
+    /// Wherever you let go is how it sits. Barely moving it, or just tapping,
+    /// keeps it "in between", which is a real answer too.
     private func slide(_ word: String, reach: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 0)
             .onChanged { value in drag = value.translation.width }
             .onEnded { value in
                 let lean = Double(max(-1, min(1, value.translation.width / reach)))
-                if abs(lean) >= 0.1 {
-                    keep(word, lean: lean)
-                } else {
-                    withAnimation(.spring(duration: 0.5, bounce: 0.35)) { drag = 0 }
-                }
+                keep(word, lean: abs(lean) < FeelingWords.middle ? 0 : lean)
             }
     }
 
@@ -273,9 +274,12 @@ struct WordScramble: View {
                     WordOrb(word: word, color: FeelingWords.color(for: lastLean * 0.6, palette: palette), size: 76, ink: FeelingWords.ink(on: palette), small: true)
                 }
                 .buttonStyle(.plain)
-                .offset(x: bubblesOut ? cos(angle) * radius : 0, y: bubblesOut ? sin(angle) * radius : 0)
-                .opacity(bubblesOut ? 1 : 0)
-                .scaleEffect(bubblesOut ? 1 : 0.3)
+                .offset(x: cos(angle) * radius, y: sin(angle) * radius)
+                // Each one floats out of the middle as it appears.
+                .transition(.asymmetric(
+                    insertion: .offset(x: -cos(angle) * radius, y: -sin(angle) * radius)
+                        .combined(with: .scale(scale: 0.3)).combined(with: .opacity),
+                    removal: .opacity))
             }
 
             HStack(spacing: 28) {
@@ -301,7 +305,6 @@ struct WordScramble: View {
 
     private func pick(_ word: String) {
         drag = 0
-        bubblesOut = false
         bubbles = []
         typing = false
         phase = .sliding(word)
@@ -321,18 +324,18 @@ struct WordScramble: View {
 
     private func showOthers() {
         shuffle += 1
-        bubblesOut = false
         offerBubbles()
     }
 
     /// Related words bubble out of the middle, as if the orb let them go.
     private func offerBubbles() {
         let used = Set(kept.map(\.word))
-        bubbles = FeelingWords.related(to: lastWord, leaning: lastLean, excluding: used, count: 5, shuffle: shuffle)
-        Task {
-            try? await Task.sleep(for: .milliseconds(120))
-            withAnimation(reduceMotion ? nil : .spring(duration: 0.8, bounce: 0.3)) { bubblesOut = true }
+        var next = FeelingWords.related(to: lastWord, leaning: lastLean, excluding: used, count: 5, shuffle: shuffle)
+        // If one side has run out, offer from both.
+        if next.isEmpty {
+            next = FeelingWords.related(to: lastWord, leaning: 0, excluding: used, count: 5, shuffle: shuffle)
         }
+        withAnimation(reduceMotion ? nil : .spring(duration: 0.8, bounce: 0.3)) { bubbles = next }
     }
 }
 
