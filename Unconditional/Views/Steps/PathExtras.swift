@@ -229,25 +229,42 @@ struct TrailOverview: View {
 
 // MARK: - The orb as the sun on the horizon
 
-/// When a path opens, the orb comes in large and bright, then sinks behind the
-/// horizon line and stays there as a low, soft sun: the light you walk toward.
+/// When a path opens, the orb drops into its own small band above the title and
+/// sinks halfway below a thin horizon line, where it stays as a low sun: the light
+/// you walk toward. It has its own space, so it never sits behind any words.
 struct HorizonSun: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var set = false
 
+    /// The band's height; the horizon line is at its bottom.
+    static let height: CGFloat = 64
+
     var body: some View {
-        OrbView(palette: orbPalette, speed: 0.4, state: .settling)
-            .frame(width: 110, height: 110)
-            .scaleEffect(set ? 0.85 : 1.25)
-            .offset(y: set ? 26 : -40)
-            .opacity(set ? 0.38 : 0.9)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-            .task {
-                if reduceMotion { set = true; return }
-                try? await Task.sleep(for: .milliseconds(250))
-                withAnimation(.easeInOut(duration: 1.8)) { set = true }
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottom) {
+                OrbView(palette: orbPalette, speed: 0.4, state: .settling)
+                    .frame(width: 84, height: 84)
+                    // Comes in from above, then sets: half of it below the line.
+                    .offset(y: set ? 42 : -30)
+                    .opacity(set ? 0.9 : 0)
             }
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.height, alignment: .bottom)
+            // Only what's above the horizon shows, fading softly into the sky at the top.
+            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.35),
+                                         .init(color: .black, location: 1)],
+                                 startPoint: .top, endPoint: .bottom))
+            Capsule()
+                .fill(Sand.inkSoft.opacity(0.35))
+                .frame(width: 150, height: 1)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .task {
+            if reduceMotion { set = true; return }
+            try? await Task.sleep(for: .milliseconds(250))
+            withAnimation(.easeOut(duration: 1.8)) { set = true }
+        }
     }
 }

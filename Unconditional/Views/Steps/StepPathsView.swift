@@ -236,6 +236,9 @@ struct PathView: View {
     /// No distance, no percentage: just the direction.
     private var horizon: some View {
         VStack(spacing: 6) {
+            // The orb, set low on its own horizon above the words.
+            HorizonSun()
+                .padding(.bottom, 8)
             Text("toward")
                 .font(.caption)
                 .foregroundStyle(Sand.inkSoft)
@@ -247,8 +250,6 @@ struct PathView: View {
                 .font(.footnote)
                 .foregroundStyle(Sand.inkSoft)
         }
-        // The orb, set low behind the words like a sun.
-        .background { HorizonSun() }
         .padding(.horizontal, 32)
         .padding(.top, 28)
         .padding(.bottom, 20)
