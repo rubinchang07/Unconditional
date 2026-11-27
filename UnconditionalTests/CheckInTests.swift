@@ -321,8 +321,10 @@ struct HeadHeartAndStreamTests {
 
     @Test("The message names a gap only when there is one")
     func message() {
-        #expect(HeadAndHeart.message(gap: 0.6).contains("different stories"))
-        #expect(HeadAndHeart.message(gap: 0.05).contains("close"))
+        #expect(HeadAndHeart.message(gap: 0.6).contains("different times"))
+        #expect(HeadAndHeart.message(gap: 0.05).contains("agree"))
+        // Both heavy is in tune, the same as both light.
+        #expect(HeadAndHeart.gap(head: 0.1, heart: 0.15) < HeadAndHeart.noticeable)
     }
 
     @Test("Only a line across most of the stream builds the dam")

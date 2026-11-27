@@ -22,7 +22,8 @@ struct MapView: View {
     /// A dotted guess you tapped, shown with why the app suggested it.
     @State private var selectedHint: Suggestion?
     /// Lean the map back for a 2.5D view, or keep it flat. Remembered.
-    @AppStorage("mapTilted") private var tilted = true
+    /// Opens flat, which is easiest to read; the corner button tilts it into 2.5D.
+    @AppStorage("mapTilted") private var tilted = false
     /// While you're pulling a thread or moving something, the map lies flat so it's easy to aim.
     @State private var handsOn = false
     @State private var spin = 0.0
@@ -407,7 +408,8 @@ private struct MapWeb: View, Animatable {
                         let stretch = tug.map { min(hypot($0.width, $0.height) / snapDistance, 1) } ?? 0
                         let faded = focus.map { !involves(link, $0) } ?? false
                         let width = (1 + link.strength * 5) * (1 - stretch * 0.7)
-                        let shade = color(a).opacity((0.25 + link.strength * 0.45) * (faded ? 0.12 : 1))
+                        // The selected thread is the brightest thing on the map; the rest step far back.
+                        let shade = color(a).opacity(faded ? 0.04 : focus != nil ? 0.95 : 0.25 + link.strength * 0.45)
                         let curve = thread(from: s, to: e, center: center, tug: tug, bow: link.loopB != nil)
                         // A soft glow under each thread, like light between planets.
                         ctx.drawLayer { glow in
@@ -491,7 +493,7 @@ private struct MapWeb: View, Animatable {
                             .shadow(color: color(a).opacity(0.9), radius: 5)
                             .frame(width: 40, height: 40)
                             .contentShape(Circle())
-                            .opacity(faded ? 0.2 : tugOpacity(tug))
+                            .opacity(faded ? 0.06 : tugOpacity(tug))
                             .position(x: mid.x + tug.width, y: mid.y + tug.height)
                             .gesture(tugGesture(id: key(link)) {
                                 withAnimation(.calm) { selectedLink = link; selectedHint = nil }
@@ -861,7 +863,7 @@ private struct MapWeb: View, Animatable {
 
     /// How strongly to draw a node: full when nothing is focused or it's connected.
     private func presence(_ id: PersistentIdentifier) -> Double {
-        focus == nil || lit.contains(id) ? 1 : 0.25
+        focus == nil || lit.contains(id) ? 1 : 0.1
     }
 
     private func toggleFocus(_ id: PersistentIdentifier) {

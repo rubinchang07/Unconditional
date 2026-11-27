@@ -113,10 +113,10 @@ struct SettingsView: View {
                 Section {
                     Button {
                         do {
-                            exportDocument = ExportDocument(data: try DataTransfer.encode(DataTransfer.snapshot(from: context)))
+                            exportDocument = ExportDocument(data: try DataTransfer.encode(try DataTransfer.snapshot(from: context)))
                             showingExporter = true
                         } catch {
-                            dataMessage = "Couldn't make the export. Nothing was changed."
+                            dataMessage = "Couldn't read everything, so no export was made. Nothing was changed. Try again in a moment."
                         }
                     } label: {
                         Label("Export everything", systemImage: "square.and.arrow.up")

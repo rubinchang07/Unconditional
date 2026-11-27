@@ -30,6 +30,13 @@ final class Reframe {
     /// After the reframe: how true the kinder thought seems in your head, 0 to 1.
     /// Shown beside how light it feels (from `distressAfter`), as two waves. -1 when not asked.
     var headTrue: Double = -1
+    /// How heavy it looks once you step back and see it logically, 0 heavy to 1 light:
+    /// the same scale as the heart, so head and heart can be compared fairly
+    /// (both heavy is in tune, too). -1 when not asked. Replaces `headTrue`.
+    var headLight: Double = -1
+
+    /// Whether this reframe compares head and heart (newer) rather than before and after.
+    var hasHeadAndHeart: Bool { headLight >= 0 || headTrue >= 0 }
 
     var entry: Entry?
 

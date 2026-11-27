@@ -189,11 +189,12 @@ struct PathView: View {
                         shellCard(step)
                     } else {
                         VStack(spacing: 6) {
-                            Button("Take a step") { takingStep = true }
+                            Button("Take a step", systemImage: "shoeprints.fill") { takingStep = true }
                                 .buttonStyle(.paper)
+                                .ownGlow(orbPalette.world.light, radius: 10)
                             Button("a hard day", systemImage: "water.waves") { markingTide = true }
-                                .font(.subheadline)
-                                .foregroundStyle(Sand.inkSoft)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Sand.ink)
                                 .frame(minHeight: 44)
                         }
                         .disabled(surgeAt != nil)
@@ -633,11 +634,13 @@ struct PathView: View {
 // MARK: - Sand
 
 enum Sand {
-    static let light = Color(light: 0xF4EBDD, dark: 0x2A251E)
-    static let deep = Color(light: 0xEADBC4, dark: 0x221E18)
+    // Dark mode is moonlit sand rather than near-black, so prints and words stand out.
+    static let light = Color(light: 0xF4EBDD, dark: 0x3B342B)
+    static let deep = Color(light: 0xEADBC4, dark: 0x2E2822)
     /// A pressed print: a little darker than the sand around it.
-    static let print = Color(light: 0xD7C3A4, dark: 0x3A3228)
-    static let rim = Color(light: 0xFBF5EC, dark: 0x4A4136)
+    /// A pressed print, clearly darker (or in dark mode, lighter) than the sand.
+    static let print = Color(light: 0xC2A982, dark: 0x786A55)
+    static let rim = Color(light: 0xFFFAF2, dark: 0x9C8D74)
     /// Text on sand, in two levels only, both comfortably readable:
     /// `ink` for what matters, `inkSoft` for labels and dates. Never fainter for words.
     static let ink = Color(light: 0x4A3B2A, dark: 0xEFE3D1)

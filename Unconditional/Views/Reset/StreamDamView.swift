@@ -13,6 +13,8 @@ struct StreamOrderView: View {
     @State private var dragY: CGFloat = 0
     /// How much of the drag has already been spent moving the word past others.
     @State private var consumed: CGFloat = 0
+    /// Tap one word, then another, to swap them (for when dragging is hard).
+    @State private var selected: String?
 
     private let rowHeight: CGFloat = 64
 
@@ -30,6 +32,7 @@ struct StreamOrderView: View {
                     .padding(.top, rowHeight / 2)
                 ForEach(Array(words.enumerated()), id: \.element) { index, word in
                     let isDragging = dragging == word
+                    let isSelected = selected == word
                     HStack(spacing: 8) {
                         Image(systemName: "line.3.horizontal")
                             .font(.caption)
@@ -41,13 +44,14 @@ struct StreamOrderView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(.background, in: Capsule())
-                    .overlay(Capsule().stroke(orbPalette.world.water.opacity(0.6), lineWidth: 1))
+                    .overlay(Capsule().stroke(orbPalette.world.water.opacity(isSelected ? 1 : 0.6), lineWidth: isSelected ? 2.5 : 1))
                     .shadow(color: .black.opacity(isDragging ? 0.18 : 0.06), radius: isDragging ? 10 : 4, y: 2)
                     .scaleEffect(isDragging ? 1.06 : 1)
                     .frame(height: rowHeight)
                     .offset(y: rowHeight * CGFloat(index) + (isDragging ? dragY : 0))
                     .zIndex(isDragging ? 1 : 0)
                     .gesture(reorder(word))
+                    .onTapGesture { tap(word) }
                     .accessibilityLabel("\(index + 1): \(word)")
                     .accessibilityAction(named: "Move up") { move(word, by: -1) }
                     .accessibilityAction(named: "Move down") { move(word, by: 1) }
@@ -83,6 +87,13 @@ struct StreamOrderView: View {
                 consumed = 0
                 dragging = nil
             }
+    }
+
+    private func tap(_ word: String) {
+        guard let first = selected else { selected = word; return }
+        selected = nil
+        guard first != word, let i = words.firstIndex(of: first), let j = words.firstIndex(of: word) else { return }
+        words.swapAt(i, j)
     }
 
     private func move(_ word: String, by step: Int) {
@@ -176,6 +187,14 @@ struct StreamDamView: View {
             }
             .contentShape(Rectangle())
             .gesture(drawGesture(size: size, spots: spots), including: damAt == nil ? .all : .subviews)
+            // Or tap the water between two words, for when a long drag is hard.
+            .simultaneousGesture(SpatialTapGesture().onEnded { tap in
+                guard damAt == nil else { return }
+                let p = tap.location
+                let half = StreamDrawing.width(size: size) / 2
+                guard abs(p.x - StreamDrawing.centerX(y: p.y, size: size)) < half else { return }
+                placeDam(cut: StreamDrawing.cutIndex(atY: p.y, spots: spots))
+            })
             .accessibilityElement(children: .contain)
             .accessibilityAction(named: "Dam the stream here") { placeDam(cut: max(words.count / 2, 1)) }
         }

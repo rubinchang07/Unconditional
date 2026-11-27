@@ -100,6 +100,7 @@ enum DataTransfer {
         var beliefAfter: Double
         /// Head and heart. Optional, so older files still open.
         var headTrue: Double? = nil
+        var headLight: Double? = nil
     }
 
     struct EntryRecord: Codable {
@@ -134,6 +135,9 @@ enum DataTransfer {
         var meaning: String
         var livedLately: Double
         var createdAt: Date
+        /// Where you placed it on your map, if you moved it. Optional for older files.
+        var mapX: Double? = nil
+        var mapY: Double? = nil
     }
 
     struct ReminderRecord: Codable {
@@ -177,15 +181,17 @@ enum DataTransfer {
 
     // MARK: - Export
 
-    static func snapshot(from context: ModelContext) -> Snapshot {
-        func all<T: PersistentModel>(_ type: T.Type) -> [T] {
-            (try? context.fetch(FetchDescriptor<T>())) ?? []
+    /// Everything, as plain records. Throws if any part can't be read, so a backup
+    /// is never quietly missing something: better no file than an incomplete one.
+    static func snapshot(from context: ModelContext) throws -> Snapshot {
+        func all<T: PersistentModel>(_ type: T.Type) throws -> [T] {
+            try context.fetch(FetchDescriptor<T>())
         }
         var s = Snapshot()
-        s.loops = all(Loop.self).map {
+        s.loops = try all(Loop.self).map {
             LoopRecord(name: $0.name, coreBelief: $0.coreBelief, pattern: $0.pattern, sortOrder: $0.sortOrder)
         }
-        s.entries = all(Entry.self).map { e in
+        s.entries = try all(Entry.self).map { e in
             EntryRecord(createdAt: e.createdAt, kind: e.kind, text: e.text, drawingData: e.drawingData,
                         drawingBackground: e.drawingBackground, loop: e.loop?.name, isGood: e.isGood,
                         lightness: e.lightness,
@@ -197,40 +203,42 @@ enum DataTransfer {
                                           smallStep: r.smallStep, createdAt: r.createdAt,
                                           distressBefore: r.distressBefore, distressAfter: r.distressAfter,
                                           beliefBefore: r.beliefBefore, beliefAfter: r.beliefAfter,
-                                          headTrue: r.headTrue >= 0 ? r.headTrue : nil)
+                                          headTrue: r.headTrue >= 0 ? r.headTrue : nil,
+                                          headLight: r.headLight >= 0 ? r.headLight : nil)
                         })
         }
-        s.wins = all(Win.self).map {
+        s.wins = try all(Win.self).map {
             WinRecord(createdAt: $0.createdAt, text: $0.text, meaning: $0.meaning, effortToOutcome: $0.effortToOutcome,
                       isPinned: $0.isPinned)
         }
-        s.values = all(PersonalValue.self).map {
-            ValueRecord(name: $0.name, meaning: $0.meaning, livedLately: $0.livedLately, createdAt: $0.createdAt)
+        s.values = try all(PersonalValue.self).map {
+            ValueRecord(name: $0.name, meaning: $0.meaning, livedLately: $0.livedLately, createdAt: $0.createdAt,
+                        mapX: $0.mapX, mapY: $0.mapY)
         }
-        s.reminders = all(SavedReminder.self).map { ReminderRecord(text: $0.text, createdAt: $0.createdAt) }
-        s.resetThoughts = all(ResetThought.self).map {
+        s.reminders = try all(SavedReminder.self).map { ReminderRecord(text: $0.text, createdAt: $0.createdAt) }
+        s.resetThoughts = try all(ResetThought.self).map {
             ResetThoughtRecord(text: $0.text, perspective: $0.perspective, sortOrder: $0.sortOrder, loop: $0.loop?.name)
         }
-        s.parkedThoughts = all(ParkedThought.self).map {
+        s.parkedThoughts = try all(ParkedThought.self).map {
             ParkedRecord(text: $0.text, createdAt: $0.createdAt, reviewedAt: $0.reviewedAt,
                          urgencyAtReview: $0.urgencyAtReview, reviewNote: $0.reviewNote)
         }
-        s.tinySteps = all(TinyStep.self).map {
+        s.tinySteps = try all(TinyStep.self).map {
             TinyStepRecord(text: $0.text, createdAt: $0.createdAt, outcome: $0.outcome, snoozedUntil: $0.snoozedUntil)
         }
-        s.careerReflections = all(CareerReflection.self).map {
+        s.careerReflections = try all(CareerReflection.self).map {
             CareerRecord(createdAt: $0.createdAt, moment: $0.moment, topic: $0.topic, learned: $0.learned,
                          interesting: $0.interesting, enjoyment: $0.enjoyment, discouragement: $0.discouragement,
                          urgeToQuit: $0.urgeToQuit, quitSource: $0.quitSource)
         }
-        s.mapLinks = all(MapLink.self).map {
+        s.mapLinks = try all(MapLink.self).map {
             MapLinkRecord(loopA: $0.loopA?.name, loopB: $0.loopB?.name, value: $0.value?.name,
                           strength: $0.strength, status: $0.status, createdAt: $0.createdAt)
         }
-        s.photos = all(GroundingPhoto.self).map {
+        s.photos = try all(GroundingPhoto.self).map {
             PhotoRecord(imageData: $0.imageData, isCutout: $0.isCutout, caption: $0.caption, createdAt: $0.createdAt)
         }
-        s.paths = all(StepPath.self).map { path in
+        s.paths = try all(StepPath.self).map { path in
             PathRecord(title: path.title, createdAt: path.createdAt, isResting: path.isResting,
                        steps: path.everything.map {
                            StepRecord(text: $0.text, createdAt: $0.createdAt,
@@ -242,7 +250,7 @@ enum DataTransfer {
                        nextStep: path.nextStep.isEmpty ? nil : path.nextStep,
                        nextSetAt: path.nextSetAt)
         }
-        s.laughs = all(Laugh.self).map { LaughRecord(text: $0.text, imageData: $0.imageData, createdAt: $0.createdAt) }
+        s.laughs = try all(Laugh.self).map { LaughRecord(text: $0.text, imageData: $0.imageData, createdAt: $0.createdAt) }
         return s
     }
 
@@ -313,6 +321,7 @@ enum DataTransfer {
                 reframe.beliefBefore = f.beliefBefore
                 reframe.beliefAfter = f.beliefAfter
                 reframe.headTrue = f.headTrue ?? -1
+                reframe.headLight = f.headLight ?? -1
                 context.insert(reframe)
                 entry.reframe = reframe
             }
@@ -334,6 +343,8 @@ enum DataTransfer {
             if valuesByName[r.name.lowercased()] != nil { summary.skipped += 1; continue }
             let value = PersonalValue(name: r.name, meaning: r.meaning, createdAt: r.createdAt)
             value.livedLately = r.livedLately
+            value.mapX = r.mapX
+            value.mapY = r.mapY
             context.insert(value)
             valuesByName[r.name.lowercased()] = value
             summary.added += 1

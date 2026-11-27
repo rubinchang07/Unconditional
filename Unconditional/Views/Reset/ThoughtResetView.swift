@@ -1,7 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// "I'm spiraling": three calm moments, one at a time, with as little to read as possible.
+/// "I'm spiraling": first, a choice of how much. "Just a moment" is one breath, one kind
+/// sentence and one anchor, about fifteen seconds. "Work through it" is the whole way,
+/// one calm moment at a time, with as little to read as possible.
 /// 1. Breathe: the orb breathes three slow breaths, and you breathe with it.
 /// 2. Pick: a few heavy words drift by (your loops among them). Tap what's in your head.
 /// 3. Order: put the words in the order they lead into each other.
@@ -21,10 +23,13 @@ struct ThoughtResetView: View {
     @Query private var values: [PersonalValue]
     @Query private var reminders: [SavedReminder]
 
-    private enum Step: Equatable { case breathe, pick, order, stream, release, closing }
+    private enum Step: Equatable { case choose, moment, breathe, pick, order, stream, release, closing }
     enum Destination { case water, cloud }
 
-    @State private var step: Step = .breathe
+    @State private var step: Step = .choose
+    @State private var momentStart = Date.now
+    @State private var momentDone = false
+    @State private var momentAnchor: AnyAnchor?
     @State private var pool: [String] = []
     @State private var picked: [String] = []
     @State private var own = ""
@@ -43,6 +48,8 @@ struct ThoughtResetView: View {
     @State private var bursts: [Burst] = []
     /// Whether the dam cut some words off.
     @State private var cutOff = false
+    /// A word tapped in the rain cycle, to choose water or cloud without dragging.
+    @State private var choosing: String?
 
     struct Burst: Identifiable {
         let id = UUID()
@@ -62,6 +69,8 @@ struct ThoughtResetView: View {
                     .opacity(step == .release ? 1 : 0)
                     .animation(step == .release ? .easeInOut(duration: 1.8) : .easeOut(duration: 0.3), value: step)
                 switch step {
+                case .choose: chooseStep
+                case .moment: momentStep
                 case .breathe: breatheStep
                 case .pick: pickStep
                 case .order:
@@ -93,6 +102,79 @@ struct ThoughtResetView: View {
             }
             .keyboardDoneButton()
             .onAppear { if pool.isEmpty { pool = ResetWords.pool(loops: loops.map(\.name)) } }
+        }
+    }
+
+    // MARK: - 0. How much right now?
+
+    /// The more overwhelming the moment, the less the app should ask. So first:
+    /// just a moment (about fifteen seconds), or the whole way through.
+    private var chooseStep: some View {
+        VStack(spacing: 22) {
+            Spacer()
+            OrbView(palette: orbPalette, speed: 0.5, state: .resting, exercise: true)
+                .frame(width: 130, height: 130)
+            Text("what would help right now?")
+                .font(.system(.title3, design: .serif))
+            Spacer()
+            VStack(spacing: 12) {
+                Button("just a moment") {
+                    momentStart = .now
+                    momentAnchor = AnyAnchor.random(laughs: laughs, photos: photos, wins: wins,
+                                                    values: values, words: reminders)
+                    go(.moment)
+                }
+                .buttonStyle(.paper)
+                Button("work through it") { go(.breathe) }
+                    .font(.body.weight(.medium))
+                    .frame(minHeight: 44)
+            }
+            .padding(.bottom, 16)
+        }
+        .padding(.horizontal, 28)
+        .transition(.opacity)
+    }
+
+    /// One breath with the orb, one kind sentence, one thing from Anchors, done.
+    private var momentStep: some View {
+        TimelineView(.animation(paused: reduceMotion || momentDone)) { timeline in
+            let time = timeline.date.timeIntervalSince(momentStart)
+            VStack(spacing: 22) {
+                Spacer()
+                OrbView(palette: orbPalette, speed: 0.5, state: momentDone ? .settling : .breathing, exercise: true)
+                    .frame(width: 180, height: 180)
+                    .scaleEffect(momentDone || reduceMotion ? 0.85 : 0.7 + 0.35 * ResetWords.breath(at: time))
+                if momentDone {
+                    Text("This is a hard moment, and it will pass. You don't have to solve anything right now.")
+                        .font(.system(.title3, design: .serif))
+                        .multilineTextAlignment(.center)
+                        .transition(.opacity)
+                    if let momentAnchor {
+                        AnchorCard(anchor: momentAnchor)
+                            .frame(maxWidth: .infinity)
+                            .paperCard(padding: 14)
+                            .transition(.scale(scale: 0.9).combined(with: .opacity))
+                    }
+                } else {
+                    Text(ResetWords.isInhaling(at: time) ? "breathe in as it grows" : "breathe out as it shrinks")
+                        .font(.system(.title3, design: .serif))
+                        .contentTransition(.opacity)
+                        .animation(.easeInOut(duration: 0.6), value: ResetWords.isInhaling(at: time))
+                }
+                Spacer()
+                if momentDone {
+                    Button("Done") { dismiss() }
+                        .buttonStyle(.paper)
+                        .padding(.bottom, 12)
+                        .transition(.opacity)
+                }
+            }
+            .padding(.horizontal, 28)
+        }
+        .transition(.opacity)
+        .task {
+            try? await Task.sleep(for: .seconds(reduceMotion ? 2 : ResetWords.breathLength))
+            withAnimation(.calm) { momentDone = true }
         }
     }
 
@@ -292,6 +374,13 @@ struct ThoughtResetView: View {
             }
         }
         .transition(.opacity)
+        .confirmationDialog(choosing ?? "", isPresented: Binding(get: { choosing != nil }, set: { if !$0 { choosing = nil } }),
+                            titleVisibility: .visible) {
+            if let word = choosing {
+                Button("Let it go") { rippleX = 0.5; place(word, .water); choosing = nil }
+                Button("Save for Sunday") { place(word, .cloud); choosing = nil }
+            }
+        }
     }
 
     private var saved: [String] { placed.filter { $0.value == .cloud }.map(\.key) }
@@ -373,6 +462,7 @@ struct ThoughtResetView: View {
                     fuseTarget = nil
                 }
         )
+        .onTapGesture { choosing = word }
         .allowsHitTesting(destination == nil)
         .zIndex(isDragging ? 10 : 0)
         .accessibilityElement()

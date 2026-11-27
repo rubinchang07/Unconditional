@@ -112,7 +112,7 @@ struct DataTransferTests {
 
     @Test("Files from before map links were exported still open")
     func olderFile() throws {
-        var snapshot = DataTransfer.snapshot(from: oldPhone.mainContext)
+        var snapshot = try DataTransfer.snapshot(from: oldPhone.mainContext)
         snapshot.mapLinks = nil
         snapshot.photos = nil
         let text = String(decoding: try DataTransfer.encode(snapshot), as: UTF8.self)
@@ -176,6 +176,10 @@ struct DataTransferTests {
         old.insert(entry)
         entry.lightness = 0.2
         old.insert(Laugh(text: "The cat sat on my homework", imageData: Data([9, 9]), createdAt: day))
+        let placed = PersonalValue(name: "Patience", meaning: "", createdAt: day)
+        old.insert(placed)
+        placed.mapX = 0.25
+        placed.mapY = 0.75
 
         let file = try DataTransfer.encode(DataTransfer.snapshot(from: old))
         let new = newPhone.mainContext
@@ -193,6 +197,8 @@ struct DataTransferTests {
         let entries = try new.fetch(FetchDescriptor<Entry>())
         #expect(entries.first?.kind == .words)
         #expect(entries.first?.lightness == 0.2)
+        let value = try #require(try new.fetch(FetchDescriptor<PersonalValue>()).first { $0.name == "Patience" })
+        #expect(value.mapX == 0.25 && value.mapY == 0.75)
         let laughs = try new.fetch(FetchDescriptor<Laugh>())
         #expect(laughs.count == 1)
         #expect(laughs.first?.imageData == Data([9, 9]))
@@ -219,7 +225,7 @@ struct DataTransferTests {
     func loopsMatchByName() throws {
         let old = oldPhone.mainContext
         try fill(old)
-        let snapshot = DataTransfer.snapshot(from: old)
+        let snapshot = try DataTransfer.snapshot(from: old)
 
         let new = newPhone.mainContext
         new.insert(Loop(name: "falling BEHIND", coreBelief: "", pattern: "", sortOrder: 0))
