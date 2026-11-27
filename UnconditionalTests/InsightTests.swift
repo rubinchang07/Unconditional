@@ -86,6 +86,19 @@ struct InsightSummaryTests {
         #expect(try sentences().contains("After reframing, the distress usually eased a little."))
     }
 
+    @Test("Head and heart reframes are described too")
+    func headAndHeart() throws {
+        for (day, head) in [(1, 0.9), (2, 0.8), (3, 0.85)] {
+            let e = entry(nil, daysAgo: day)
+            let reframe = Reframe(createdAt: e.createdAt)
+            reframe.distressBefore = 8 // heart: heavy
+            reframe.headLight = head   // head: light
+            context.insert(reframe)
+            e.reframe = reframe
+        }
+        #expect(try sentences().contains("When you reframed, your head and heart were often apart. Understanding often arrives first."))
+    }
+
     @Test("Never more than two sentences, and never a score")
     func short() throws {
         let behind = loop("Falling behind")

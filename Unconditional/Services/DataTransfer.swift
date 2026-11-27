@@ -101,6 +101,10 @@ enum DataTransfer {
         /// Head and heart. Optional, so older files still open.
         var headTrue: Double? = nil
         var headLight: Double? = nil
+        /// The second look, a few days later. Optional, so older files still open.
+        var laterHead: Double? = nil
+        var laterHeart: Double? = nil
+        var laterAt: Date? = nil
     }
 
     struct EntryRecord: Codable {
@@ -204,7 +208,10 @@ enum DataTransfer {
                                           distressBefore: r.distressBefore, distressAfter: r.distressAfter,
                                           beliefBefore: r.beliefBefore, beliefAfter: r.beliefAfter,
                                           headTrue: r.headTrue >= 0 ? r.headTrue : nil,
-                                          headLight: r.headLight >= 0 ? r.headLight : nil)
+                                          headLight: r.headLight >= 0 ? r.headLight : nil,
+                                          laterHead: r.hasLater ? r.laterHead : nil,
+                                          laterHeart: r.hasLater ? r.laterHeart : nil,
+                                          laterAt: r.laterAt)
                         })
         }
         s.wins = try all(Win.self).map {
@@ -335,6 +342,9 @@ enum DataTransfer {
                 reframe.beliefAfter = f.beliefAfter
                 reframe.headTrue = f.headTrue ?? -1
                 reframe.headLight = f.headLight ?? -1
+                reframe.laterHead = f.laterHead ?? -1
+                reframe.laterHeart = f.laterHeart ?? -1
+                reframe.laterAt = f.laterAt
                 context.insert(reframe)
                 entry.reframe = reframe
             }

@@ -163,10 +163,10 @@ struct ThoughtResetView: View {
                             .transition(.scale(scale: 0.9).combined(with: .opacity))
                     }
                 } else {
-                    Text(ResetWords.isInhaling(at: time) ? "breathe in as it grows" : "breathe out as it shrinks")
+                    Text((ResetWords.isInhaling(at: time) && time < ResetWords.breathLength) ? "breathe in as it grows" : "breathe out as it shrinks")
                         .font(.system(.title3, design: .serif))
                         .contentTransition(.opacity)
-                        .animation(.easeInOut(duration: 0.6), value: ResetWords.isInhaling(at: time))
+                        .animation(.easeInOut(duration: 0.6), value: ResetWords.isInhaling(at: time) && time < ResetWords.breathLength)
                 }
                 Spacer()
                 if momentDone {
@@ -199,17 +199,21 @@ struct ThoughtResetView: View {
     private var breatheStep: some View {
         TimelineView(.animation(paused: reduceMotion)) { timeline in
             let time = timeline.date.timeIntervalSince(breathStart)
-            let inhaling = ResetWords.isInhaling(at: time)
+            // After the third breath out, nothing asks for another one.
+            let finished = scattering || time >= ResetWords.breathLength * 3
+            let inhaling = !finished && ResetWords.isInhaling(at: time)
             let done = min(Int(time / ResetWords.breathLength), 3)
             VStack(spacing: 30) {
                 Spacer()
                 DispersingOrb(palette: orbPalette, state: .breathing, dispersed: scattering)
                     .frame(width: 220, height: 220)
-                    .scaleEffect(scattering ? 1 : 0.7 + 0.35 * (reduceMotion ? 0.5 : ResetWords.breath(at: time)))
+                    .scaleEffect(scattering ? 1 : 0.7 + 0.35 * (reduceMotion ? 0.5 : ResetWords.breath(at: min(time, ResetWords.breathLength * 3 - 0.01))))
                 Text(inhaling ? "breathe in as it grows" : "breathe out as it shrinks")
                     .font(.system(.title3, design: .serif))
                     .contentTransition(.opacity)
                     .animation(.easeInOut(duration: 0.6), value: inhaling)
+                    .opacity(finished ? 0 : 1)
+                    .animation(.easeOut(duration: 0.4), value: finished)
                 HStack(spacing: 10) {
                     ForEach(0..<3, id: \.self) { i in
                         Circle()
