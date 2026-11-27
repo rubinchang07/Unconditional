@@ -37,6 +37,15 @@ struct FeelingWordsTests {
         #expect(Set(FeelingWords.heavy).count == FeelingWords.heavy.count)
     }
 
+    @Test("The same word brings different suggestions from one slide to the next")
+    func variesBetweenSlides() {
+        let one = FeelingWords.related(to: "tired", leaning: -0.3, seed: 1)
+        let two = FeelingWords.related(to: "tired", leaning: -0.3, seed: 500)
+        #expect(one.count == 6 && two.count == 6)
+        #expect(Set(one) != Set(two))
+        #expect(FeelingWords.heavyMild.count >= 60 && FeelingWords.lightStrong.count >= 60)
+    }
+
     @Test("Each bubble looks a little different, and the same word always looks the same")
     func shades() {
         let a = FeelingWords.bubbleShade(index: 0, word: "calm")

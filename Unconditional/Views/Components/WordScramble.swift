@@ -18,21 +18,49 @@ enum FeelingWords {
         "tired", "unsure", "restless", "bored", "stuck", "worried", "tense", "scattered",
         "disappointed", "behind", "drained", "irritable", "uneasy", "flat", "distracted",
         "low", "frustrated", "impatient", "lonely", "sad", "awkward", "pressured",
+        "wistful", "homesick", "sluggish", "foggy", "groggy", "antsy", "jittery", "edgy",
+        "cranky", "grumpy", "moody", "blue", "glum", "deflated", "underwhelmed", "unmotivated",
+        "listless", "weary", "achy", "overstimulated", "stretched thin", "rushed", "nervous",
+        "self-conscious", "insecure", "doubtful", "hesitant", "conflicted", "torn", "unsettled",
+        "on edge", "left out", "misunderstood", "unseen", "envious", "annoyed", "touchy",
+        "fragile", "bittersweet", "melancholy", "preoccupied", "overthinking", "second-guessing",
+        "out of place", "nostalgic", "indecisive",
     ]
     static let heavyStrong = [
         "overwhelmed", "hopeless", "ashamed", "exhausted", "panicked", "devastated", "worthless",
         "empty", "numb", "crushed", "furious", "terrified", "trapped", "heartbroken", "desperate",
         "guilty", "afraid", "hurt", "defeated", "jealous", "lost", "embarrassed",
+        "dread", "despair", "grief", "anguished", "betrayed", "humiliated", "rejected",
+        "abandoned", "isolated", "paralyzed", "frozen", "burnt out", "shattered", "helpless",
+        "powerless", "invisible", "unwanted", "unlovable", "disgusted", "mortified", "spiraling",
+        "frantic", "suffocated", "cornered", "bitter", "resentful", "hollow", "depleted",
+        "wrecked", "raw", "inadequate", "like a failure", "like a burden", "regretful",
+        "haunted", "tormented", "livid", "seething", "grieving", "aching", "sick with worry",
+        "like a fraud", "broken", "alone in it",
     ]
     static let lightMild = [
         "calm", "okay", "steady", "content", "rested", "relieved", "gentle", "patient",
         "curious", "open", "focused", "settled", "warm", "safe", "clear", "glad", "hopeful",
         "amused", "comfortable", "satisfied", "cozy", "lighter",
+        "mellow", "easygoing", "unhurried", "grounded", "balanced", "centered", "refreshed",
+        "awake", "alert", "interested", "absorbed", "reflective", "thoughtful", "tender",
+        "soft", "accepted", "understood", "included", "reassured", "at ease", "snug",
+        "pleasant", "cheerful", "upbeat", "sunny", "competent", "productive", "organized",
+        "prepared", "ready", "motivated", "encouraged", "appreciative", "fond", "friendly",
+        "sociable", "silly", "goofy", "nourished", "forgiving", "unbothered", "light-hearted",
+        "breezy", "tickled", "useful",
     ]
     static let lightStrong = [
         "joyful", "proud", "grateful", "excited", "inspired", "loved", "energized", "free",
         "brave", "elated", "delighted", "playful", "connected", "alive", "peaceful", "confident",
         "capable", "thrilled", "cared for", "radiant", "uplifted", "moved",
+        "ecstatic", "euphoric", "blissful", "giddy", "exhilarated", "triumphant", "accomplished",
+        "fulfilled", "empowered", "unstoppable", "fearless", "liberated", "awestruck", "amazed",
+        "enchanted", "full of wonder", "adored", "cherished", "seen", "belonging", "at home",
+        "whole", "serene", "tranquil", "renewed", "revived", "glowing", "bubbly", "overjoyed",
+        "jubilant", "passionate", "determined", "purposeful", "resilient", "strong", "worthy",
+        "enough", "treasured", "deeply at peace", "in love with life", "on top of the world",
+        "like myself again", "unafraid", "hopeful again",
     ]
     static var heavy: [String] { heavyMild + heavyStrong }
     static var light: [String] { lightMild + lightStrong }
@@ -50,8 +78,9 @@ enum FeelingWords {
     /// Words to offer next: from the side you slid toward (both sides when it was
     /// in between), closest in meaning to your word first. `shuffle` steps through
     /// the rest of the list, so "show others" never repeats until it runs out.
+    /// `seed` picks where the spread-out words start, for variety between slides.
     static func related(to word: String, leaning lean: Double, excluding used: Set<String> = [],
-                        count: Int = 6, shuffle: Int = 0) -> [String] {
+                        count: Int = 6, shuffle: Int = 0, seed: Int = 0) -> [String] {
         let key = word.lowercased()
         let pool: [String]
         switch lean {
@@ -73,13 +102,17 @@ enum FeelingWords {
         } else {
             ranked = candidates
         }
-        // Half the closest in meaning, half spread across the rest, so the
-        // words don't all say the same thing.
+        // A couple close in meaning, the rest spread across the whole list
+        // (from a different spot each time), so the words don't all say the same thing.
         let start = (shuffle * count) % ranked.count
         let rotated = Array(ranked[start...] + ranked[..<start])
-        let near = (count + 1) / 2
+        let near = max(1, count / 3)
         var picks = Array(rotated.prefix(near))
-        let rest = Array(rotated.dropFirst(near))
+        var rest = Array(rotated.dropFirst(near))
+        if !rest.isEmpty {
+            let offset = abs(seed) % rest.count
+            rest = Array(rest[offset...] + rest[..<offset])
+        }
         let wanted = min(count - picks.count, rest.count)
         if wanted > 0 {
             let stride = Double(rest.count) / Double(wanted)
@@ -183,6 +216,8 @@ struct WordScramble: View {
     @State private var drag: CGFloat = 0
     @State private var bubbles: [String] = []
     @State private var shuffle = 0
+    /// Changes with each word you slide, so the same word doesn't always bring the same suggestions.
+    @State private var seed = 0
     /// The last word you slid, and which way, so "other words" stays on the same side.
     @State private var lastWord = ""
     @State private var lastLean = 0.0
@@ -400,6 +435,7 @@ struct WordScramble: View {
         lastWord = word
         lastLean = lean
         shuffle = 0
+        seed = Int.random(in: 0..<1000)
         phase = .more
         offerBubbles()
     }
@@ -412,10 +448,10 @@ struct WordScramble: View {
     /// Related words bubble out of the middle, as if the orb let them go.
     private func offerBubbles() {
         let used = Set(kept.map(\.word))
-        var next = FeelingWords.related(to: lastWord, leaning: lastLean, excluding: used, count: 5, shuffle: shuffle)
+        var next = FeelingWords.related(to: lastWord, leaning: lastLean, excluding: used, count: 5, shuffle: shuffle, seed: seed)
         // If one side has run out, offer from both.
         if next.isEmpty {
-            next = FeelingWords.related(to: lastWord, leaning: 0, excluding: used, count: 5, shuffle: shuffle)
+            next = FeelingWords.related(to: lastWord, leaning: 0, excluding: used, count: 5, shuffle: shuffle, seed: seed)
         }
         withAnimation(reduceMotion ? nil : .spring(duration: 0.8, bounce: 0.3)) { bubbles = next }
     }
@@ -436,8 +472,10 @@ private struct WordOrb: View {
                 .font(small ? .caption.weight(.semibold) : .system(.headline, design: .serif))
                 .foregroundStyle(ink)
                 .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                // Longer phrases like "on top of the world" wrap onto two lines.
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.8)
                 .padding(.horizontal, size * 0.12)
         }
         .frame(width: size, height: size)
