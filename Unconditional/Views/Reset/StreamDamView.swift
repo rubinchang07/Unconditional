@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// "Stop the stream here": after a heavy check-in, the thoughts you just wrote
+/// The stream in "i'm spiraling": the words you picked
 /// flow down the screen as a stream, each one pulling the next along a little
 /// faster. Drag a line across it and stones drop in, one by one, into a small dam.
 /// Below it the water slows and clears. Above it the words gather in a still pool
@@ -11,6 +11,8 @@ import SwiftUI
 struct StreamDamView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let words: [String]
+    /// Move on by itself a moment after the dam is built, instead of showing Done.
+    var autoContinue = false
     let onDone: () -> Void
 
     @State private var start = Date.now
@@ -81,7 +83,7 @@ struct StreamDamView: View {
         }
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottom) {
-            if stones >= Self.stoneCount {
+            if stones >= Self.stoneCount && !autoContinue {
                 VStack(spacing: 14) {
                     Text("The stream can wait here.")
                         .font(.system(.title3, design: .serif))
@@ -125,6 +127,11 @@ struct StreamDamView: View {
             for _ in 0..<Self.stoneCount {
                 stones += 1
                 try? await Task.sleep(for: .milliseconds(reduceMotion ? 40 : 160))
+            }
+            if autoContinue {
+                // Long enough to watch the water slow and the words gather.
+                try? await Task.sleep(for: .seconds(2.6))
+                onDone()
             }
         }
     }
@@ -321,37 +328,5 @@ enum StreamDrawing {
                            with: .color(.white.opacity(0.35 * (1 - phase) * settle)), lineWidth: 1)
             }
         }
-    }
-}
-
-/// The thoughts to put in the stream: the words you kept, or short pieces of what
-/// you wrote, or (for a drawing) your loop and a few common ones.
-enum StreamWords {
-    static let limit = 8
-
-    static func pieces(text: String, kind: EntryKind, loop: String?) -> [String] {
-        var result: [String] = []
-        if kind == .words {
-            result = FeelingWords.parse(text).map(\.word)
-        } else if kind.isText {
-            let separators = CharacterSet(charactersIn: ".,;!?\n—")
-            let chunks = text.components(separatedBy: separators)
-                .flatMap { $0.components(separatedBy: " but ") }
-                .flatMap { $0.components(separatedBy: " and ") }
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            for chunk in chunks {
-                let words = chunk.split(separator: " ")
-                let short = words.prefix(4).joined(separator: " ") + (words.count > 4 ? "…" : "")
-                if !result.contains(where: { $0.caseInsensitiveCompare(short) == .orderedSame }) { result.append(short) }
-            }
-        }
-        if let loop, !loop.isEmpty, !result.contains(where: { $0.caseInsensitiveCompare(loop) == .orderedSame }) {
-            result.append(loop.lowercased())
-        }
-        for word in ResetWords.common where result.count < 4 && !result.contains(word) {
-            result.append(word)
-        }
-        return Array(result.prefix(limit))
     }
 }

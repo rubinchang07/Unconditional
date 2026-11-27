@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// Cognitive dissonance, drawn as sound: two waves, one for your head (how true the
-/// kinder thought seems) and one for your heart (how light it actually feels).
+/// Cognitive dissonance, drawn as sound, shown once at the end of a reframe: one wave
+/// for your heart (how it felt, from the first screen) and one for your head (how true
+/// the step-back view seemed, from the second). You only see them together here, so
+/// neither answer was nudged by the picture.
 ///
 /// Two notes that are close but not the same "beat": you hear a wobble that slows
 /// and smooths out as they meet. Here the further apart head and heart are, the
@@ -10,57 +12,48 @@ import SwiftUI
 struct HeadAndHeart: View {
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// 0 "not really" to 1 "completely".
-    @Binding var head: Double
-    /// 0 heavy to 1 light.
-    @Binding var heart: Double
+    /// How true the step-back view seems, 0 "not really" to 1 "completely".
+    let head: Double
+    /// How it feels, 0 heavy to 1 light.
+    let heart: Double
+    let onDone: () -> Void
+    /// The waves start in tune and drift to the real gap, so you watch them meet or part.
+    @State private var shown = 0.0
 
     private var gap: Double { Self.gap(head: head, heart: heart) }
 
     var body: some View {
         let colors = orbPalette.colors
-        VStack(spacing: 18) {
-            DissonanceWaves(gap: gap, headColor: colors.first ?? .teal, heartColor: colors.last ?? .orange,
-                            reduceMotion: reduceMotion)
-                .frame(height: 96)
+        let headColor = colors.first ?? .teal, heartColor = colors.last ?? .orange
+        VStack(spacing: 26) {
+            Spacer()
+            DissonanceWaves(gap: shown, headColor: headColor, heartColor: heartColor, reduceMotion: reduceMotion)
+                .frame(height: 110)
                 .accessibilityHidden(true)
-
-            if gap >= Self.noticeable {
-                Text("Feelings often catch up later.")
-                    .font(.system(.footnote, design: .serif))
-                    .italic()
-                    .foregroundStyle(.secondary)
-                    .transition(.opacity)
-            }
-
-            slider(symbol: "brain.head.profile", title: "In your head, how true is it?",
-                   value: $head, low: "not really", high: "completely", color: colors.first ?? .teal)
-            slider(symbol: "heart", title: "In your heart, how does it feel?",
-                   value: $heart, low: "heavy", high: "light", color: colors.last ?? .orange)
-        }
-        .animation(.calm, value: gap >= Self.noticeable)
-        // A soft buzz that grows with the clash, each time the gap shifts a step.
-        .sensoryFeedback(.impact(flexibility: .soft, intensity: max(0.25, gap)), trigger: Int(gap * 10))
-    }
-
-    private func slider(symbol: String, title: String, value: Binding<Double>,
-                        low: String, high: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label(title, systemImage: symbol)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-            Slider(value: value, in: 0...1)
-                .tint(color)
-                .accessibilityLabel(title)
-                .accessibilityValue(value.wrappedValue < 0.5 ? low : high)
-            HStack {
-                Text(low)
-                Spacer()
-                Text(high)
+            HStack(spacing: 22) {
+                Label("head", systemImage: "circle.fill").foregroundStyle(headColor)
+                Label("heart", systemImage: "circle.fill").foregroundStyle(heartColor)
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .labelStyle(DotLabel())
+            Text(Self.message(gap: gap))
+                .font(.system(.title3, design: .serif))
+                .multilineTextAlignment(.center)
+            Spacer()
+            Button("Continue", action: onDone)
+                .buttonStyle(.paper)
+                .padding(.bottom, 8)
         }
+        .padding(28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ThemeBackground())
+        .task {
+            try? await Task.sleep(for: .milliseconds(500))
+            withAnimation(.easeInOut(duration: 2.4)) { shown = gap }
+        }
+        // A soft buzz that grows with the clash, as the waves part.
+        .sensoryFeedback(.impact(flexibility: .soft, intensity: max(0.25, gap)), trigger: shown > 0.01)
+        .accessibilityElement(children: .combine)
     }
 
     /// How far apart head and heart are, 0 (in tune) to 1.
@@ -68,8 +61,24 @@ struct HeadAndHeart: View {
         min(abs(min(max(head, 0), 1) - min(max(heart, 0), 1)), 1)
     }
 
-    /// From here on the gap shows, and the quiet line appears.
+    /// From here on the gap counts as noticeable.
     static let noticeable = 0.25
+
+    static func message(gap: Double) -> String {
+        gap >= noticeable
+            ? "Your head and heart are telling different stories. Feelings often catch up later."
+            : "Your head and heart are close right now."
+    }
+}
+
+/// A small colored dot beside a word.
+private struct DotLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon.font(.system(size: 8))
+            configuration.title.foregroundStyle(.secondary)
+        }
+    }
 }
 
 /// Two waves and what they make together. In tune: one smooth wave. Apart: the

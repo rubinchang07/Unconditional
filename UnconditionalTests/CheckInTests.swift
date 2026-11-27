@@ -309,7 +309,7 @@ struct SpiralingTests {
     }
 }
 
-/// Head and heart, and stopping the stream.
+/// Head and heart, and damming the stream in i'm spiraling.
 @MainActor
 struct HeadHeartAndStreamTests {
     @Test("Head and heart: in tune is no gap, far apart is a big one")
@@ -319,20 +319,10 @@ struct HeadHeartAndStreamTests {
         #expect(HeadAndHeart.gap(head: 2, heart: -1) == 1)
     }
 
-    @Test("The stream carries pieces of what you wrote, short and without repeats")
-    func pieces() {
-        let text = "I failed the exam. Everyone else is ahead and I'm wasting my time, failed the exam"
-        let pieces = StreamWords.pieces(text: text, kind: .write, loop: "Falling behind")
-        #expect(pieces.contains("I failed the exam"))
-        #expect(pieces.contains("Everyone else is ahead"))
-        #expect(pieces.contains("falling behind"))
-        #expect(pieces.allSatisfy { $0.split(separator: " ").count <= 4 })
-        #expect(Set(pieces.map { $0.lowercased() }).count == pieces.count)
-        #expect(pieces.count <= StreamWords.limit)
-        // A drawing still gets a few words to flow.
-        #expect(StreamWords.pieces(text: "", kind: .draw, loop: nil).count >= 4)
-        let kept = FeelingWords.compose([KeptWord(word: "tired", lean: -0.9)])
-        #expect(StreamWords.pieces(text: kept, kind: .words, loop: nil).first == "tired")
+    @Test("The message names a gap only when there is one")
+    func message() {
+        #expect(HeadAndHeart.message(gap: 0.6).contains("different stories"))
+        #expect(HeadAndHeart.message(gap: 0.05).contains("close"))
     }
 
     @Test("Only a line across most of the stream builds the dam")

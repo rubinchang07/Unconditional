@@ -4,7 +4,9 @@ import SwiftData
 /// "I'm spiraling": three calm moments, one at a time, with as little to read as possible.
 /// 1. Breathe: the orb breathes three slow breaths, and you breathe with it.
 /// 2. Pick: a few heavy words drift by (your loops among them). Tap what's in your head.
-/// 3. Release: drag each word down into the water to let it go, or up into the
+/// 3. The stream: your words flow down faster and faster, the way a spiral does.
+///    Drag across to drop stones in and dam it; the words gather in a still pool.
+/// 4. Release: drag each word down into the water to let it go, or up into the
 ///    cloud to save it for Sunday, when the cloud rains it back for a calm look.
 struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
@@ -14,7 +16,7 @@ struct ThoughtResetView: View {
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
     @Query private var laughs: [Laugh]
 
-    private enum Step: Equatable { case breathe, pick, release, closing }
+    private enum Step: Equatable { case breathe, pick, stream, release, closing }
     enum Destination { case water, cloud }
 
     @State private var step: Step = .breathe
@@ -53,6 +55,8 @@ struct ThoughtResetView: View {
                 switch step {
                 case .breathe: breatheStep
                 case .pick: pickStep
+                case .stream:
+                    StreamDamView(words: picked, autoContinue: true) { go(.release) }
                 case .release: releaseStep
                 case .closing: closingStep
                 }
@@ -170,7 +174,7 @@ struct ThoughtResetView: View {
             }
             .paperCard(padding: 14)
 
-            Button(picked.isEmpty ? "Skip" : "Next") { go(picked.isEmpty ? .closing : .release) }
+            Button(picked.isEmpty ? "Skip" : "Next") { go(picked.isEmpty ? .closing : .stream) }
                 .buttonStyle(.paper)
                 .padding(.bottom, 8)
         }
