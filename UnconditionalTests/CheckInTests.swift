@@ -340,13 +340,17 @@ struct HeadHeartAndStreamTests {
         #expect(!StreamDrawing.crossesStream([], size: size))
     }
 
-    @Test("Thoughts speed up the longer they flow, up to a limit")
-    func speedsUp() {
-        let early = StreamDrawing.travelled(2) - StreamDrawing.travelled(1)
-        let later = StreamDrawing.travelled(13) - StreamDrawing.travelled(12)
-        let much = StreamDrawing.travelled(41) - StreamDrawing.travelled(40)
-        let more = StreamDrawing.travelled(61) - StreamDrawing.travelled(60)
-        #expect(later > early)
-        #expect(abs(much - more) < 0.001)
+    @Test("The dam goes between two words: the ones above stay, the rest are cut off")
+    func damBetweenWords() {
+        let size = CGSize(width: 390, height: 760)
+        let spots = StreamDrawing.wordSpots(count: 4, size: size)
+        #expect(spots.count == 4)
+        #expect(zip(spots, spots.dropFirst()).allSatisfy { $0.y < $1.y })
+        let between = (spots[1].y + spots[2].y) / 2
+        #expect(StreamDrawing.cutIndex(atY: between, spots: spots) == 2)
+        #expect(StreamDrawing.cutIndex(atY: 0, spots: spots) == 0)
+        #expect(StreamDrawing.cutIndex(atY: size.height, spots: spots) == 4)
+        let dam = StreamDrawing.damY(cut: 2, spots: spots, size: size)
+        #expect(dam > spots[1].y && dam < spots[2].y)
     }
 }

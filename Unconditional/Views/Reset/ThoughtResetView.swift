@@ -4,9 +4,10 @@ import SwiftData
 /// "I'm spiraling": three calm moments, one at a time, with as little to read as possible.
 /// 1. Breathe: the orb breathes three slow breaths, and you breathe with it.
 /// 2. Pick: a few heavy words drift by (your loops among them). Tap what's in your head.
-/// 3. The stream: your words flow down faster and faster, the way a spiral does.
-///    Drag across to drop stones in and dam it; the words gather in a still pool.
-/// 4. Release: drag each word down into the water to let it go, or up into the
+/// 3. Order: put the words in the order they lead into each other.
+/// 4. The stream: the words sit along a stream in that order. Drag across between two
+///    of them to dam it: above, a still pool; below, the cut-off words stay on a dry bed.
+/// 5. Release (only the words above the dam): drag each word down into the water to let it go, or up into the
 ///    cloud to save it for Sunday, when the cloud rains it back for a calm look.
 struct ThoughtResetView: View {
     @Environment(\.dismiss) private var dismiss
@@ -16,7 +17,7 @@ struct ThoughtResetView: View {
     @Query(sort: \Loop.sortOrder) private var loops: [Loop]
     @Query private var laughs: [Laugh]
 
-    private enum Step: Equatable { case breathe, pick, stream, release, closing }
+    private enum Step: Equatable { case breathe, pick, order, stream, release, closing }
     enum Destination { case water, cloud }
 
     @State private var step: Step = .breathe
@@ -34,6 +35,8 @@ struct ThoughtResetView: View {
     @State private var fuseTarget: String?
     @State private var fuseCount = 0
     @State private var bursts: [Burst] = []
+    /// Whether the dam cut some words off.
+    @State private var cutOff = false
 
     struct Burst: Identifiable {
         let id = UUID()
@@ -55,8 +58,18 @@ struct ThoughtResetView: View {
                 switch step {
                 case .breathe: breatheStep
                 case .pick: pickStep
+                case .order:
+                    StreamOrderView(words: $picked) { go(.stream) }
+                        .transition(.opacity)
                 case .stream:
-                    StreamDamView(words: picked, autoContinue: true) { go(.release) }
+                    // Only the words above the dam go on to the water and the cloud.
+                    // The ones you cut off stay behind on the dry bed.
+                    StreamDamView(words: picked) { kept in
+                        cutOff = kept.count < picked.count
+                        picked = kept
+                        go(kept.isEmpty ? .closing : .release)
+                    }
+                    .transition(.opacity)
                 case .release: releaseStep
                 case .closing: closingStep
                 }
@@ -174,7 +187,7 @@ struct ThoughtResetView: View {
             }
             .paperCard(padding: 14)
 
-            Button(picked.isEmpty ? "Skip" : "Next") { go(picked.isEmpty ? .closing : .stream) }
+            Button(picked.isEmpty ? "Skip" : "Next") { go(picked.isEmpty ? .closing : picked.count > 1 ? .order : .stream) }
                 .buttonStyle(.paper)
                 .padding(.bottom, 8)
         }
@@ -423,7 +436,7 @@ struct ThoughtResetView: View {
     }
 
     private var closingMessage: String {
-        if picked.isEmpty { return "You slowed down. That's enough for now." }
+        if picked.isEmpty { return cutOff ? "You stopped it there. That's enough for now." : "You slowed down. That's enough for now." }
         if saved.isEmpty { return "Let go, for now. It can come back, and that's okay." }
         return "Saved for Sunday. You don't have to carry it until then."
     }

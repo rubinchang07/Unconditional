@@ -1,25 +1,119 @@
 import SwiftUI
 
-/// The stream in "i'm spiraling": the words you picked
-/// flow down the screen as a stream, each one pulling the next along a little
-/// faster. Drag a line across it and stones drop in, one by one, into a small dam.
-/// Below it the water slows and clears. Above it the words gather in a still pool
-/// instead of rushing on.
+// MARK: - Order the words into a stream
+
+/// Before the stream: put the words you picked in the order they come, one
+/// leading to the next (by intensity, or however feels right). Drag to reorder.
+/// A faint line of water runs through them, so it already looks like a stream.
+struct StreamOrderView: View {
+    @Binding var words: [String]
+    let onNext: () -> Void
+    @State private var dragging: String?
+    @State private var dragY: CGFloat = 0
+    /// How much of the drag has already been spent moving the word past others.
+    @State private var consumed: CGFloat = 0
+
+    private let rowHeight: CGFloat = 64
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("how does it flow?")
+                .font(.system(.title2, design: .serif).weight(.semibold))
+                .padding(.top, 12)
+            Spacer(minLength: 0)
+            ZStack(alignment: .top) {
+                // The stream so far: a soft line through every word.
+                Capsule()
+                    .fill(StreamDrawing.water.opacity(0.45))
+                    .frame(width: 10, height: max(rowHeight * CGFloat(words.count - 1), 0))
+                    .padding(.top, rowHeight / 2)
+                ForEach(Array(words.enumerated()), id: \.element) { index, word in
+                    let isDragging = dragging == word
+                    HStack(spacing: 8) {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                        Text(word)
+                            .font(.system(.callout, design: .serif))
+                            .foregroundStyle(.primary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.background, in: Capsule())
+                    .overlay(Capsule().stroke(StreamDrawing.water.opacity(0.6), lineWidth: 1))
+                    .shadow(color: .black.opacity(isDragging ? 0.18 : 0.06), radius: isDragging ? 10 : 4, y: 2)
+                    .scaleEffect(isDragging ? 1.06 : 1)
+                    .frame(height: rowHeight)
+                    .offset(y: rowHeight * CGFloat(index) + (isDragging ? dragY : 0))
+                    .zIndex(isDragging ? 1 : 0)
+                    .gesture(reorder(word))
+                    .accessibilityLabel("\(index + 1): \(word)")
+                    .accessibilityAction(named: "Move up") { move(word, by: -1) }
+                    .accessibilityAction(named: "Move down") { move(word, by: 1) }
+                }
+            }
+            .frame(height: rowHeight * CGFloat(words.count), alignment: .top)
+            .animation(.spring(duration: 0.35, bounce: 0.25), value: words)
+            .sensoryFeedback(.selection, trigger: words)
+            Spacer(minLength: 0)
+            Button("Next", action: onNext)
+                .buttonStyle(.paper)
+                .padding(.bottom, 8)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    /// Drag a word up or down; the others make room as it passes them.
+    private func reorder(_ word: String) -> some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { value in
+                guard let current = words.firstIndex(of: word) else { return }
+                dragging = word
+                dragY = value.translation.height - consumed
+                let target = min(max(current + Int((dragY / rowHeight).rounded()), 0), words.count - 1)
+                if target != current {
+                    words.move(fromOffsets: IndexSet(integer: current), toOffset: target > current ? target + 1 : target)
+                    consumed += rowHeight * CGFloat(target - current)
+                    dragY = value.translation.height - consumed
+                }
+            }
+            .onEnded { _ in
+                withAnimation(.spring(duration: 0.35, bounce: 0.3)) { dragY = 0 }
+                consumed = 0
+                dragging = nil
+            }
+    }
+
+    private func move(_ word: String, by step: Int) {
+        guard let i = words.firstIndex(of: word) else { return }
+        let target = min(max(i + step, 0), words.count - 1)
+        guard target != i else { return }
+        words.move(fromOffsets: IndexSet(integer: i), toOffset: target > i ? target + 1 : target)
+    }
+}
+
+// MARK: - The stream and the dam
+
+/// Your words sit still along a stream, in the order you gave them, while the water
+/// runs past them. Drag a line across, between two words, and stones drop in one by
+/// one into a small dam. Above it the water stops and becomes a still pool around
+/// the words before the dam. Below it the water drains away, and the words there
+/// stay where they were, faded on the dry bed: the part of the spiral you cut off.
 ///
 /// Nothing is deleted or pushed away (pushing thoughts away tends to bring them
-/// back stronger). The words are still in your journal. It's a pause, not a fight.
+/// back stronger). It's a pause, not a fight.
 struct StreamDamView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let words: [String]
-    /// Move on by itself a moment after the dam is built, instead of showing Done.
-    var autoContinue = false
-    let onDone: () -> Void
+    /// Move on by itself a moment after the dam is built.
+    var autoContinue = true
+    /// The words above the dam, the ones still with you.
+    let onDone: ([String]) -> Void
 
     @State private var start = Date.now
-    /// When the dam went in, and where (as a share of the height).
     @State private var damAt: Date?
-    @State private var damY: CGFloat = 0.55
-    /// The line you're drawing across the stream.
+    /// The dam sits just above this word; it and everything after it are cut off.
+    @State private var cutIndex = 0
     @State private var drawn: [CGPoint] = []
     @State private var stones = 0
     @State private var showCue = false
@@ -29,36 +123,35 @@ struct StreamDamView: View {
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
+            let spots = StreamDrawing.wordSpots(count: words.count, size: size)
+            let damY = StreamDrawing.damY(cut: cutIndex, spots: spots, size: size)
             TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion && damAt == nil)) { timeline in
-                let now = timeline.date
-                let t = now.timeIntervalSince(start)
-                let settle = damAt.map { min(now.timeIntervalSince($0) / 2.2, 1) } ?? 0
+                let t = reduceMotion ? 0 : timeline.date.timeIntervalSince(start)
+                let settle = damAt.map { StreamDrawing.ease(min(timeline.date.timeIntervalSince($0) / 2.2, 1)) } ?? 0
                 ZStack {
                     Canvas { ctx, canvasSize in
-                        StreamDrawing.draw(in: &ctx, size: canvasSize, t: reduceMotion ? 0 : t,
-                                           damY: damAt == nil ? nil : damY * canvasSize.height,
-                                           settle: StreamDrawing.ease(settle))
+                        StreamDrawing.draw(in: &ctx, size: canvasSize, t: t,
+                                           damY: damAt == nil ? nil : damY, settle: settle)
                     }
                     ForEach(Array(words.enumerated()), id: \.offset) { i, word in
-                        let p = StreamDrawing.wordPosition(index: i, count: words.count, size: size, t: t,
-                                                           damAt: damAt.map { $0.timeIntervalSince(start) },
-                                                           damY: damY * size.height, now: t)
+                        let cut = damAt != nil && i >= cutIndex
+                        let bob = CGFloat(sin(t * 0.9 + Double(i) * 1.7)) * (cut ? 3 * (1 - settle) : 3)
                         Text(word)
                             .font(.system(.subheadline, design: .serif))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(cut ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                             .lineLimit(1)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(.background.opacity(0.92), in: Capsule())
-                            .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
-                            .rotationEffect(.degrees(p.tilt))
-                            .opacity(p.opacity)
-                            .position(p.point)
+                            .background(.background.opacity(cut ? 0.55 : 0.92), in: Capsule())
+                            .shadow(color: .black.opacity(cut ? 0 : 0.12), radius: 4, y: 2)
+                            .saturation(cut ? 0 : 1)
+                            .opacity(cut ? 1 - 0.45 * settle : 1)
+                            .rotationEffect(.degrees(sin(t * 0.6 + Double(i)) * 2))
+                            .position(x: spots[i].x, y: spots[i].y + bob)
                     }
-                    // The stones, dropping in one at a time.
                     if damAt != nil {
                         ForEach(0..<Self.stoneCount, id: \.self) { i in
-                            let spot = StreamDrawing.stoneSpot(i, of: Self.stoneCount, damY: damY * size.height, size: size)
+                            let spot = StreamDrawing.stoneSpot(i, of: Self.stoneCount, damY: damY, size: size)
                             Stone(seed: i)
                                 .frame(width: spot.size.width, height: spot.size.height)
                                 .position(spot.center)
@@ -67,46 +160,30 @@ struct StreamDamView: View {
                                 .animation(.spring(duration: 0.55, bounce: 0.35), value: stones)
                         }
                     }
-                    // The line as you draw it, like a finger through wet sand.
                     if drawn.count > 1 {
                         Path { $0.addLines(drawn) }
                             .stroke(.primary.opacity(0.35), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round, dash: [2, 6]))
                     }
                     if showCue && damAt == nil && drawn.isEmpty {
-                        SwipeAcrossCue(y: size.height * 0.55, width: size.width)
+                        SwipeAcrossCue(y: StreamDrawing.damY(cut: max(words.count / 2, 1), spots: spots, size: size),
+                                       width: size.width)
                             .transition(.opacity)
                     }
                 }
             }
             .contentShape(Rectangle())
-            .gesture(drawGesture(size: size), including: damAt == nil ? .all : .subviews)
+            .gesture(drawGesture(size: size, spots: spots), including: damAt == nil ? .all : .subviews)
+            .accessibilityElement(children: .contain)
+            .accessibilityAction(named: "Dam the stream here") { placeDam(cut: max(words.count / 2, 1)) }
         }
-        .ignoresSafeArea(edges: .bottom)
-        .overlay(alignment: .bottom) {
-            if stones >= Self.stoneCount && !autoContinue {
-                VStack(spacing: 14) {
-                    Text("The stream can wait here.")
-                        .font(.system(.title3, design: .serif))
-                    Button("Done", action: onDone)
-                        .buttonStyle(.paper)
-                        .frame(maxWidth: 220)
-                }
-                .padding(.bottom, 24)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
-        }
-        .animation(.calm, value: stones >= Self.stoneCount)
-        .background(ThemeBackground())
         .sensoryFeedback(.impact(weight: .medium, intensity: 0.6), trigger: stones)
         .task {
             try? await Task.sleep(for: .seconds(2.5))
             withAnimation(.calm) { showCue = true }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityAction(named: "Stop the stream") { placeDam(at: 0.55) }
     }
 
-    private func drawGesture(size: CGSize) -> some Gesture {
+    private func drawGesture(size: CGSize, spots: [CGPoint]) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { drawn.append($0.location) }
             .onEnded { _ in
@@ -114,13 +191,13 @@ struct StreamDamView: View {
                 drawn = []
                 guard StreamDrawing.crossesStream(points, size: size) else { return }
                 let y = points.map(\.y).reduce(0, +) / CGFloat(points.count)
-                placeDam(at: min(max(y / size.height, 0.3), 0.8))
+                placeDam(cut: StreamDrawing.cutIndex(atY: y, spots: spots))
             }
     }
 
-    private func placeDam(at share: CGFloat) {
+    private func placeDam(cut: Int) {
         guard damAt == nil else { return }
-        damY = share
+        cutIndex = cut
         damAt = .now
         showCue = false
         Task {
@@ -129,9 +206,9 @@ struct StreamDamView: View {
                 try? await Task.sleep(for: .milliseconds(reduceMotion ? 40 : 160))
             }
             if autoContinue {
-                // Long enough to watch the water slow and the words gather.
-                try? await Task.sleep(for: .seconds(2.6))
-                onDone()
+                // Long enough to watch the pool still and the cut-off words fade on the dry bed.
+                try? await Task.sleep(for: .seconds(2.8))
+                onDone(Array(words.prefix(cutIndex)))
             }
         }
     }
@@ -175,6 +252,10 @@ private struct SwipeAcrossCue: View {
 
 /// The geometry and drawing of the stream, kept apart so it can be tested.
 enum StreamDrawing {
+    static let water = Color(light: 0x8FBFCB, dark: 0x3F6F7C)
+    /// The dry bed below the dam.
+    static let dry = Color(light: 0xE8DFD0, dark: 0x2E2A25)
+
     static func ease(_ x: Double) -> Double { let x = min(max(x, 0), 1); return x * x * (3 - 2 * x) }
 
     /// The middle of the stream at a height: a slow, gentle meander.
@@ -183,6 +264,33 @@ enum StreamDrawing {
     }
 
     static func width(size: CGSize) -> CGFloat { min(size.width * 0.42, 190) }
+
+    /// Where each word sits, first at the top, evenly down the stream, a little
+    /// to one side and then the other.
+    static func wordSpots(count: Int, size: CGSize) -> [CGPoint] {
+        guard count > 0 else { return [] }
+        let top = size.height * 0.14, bottom = size.height * 0.86
+        let gap = count == 1 ? 0 : (bottom - top) / CGFloat(count - 1)
+        return (0..<count).map { i in
+            let y = count == 1 ? size.height / 2 : top + gap * CGFloat(i)
+            let side: CGFloat = i.isMultiple(of: 2) ? -1 : 1
+            return CGPoint(x: centerX(y: y, size: size) + side * width(size: size) * 0.16, y: y)
+        }
+    }
+
+    /// Which word the dam goes just above, for a line drawn at `y`:
+    /// 0 cuts off everything, `count` cuts off nothing.
+    static func cutIndex(atY y: CGFloat, spots: [CGPoint]) -> Int {
+        spots.firstIndex { $0.y > y } ?? spots.count
+    }
+
+    /// The dam's height: halfway between the last word kept and the first one cut off.
+    static func damY(cut: Int, spots: [CGPoint], size: CGSize) -> CGFloat {
+        guard !spots.isEmpty else { return size.height / 2 }
+        let above = cut > 0 ? spots[cut - 1].y : size.height * 0.04
+        let below = cut < spots.count ? spots[cut].y : size.height * 0.96
+        return (above + below) / 2
+    }
 
     /// True when a drawn line runs across most of the stream.
     static func crossesStream(_ points: [CGPoint], size: CGSize) -> Bool {
@@ -196,52 +304,6 @@ enum StreamDrawing {
         return covers && (maxY - minY) < (maxX - minX) * 0.8
     }
 
-    /// How far a word has travelled: it starts gently and speeds up, the way one
-    /// thought pulls the next, up to a limit.
-    static func travelled(_ t: Double) -> Double {
-        let ramp = 14.0
-        let v0 = 38.0, a = 4.0
-        let tr = min(t, ramp)
-        return v0 * t + 0.5 * a * tr * tr + a * ramp * max(t - ramp, 0)
-    }
-
-    struct WordSpot { var point: CGPoint; var opacity: Double; var tilt: Double }
-
-    /// Where a word is. Before the dam it flows down, looping from the top.
-    /// After, words above the dam drift into a still pool just above it; words
-    /// already past it carry on downstream and fade.
-    static func wordPosition(index i: Int, count: Int, size: CGSize, t: Double,
-                             damAt: Double?, damY: CGFloat, now: Double) -> WordSpot {
-        let loop = Double(size.height) + 80
-        let spacing = loop / Double(max(count, 1))
-        func flowingY(_ time: Double) -> CGFloat {
-            CGFloat((travelled(time) + Double(i) * spacing).truncatingRemainder(dividingBy: loop)) - 40
-        }
-        func flowing(_ time: Double) -> CGPoint {
-            let y = flowingY(time)
-            let sway = sin(time * 0.8 + Double(i) * 1.7) * Double(width(size: size)) * 0.22
-            return CGPoint(x: centerX(y: y, size: size) + CGFloat(sway), y: y)
-        }
-        guard let damAt else {
-            return WordSpot(point: flowing(t), opacity: 1, tilt: sin(t + Double(i)) * 4)
-        }
-        let at = flowing(damAt)
-        if at.y > damY {
-            // Already past the dam: carried on down and away.
-            let y = at.y + CGFloat(travelled(t) - travelled(damAt)) * 0.5
-            let fade = max(0, 1 - Double(y - at.y) / 220)
-            return WordSpot(point: CGPoint(x: centerX(y: y, size: size), y: y), opacity: fade, tilt: 0)
-        }
-        // Gathering in the pool: a slot above the dam, then a slow bob.
-        let row = i % 3, ring = i / 3
-        let pool = CGPoint(x: size.width / 2 + CGFloat(row - 1) * min(size.width * 0.28, 120),
-                           y: damY - 60 - CGFloat(ring) * 46)
-        let k = ease(min((t - damAt) / 2.2, 1))
-        let bob = CGFloat(sin(t * 0.9 + Double(i))) * 3
-        let p = CGPoint(x: at.x + (pool.x - at.x) * k, y: at.y + (pool.y - at.y) * k + bob * k)
-        return WordSpot(point: p, opacity: 1, tilt: sin(t * 0.5 + Double(i)) * 2 * k)
-    }
-
     /// Where each stone sits: a slightly bowed line across the stream.
     static func stoneSpot(_ i: Int, of n: Int, damY: CGFloat, size: CGSize) -> (center: CGPoint, size: CGSize) {
         let span = width(size: size) * 1.25
@@ -252,65 +314,53 @@ enum StreamDrawing {
         return (CGPoint(x: x, y: damY + CGFloat(bow) + (i.isMultiple(of: 2) ? 0 : -6)), CGSize(width: w, height: h))
     }
 
-    static let water = Color(light: 0x8FBFCB, dark: 0x3F6F7C)
-    static let calm = Color(light: 0xCFE6EB, dark: 0x2B4A52)
-
-    /// The river: a band of water with streaks flowing down. Once dammed, it widens
-    /// into a still pool above the stones and runs slow and clear below them.
+    /// The stream: a band of water with streaks of current running down past the
+    /// words. Once dammed, the water above goes still and widens a little into a
+    /// pool; below, it drains to a dry bed.
     static func draw(in ctx: inout GraphicsContext, size: CGSize, t: Double, damY: CGFloat?, settle: Double) {
         let half = width(size: size) / 2
         func halfWidth(at y: CGFloat) -> CGFloat {
             guard let damY else { return half }
-            // The pool: wider just above the dam, easing back to the stream higher up.
             let d = damY - y
-            let pool = d > 0 && d < 260 ? sin(Double(d) / 260 * .pi) * Double(size.width) * 0.2 : 0
+            let pool = d > 0 && d < 220 ? sin(Double(d) / 220 * .pi) * Double(size.width) * 0.12 : 0
             return half + CGFloat(pool * settle)
         }
-        var band = Path()
-        let step: CGFloat = 8
         var left: [CGPoint] = [], right: [CGPoint] = []
-        for y in stride(from: CGFloat(-10), through: size.height + 10, by: step) {
+        for y in stride(from: CGFloat(-10), through: size.height + 10, by: 8) {
             let c = centerX(y: y, size: size)
             let w = halfWidth(at: y) + CGFloat(sin(Double(y) / 40 + t * 0.7)) * 3
             left.append(CGPoint(x: c - w, y: y))
             right.append(CGPoint(x: c + w, y: y))
         }
+        var band = Path()
         band.addLines(left)
         band.addLines(right.reversed())
         band.closeSubpath()
         ctx.fill(band, with: .linearGradient(Gradient(colors: [water.opacity(0.55), water.opacity(0.75)]),
                                              startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
 
-        // Below the dam the water clears and calms.
         if let damY {
             ctx.drawLayer { layer in
                 layer.clip(to: band)
+                // Below: the water drains away to a dry, pale bed.
                 layer.fill(Path(CGRect(x: 0, y: damY, width: size.width, height: size.height - damY)),
-                           with: .color(calm.opacity(0.85 * settle)))
-                // The still pool above takes a soft, glassy sheen.
-                layer.fill(Path(CGRect(x: 0, y: damY - 260, width: size.width, height: 260)),
-                           with: .linearGradient(Gradient(colors: [.white.opacity(0), .white.opacity(0.18 * settle)]),
-                                                 startPoint: CGPoint(x: 0, y: damY - 260), endPoint: CGPoint(x: 0, y: damY)))
+                           with: .color(dry.opacity(0.95 * settle)))
+                // Above: a still, glassy pool.
+                layer.fill(Path(CGRect(x: 0, y: damY - 220, width: size.width, height: 220)),
+                           with: .linearGradient(Gradient(colors: [.white.opacity(0), .white.opacity(0.2 * settle)]),
+                                                 startPoint: CGPoint(x: 0, y: damY - 220), endPoint: CGPoint(x: 0, y: damY)))
             }
         }
 
-        // Streaks of current. Fast before the dam; still in the pool; slow below.
+        // Streaks of current, running past the words. They stop once the dam is in.
+        let loop = Double(size.height) + 60
         for i in 0..<26 {
             let lane = (Double(i) * 0.618).truncatingRemainder(dividingBy: 1) * 2 - 1
-            var speed = 90.0 + Double(i % 5) * 18
-            let loop = Double(size.height) + 60
-            var y = CGFloat((t * speed + Double(i) * 97).truncatingRemainder(dividingBy: loop)) - 30
+            let speed = 70.0 + Double(i % 5) * 16
+            let y = CGFloat((t * speed + Double(i) * 97).truncatingRemainder(dividingBy: loop)) - 30
             var alpha = 0.5
-            if let damY {
-                if y < damY {
-                    alpha *= 1 - settle            // the pool goes still
-                } else {
-                    speed *= 1 - 0.75 * settle     // slower downstream
-                    y = CGFloat((t * speed + Double(i) * 97).truncatingRemainder(dividingBy: loop)) - 30
-                    if y < damY { continue }
-                    alpha *= 1 - 0.5 * settle
-                }
-            }
+            if let damY { alpha *= y < damY ? 1 - settle : 0 }
+            guard alpha > 0.01 else { continue }
             let x = centerX(y: y, size: size) + CGFloat(lane) * half * 0.75
             var streak = Path()
             streak.move(to: CGPoint(x: x, y: y))
@@ -322,8 +372,8 @@ enum StreamDrawing {
         if let damY, settle > 0 {
             for i in 0..<3 {
                 let phase = (t * 0.25 + Double(i) / 3).truncatingRemainder(dividingBy: 1)
-                let r = 10 + 60 * phase
-                let c = CGPoint(x: centerX(y: damY - 120, size: size) + CGFloat(i - 1) * 40, y: damY - 120 + CGFloat(i) * 30)
+                let r = 10 + 50 * phase
+                let c = CGPoint(x: centerX(y: damY - 90, size: size) + CGFloat(i - 1) * 36, y: damY - 110 + CGFloat(i) * 26)
                 ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r * 0.4, width: r * 2, height: r * 0.8)),
                            with: .color(.white.opacity(0.35 * (1 - phase) * settle)), lineWidth: 1)
             }
