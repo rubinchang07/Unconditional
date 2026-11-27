@@ -129,6 +129,9 @@ struct PathView: View {
     /// The hard day just marked, so we can ask what it taught you once the water's gone.
     @State private var askingLearned: Footstep?
     @State private var learnedText = ""
+    @FocusState private var learnedFocused: Bool
+    /// Where the water is drawn on screen, so each print knows when it's under it.
+    @State private var waterFrame: CGRect = .zero
 
     /// Vertical room for each print.
     private let rowHeight: CGFloat = 86
@@ -167,18 +170,28 @@ struct PathView: View {
             .background {
                 SandBackground(reduceMotion: reduceMotion, surgeAt: surgeAt, surgeReach: surgeReach)
                     .ignoresSafeArea()
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { waterFrame = $0 }
             }
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 6) {
-                    Button("Take a step") { takingStep = true }
-                        .buttonStyle(.paper)
-                    Button("a hard day", systemImage: "water.waves") { markingTide = true }
-                        .font(.subheadline)
-                        .foregroundStyle(Sand.ink.opacity(0.8))
-                        .frame(minHeight: 44)
+                Group {
+                    if let tide = askingLearned {
+                        learnedCard(tide)
+                    } else {
+                        VStack(spacing: 6) {
+                            Button("Take a step") { takingStep = true }
+                                .buttonStyle(.paper)
+                            Button("a hard day", systemImage: "water.waves") { markingTide = true }
+                                .font(.subheadline)
+                                .foregroundStyle(Sand.ink.opacity(0.8))
+                                .frame(minHeight: 44)
+                        }
+                        .disabled(surgeAt != nil)
+                        .opacity(surgeAt != nil ? 0.4 : 1)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 4)
+                .animation(.calm, value: askingLearned == nil)
             }
             .navigationTitle(path.title.lowercased())
             .navigationBarTitleDisplayMode(.inline)
@@ -192,10 +205,6 @@ struct PathView: View {
             .sheet(isPresented: $markingTide) {
                 tideSheet
                     .presentationDetents([.medium, .large])
-            }
-            .sheet(item: $askingLearned) { tide in
-                learnedSheet(tide)
-                    .presentationDetents([.medium])
             }
         }
     }
@@ -230,17 +239,8 @@ struct PathView: View {
         let age = Date.now.timeIntervalSince(step.createdAt) / 86_400
         let fresh = freshID == step.persistentModelID
         return ZStack {
-            Footprint(isLeft: isLeft)
-                .frame(width: 26, height: 56)
-                .foregroundStyle(Sand.print)
-                .overlay {
-                    // A lighter rim, like the sand pushed up around the print.
-                    Footprint(isLeft: isLeft)
-                        .stroke(Sand.rim, lineWidth: 1.2)
-                        .offset(x: -0.8, y: -1)
-                }
-                .rotationEffect(.degrees(tilt))
-                .opacity(Footstep.softness(age: age))
+            WashablePrint(isLeft: isLeft, tilt: tilt, softness: Footstep.softness(age: age), seed: Double(index),
+                          surgeAt: surgeAt, reach: surgeReach, water: waterFrame)
                 .overlay {
                     if fresh && !reduceMotion {
                         SandBurst(isLeft: isLeft)
@@ -310,23 +310,15 @@ struct PathView: View {
         }
     }
 
+    /// Just how hard, and a few words if you want. The water shows the rest.
     private var tideSheet: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("A hard day")
+            VStack(alignment: .leading, spacing: 22) {
+                Text("how hard was it?")
                     .font(.system(.title3, design: .serif).weight(.semibold))
-                Text("Hard days are part of any walk. The tide comes in, and it goes back out. None of your prints wash away.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                TextField("What happened (optional)", text: $tideText, axis: .vertical)
-                    .lineLimit(2...4)
-                    .padding(12)
-                    .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("How hard did it feel?")
-                        .font(.subheadline)
+                VStack(spacing: 4) {
                     Slider(value: $tideHeaviness, in: 0...1)
-                        .accessibilityLabel("How hard did it feel")
+                        .accessibilityLabel("How hard was it")
                     HStack {
                         Text("a little")
                         Spacer()
@@ -335,6 +327,10 @@ struct PathView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
+                TextField("a few words (optional)", text: $tideText, axis: .vertical)
+                    .lineLimit(1...3)
+                    .padding(12)
+                    .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
                 Spacer()
                 Button("Let the tide come in", action: markTide)
                     .buttonStyle(.paper)
@@ -348,39 +344,32 @@ struct PathView: View {
         }
     }
 
-    /// Once the water's gone: anything it taught you? It can become a step of its own.
-    private func learnedSheet(_ tide: Footstep) -> some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("The tide went out")
-                    .font(.system(.title3, design: .serif).weight(.semibold))
-                Text("Your prints are all still here. Anything you learned, even a little? Only if something comes.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                TextField("Something I learned", text: $learnedText, axis: .vertical)
-                    .lineLimit(2...4)
-                    .padding(12)
-                    .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
-                Spacer()
-                let learned = learnedText.trimmingCharacters(in: .whitespacesAndNewlines)
-                Button("Make it a step too") {
-                    tide.learned = learned
-                    askingLearned = nil
-                    learnedText = ""
-                    stepText = learned
-                    leavePrint()
-                }
-                .buttonStyle(.paper)
-                .disabled(learned.isEmpty)
-                Button(learned.isEmpty ? "Not now" : "Keep it with the hard day") {
-                    tide.learned = learned
-                    askingLearned = nil
-                    learnedText = ""
-                }
-                .frame(maxWidth: .infinity, minHeight: 44)
+    /// After the water goes back out: one small card in place of the buttons,
+    /// one question, one field. Leaving it empty is fine.
+    private func learnedCard(_ tide: Footstep) -> some View {
+        HStack(spacing: 10) {
+            TextField("anything you learned?", text: $learnedText, axis: .vertical)
+                .lineLimit(1...3)
+                .focused($learnedFocused)
+                .submitLabel(.done)
+                .onSubmit { closeLearned(tide) }
+            Button(learnedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "not now" : "keep") {
+                closeLearned(tide)
             }
-            .padding(20)
+            .font(.subheadline.weight(.semibold))
+            .frame(minHeight: 44)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(.background.opacity(0.85), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func closeLearned(_ tide: Footstep) {
+        tide.learned = learnedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        learnedText = ""
+        learnedFocused = false
+        withAnimation(.calm) { askingLearned = nil }
     }
 
     private func markTide() {
@@ -402,10 +391,11 @@ struct PathView: View {
             if !reduceMotion {
                 surgeReach = Footstep.tideReach(heaviness: heaviness)
                 surgeAt = .now
-                try? await Task.sleep(for: .seconds(SandBackground.surgeDuration))
+                // A little longer than the water, so the prints can dry off.
+                try? await Task.sleep(for: .seconds(SandBackground.surgeDuration + 1.5))
                 surgeAt = nil
             }
-            askingLearned = tide
+            withAnimation(.calm) { askingLearned = tide }
         }
     }
 
@@ -468,6 +458,88 @@ enum Sand {
     static let rim = Color(light: 0xFBF5EC, dark: 0x4A4136)
     static let ink = Color(light: 0x5B4A36, dark: 0xE4D6C2)
     static let water = Color(light: 0x8FBFCB, dark: 0x4D7A86)
+    /// Sand with water in it.
+    static let wet = Color(light: 0xA8906D, dark: 0x1E1A15)
+}
+
+/// One footprint, which comes alive a little when the tide runs over it:
+/// it darkens like wet sand, rocks gently in the water, catches a shimmer of
+/// light, and lets a few tiny bubbles go. As the water leaves it dries off and
+/// settles back, exactly where it was. It never fades or washes away.
+struct WashablePrint: View {
+    let isLeft: Bool
+    let tilt: Double
+    let softness: Double
+    let seed: Double
+    let surgeAt: Date?
+    let reach: Double
+    /// The water's frame on screen.
+    let water: CGRect
+    @State private var midY: CGFloat = 0
+
+    var body: some View {
+        TimelineView(.animation(paused: surgeAt == nil)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let wet = wetness(at: timeline.date)
+            Footprint(isLeft: isLeft)
+                .frame(width: 26, height: 56)
+                .foregroundStyle(Sand.print)
+                .overlay {
+                    // Wet sand is darker.
+                    Footprint(isLeft: isLeft).fill(Sand.wet.opacity(0.6 * wet))
+                }
+                .overlay {
+                    // A lighter rim, like the sand pushed up around the print,
+                    // catching the light while it's under water.
+                    Footprint(isLeft: isLeft)
+                        .stroke(Sand.rim.opacity(1 - 0.4 * wet), lineWidth: 1.2)
+                        .offset(x: -0.8, y: -1)
+                    Footprint(isLeft: isLeft)
+                        .stroke(.white.opacity(0.55 * wet * (0.5 + 0.5 * sin(t * 3 + seed))), lineWidth: 1.6)
+                }
+                .overlay {
+                    if wet > 0.05 { bubbles(t: t, wet: wet) }
+                }
+                .rotationEffect(.degrees(tilt + 4 * wet * sin(t * 1.5 + seed)))
+                .offset(x: 3 * wet * sin(t * 1.8 + seed), y: 1.5 * wet * cos(t * 1.3 + seed))
+                .opacity(softness)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).midY } action: { midY = $0 }
+    }
+
+    /// A few tiny bubbles drifting up from the print, then gone.
+    private func bubbles(t: Double, wet: Double) -> some View {
+        Canvas { ctx, size in
+            for i in 0..<3 {
+                let phase = (t * 14 + Double(i) * 12 + seed * 7).truncatingRemainder(dividingBy: 36)
+                let x = size.width / 2 + CGFloat(sin(t * 2 + Double(i) * 2 + seed)) * 7
+                let y = size.height / 2 - CGFloat(phase)
+                let r: CGFloat = 1.4 + CGFloat(i) * 0.5
+                ctx.stroke(Path(ellipseIn: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)),
+                           with: .color(.white.opacity(0.7 * wet * (1 - phase / 36))), lineWidth: 0.8)
+            }
+        }
+        .frame(width: 40, height: 80)
+        .allowsHitTesting(false)
+    }
+
+    /// How wet the print is right now: under the water, or only just uncovered.
+    private func wetness(at date: Date) -> Double {
+        guard let surgeAt, water.height > 0 else { return 0 }
+        let elapsed = date.timeIntervalSince(surgeAt)
+        func waterY(_ e: Double) -> CGFloat {
+            water.maxY - water.height * CGFloat(0.05 + SandBackground.surge(elapsed: e) * reach)
+        }
+        let now = Self.wetness(printY: midY, waterY: waterY(elapsed))
+        // Sand stays dark for a moment after the water leaves it.
+        let moment = Self.wetness(printY: midY, waterY: waterY(elapsed - 1.2))
+        return max(now, 0.7 * moment)
+    }
+
+    /// 0 above the waterline, easing to 1 about 60 points under it.
+    static func wetness(printY: CGFloat, waterY: CGFloat) -> Double {
+        Double(min(max((printY - waterY) / 60, 0), 1))
+    }
 }
 
 /// A soft wave line, for where the tide reached.

@@ -48,6 +48,15 @@ struct FeelingWordsTests {
         #expect(FeelingWords.averageLean([]) == 0)
     }
 
+    @Test("Kept words can be read back from the entry")
+    func parse() {
+        let words = [KeptWord(word: "tired", lean: -0.9), KeptWord(word: "cared for", lean: 0.6), KeptWord(word: "meh", lean: 0)]
+        let back = FeelingWords.parse(FeelingWords.compose(words))
+        #expect(back.map(\.word) == ["tired", "cared for", "meh"])
+        #expect(back.map(\.lean) == [-0.9, 0.6, 0])
+        #expect(FeelingWords.parse("Just some writing").isEmpty)
+    }
+
     @Test("Only the first typed word is used, tidied")
     func firstWord() {
         #expect(FeelingWords.firstWord(of: "  Tired, really tired ") == "tired")
@@ -91,6 +100,13 @@ struct TideTests {
         #expect(SandBackground.surge(elapsed: 4) > 0)
         #expect(SandBackground.surge(elapsed: 4) < 1)
         #expect(SandBackground.surge(elapsed: SandBackground.surgeDuration) == 0)
+    }
+
+    @Test("A print is dry above the water and wet below it")
+    func wetness() {
+        #expect(WashablePrint.wetness(printY: 100, waterY: 300) == 0)
+        #expect(WashablePrint.wetness(printY: 330, waterY: 300) == 0.5)
+        #expect(WashablePrint.wetness(printY: 900, waterY: 300) == 1)
     }
 }
 

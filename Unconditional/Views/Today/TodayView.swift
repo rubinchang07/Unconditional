@@ -5,12 +5,15 @@ import PencilKit
 /// The daily flow, one calm step per screen:
 /// 0. home: the orb, a greeting, and one main action ("Check in")
 /// 1. choose how to start (Write, Speak, Draw, Words)
-/// 2. get it out, optionally say how heavy or light it sits and which loop it's in, and save
+/// 2. get it out: only the page, the voice, the canvas, or one word, nothing else
+/// 3. how does this sit? one slider (Words skips it, since sliding the words already said)
+/// 4. which loop, if any, and save
+/// One thing per screen, on purpose: a check-in should never feel like a form.
 /// Saving then offers the optional Reframe step, or for a light moment, a place in Anchors.
 struct TodayView: View {
     @Environment(\.modelContext) private var context
 
-    private enum Step: Int, CaseIterable { case home, choose, capture }
+    private enum Step: Int, CaseIterable { case home, choose, capture, sit, loop }
     @State private var step: Step = .home
     @AppStorage(OrbPalette.storageKey) private var orbPalette: OrbPalette = .emberSage
 
@@ -23,8 +26,6 @@ struct TodayView: View {
     /// "How does this sit?", 0 heavy to 1 light. Only saved once something set it.
     @State private var lightness = 0.5
     @State private var lightnessSet = false
-    /// You moved the slider yourself, so Words stops nudging it.
-    @State private var lightnessTouched = false
     /// When set, the "kept" sheet for a good moment opens.
     @State private var savedGood: Entry?
 
@@ -46,13 +47,8 @@ struct TodayView: View {
     /// The color to go back to after the eraser.
     @State private var lastInk: InkChoice = .ink
     @State private var showInkPicker = false
-    /// The drawing page doesn't scroll under your finger. It only moves with the
-    /// small handle on the canvas's edge, so we move it ourselves rather than
-    /// using a scroll view (which kept competing with the pen).
-    @State private var drawOffset: CGFloat = 0
-    @State private var drawContentHeight: CGFloat = 0
-    @State private var drawVisibleHeight: CGFloat = 600
-    @State private var handleStart: CGFloat?
+    /// Starting points for writing, tucked behind one small icon.
+    @State private var showPrompts = false
     /// The opening: 0 nothing, 1 the orb swells in, 2 the greeting, 3 everything else.
     @State private var introStage = Intro.played ? 3 : 0
     @Environment(\.accessibilityReduceMotion) private var introReduceMotion
@@ -67,12 +63,27 @@ struct TodayView: View {
             : !drawing.strokes.isEmpty
     }
 
+    /// The check-in's screens for this kind of entry, after home.
+    private var flow: [Step] {
+        kind == .words ? [.choose, .capture, .loop] : [.choose, .capture, .sit, .loop]
+    }
+
+    private func back() {
+        guard let index = flow.firstIndex(of: step) else { return go(to: .home) }
+        go(to: index == 0 ? .home : flow[index - 1])
+    }
+
+    private func next() {
+        guard let index = flow.firstIndex(of: step), index + 1 < flow.count else { return }
+        go(to: flow[index + 1])
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
                 if step != .home {
                     // Dots for the check-in steps (home doesn't count).
-                    StepDots(count: Step.allCases.count - 1, current: step.rawValue - 1)
+                    StepDots(count: flow.count, current: flow.firstIndex(of: step) ?? 0)
                 }
 
                 // Each step slides in; `.id` tells SwiftUI it's a new view so the transition runs.
@@ -81,6 +92,8 @@ struct TodayView: View {
                     case .home: homeStep
                     case .choose: chooseStep
                     case .capture: captureStep
+                    case .sit: sitStep
+                    case .loop: loopStep
                     }
                 }
                 .id(step)
@@ -107,7 +120,7 @@ struct TodayView: View {
                 }
                 if step != .home {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Back", systemImage: "chevron.left") { go(to: Step(rawValue: step.rawValue - 1)!) }
+                        Button("Back", systemImage: "chevron.left") { back() }
                     }
                 }
             }
@@ -128,6 +141,17 @@ struct TodayView: View {
             .fullScreenCover(isPresented: $showReset) { ThoughtResetView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(item: $savedGood) { entry in GoodMomentSheet(entry: entry) }
+            .sheet(isPresented: $showPrompts) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("a starting point")
+                        .font(.system(.headline, design: .serif))
+                    SituationPrompts(text: $text)
+                }
+                .padding(20)
+                .presentationDetents([.height(160)])
+                .presentationDragIndicator(.visible)
+                .onChange(of: text) { _, _ in showPrompts = false }
+            }
             .alert("couldn't save just now", isPresented: $saveFailed) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -251,138 +275,168 @@ struct TodayView: View {
 
     // MARK: - Step 1: choose how to start
 
+    /// Four soft tiles, an icon and a word each. Nothing else to read.
     private var chooseStep: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                PaperHeading(title: "How do you want to start?",
-                             subtitle: "Hard or good, big or small. No right way to do this.")
-                    .padding(.bottom, 8)
-
+        VStack(spacing: 28) {
+            Spacer(minLength: 0)
+            Text("How do you want to start?")
+                .font(.system(.title2, design: .serif).weight(.semibold))
+                .softCase()
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
                 ForEach(EntryKind.allCases) { option in
                     Button {
+                        // Words keeps its own format, so switching to or from it starts fresh.
+                        if kind != option && (kind == .words || option == .words) { text = "" }
                         kind = option
                         go(to: .capture)
                     } label: {
-                        HStack(spacing: 16) {
+                        VStack(spacing: 12) {
                             Image(systemName: option.symbol)
-                                .font(.title3)
+                                .font(.title2)
                                 .foregroundStyle(.tint)
-                                .frame(width: 48, height: 48)
+                                .frame(width: 54, height: 54)
                                 .background(.tint.opacity(0.12), in: Circle())
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(option.label)
-                                    .font(.system(.title3, design: .serif).weight(.semibold))
-                                Text(option.invitation)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(.tertiary)
+                            Text(option.label)
+                                .font(.system(.body, design: .serif).weight(.semibold))
+                                .softCase()
                         }
-                        .paperCard(padding: 16)
+                        .frame(maxWidth: .infinity, minHeight: 130)
+                        .paperCard(padding: 12)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityHint(option.invitation)
                 }
             }
-            .padding(.bottom, 24)
+            Spacer(minLength: 0)
+            Spacer(minLength: 0)
         }
-        .scrollIndicators(.hidden)
     }
 
-    // MARK: - Step 2: capture
+    // MARK: - Step 2: capture. Only the place to get it out.
 
     private var captureStep: some View {
         Group {
-            if kind == .draw {
-                drawPage
-            } else {
-                // Everything scrolls, so the keyboard never hides your words.
-                ScrollView {
-                    captureContent
+            switch kind {
+            case .write:
+                WriteSurface(text: $text, onPrompts: { showPrompts = true })
+                    .padding(.bottom, 12)
+            case .speak:
+                speakSurface
+            case .draw:
+                drawSurface
+            case .words:
+                WordScramble(text: $text) { lean in
+                    // The words already said how it sits, so they set it.
+                    lightness = (lean + 1) / 2
+                    lightnessSet = true
                 }
-                .scrollIndicators(.hidden)
-                .scrollDismissesKeyboard(.interactively)
             }
         }
-        // Save sits in a bar of its own, above the tab bar, so it's always in reach.
-        .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
+        // "Next" only appears once there's something to keep, so the first thing
+        // you see is just the page. Drawing keeps it from the start, so the canvas
+        // doesn't jump under your pen.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if hasContent || kind == .draw {
+                bottomBar("Next", action: next)
+                    .disabled(!hasContent)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.calm, value: hasContent)
     }
 
-    private var saveBar: some View {
-        Button("Save entry", action: save)
+    private func bottomBar(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
             .buttonStyle(.paper)
-            .disabled(!hasContent)
             .padding(.top, 14)
             .padding(.bottom, 8)
             .background { FadingThemeBar() }
     }
 
-    // MARK: Drawing
+    /// The orb is the button: tap to talk, tap to stop. Your words appear under it.
+    private var speakSurface: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                Button {
+                    if recorder.isRecording {
+                        recorder.stop()
+                    } else {
+                        textBeforeRecording = text
+                        Task { await recorder.start() }
+                    }
+                } label: {
+                    OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting,
+                            level: recorder.level, exercise: true)
+                        .frame(width: 200, height: 200)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 40)
+                .accessibilityLabel(recorder.isRecording ? "Stop recording" : "Start recording")
 
-    /// The drawing page: no scroll view at all, so every touch on the canvas is a stroke.
-    /// The handle slides the whole page up to reach the loop chips below.
-    private var drawPage: some View {
-        GeometryReader { proxy in
-            captureContent
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { drawContentHeight = $0 }
-                .offset(y: -min(drawOffset, maxDrawOffset))
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                .onAppear { drawVisibleHeight = proxy.size.height }
-                .onChange(of: proxy.size.height) { _, height in drawVisibleHeight = height }
+                Text(recorder.isRecording ? "listening… tap to stop" : "tap the orb to talk")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .softCase()
+
+                if let message = recorder.errorMessage {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                if !text.isEmpty || recorder.isRecording {
+                    TextField("", text: $text, axis: .vertical)
+                        .font(.system(.title3, design: .serif))
+                        .lineSpacing(4)
+                        .multilineTextAlignment(.center)
+                        .disabled(recorder.isRecording)
+                        .padding(.horizontal, 8)
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 24)
         }
-        // Hide what slides above the top, but let the canvas shadow spill sideways.
-        .mask(Rectangle().padding(.horizontal, -20).padding(.bottom, -40))
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .animation(.calm, value: text.isEmpty)
     }
 
-    private var maxDrawOffset: CGFloat { max(0, drawContentHeight - drawVisibleHeight) }
+    /// The canvas takes the whole page; its tools float on it in one small capsule.
+    private var drawSurface: some View {
+        DrawingCanvas(drawing: $drawing, tool: tool, background: canvasBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
+            .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
+            .overlay(alignment: .topLeading) { drawingTools.padding(10) }
+            .frame(maxHeight: .infinity)
+            .padding(.bottom, 4)
+    }
 
-    /// Most of the screen, leaving room to glimpse what's below.
-    private var canvasHeight: CGFloat { max(300, drawVisibleHeight * 0.82) }
-    private let handleLength: CGFloat = 54
-    private let handleInset: CGFloat = 18
+    // MARK: - Step 3: how does this sit?
 
-    /// A short vertical bar on the canvas's right edge. Hold and move it to slide the
-    /// page; drawing anywhere else on the canvas never moves the page.
-    /// It lives on the canvas and never leaves it: top of the canvas means the top of
-    /// the page, bottom of the canvas means the bottom. The canvas itself slides up a
-    /// little as you go, and the math below keeps the bar under your finger anyway.
-    private var pageHandle: some View {
-        let track = max(1, canvasHeight - 2 * handleInset - handleLength)
-        let fraction = min(max(drawOffset / maxDrawOffset, 0), 1)
-        // On screen the bar sits at  -offset + fraction * track,  so for every point the
-        // finger moves, the page moves  1 / (track / max - 1)  points.
-        let pagePerPoint = 1 / max(track / max(maxDrawOffset, 1) - 1, 0.25)
-        let held = handleStart != nil
-        return Capsule()
-            .fill(.secondary.opacity(held ? 0.8 : 0.5))
-            .frame(width: held ? 8 : 6, height: handleLength)
-            .frame(width: 44, height: handleLength + 28) // a bigger, invisible target for your thumb
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                    .onChanged { drag in
-                        let start = handleStart ?? drawOffset
-                        if handleStart == nil { handleStart = start }
-                        let target = start + drag.translation.height * pagePerPoint
-                        drawOffset = min(max(target, 0), maxDrawOffset)
-                    }
-                    .onEnded { _ in
-                        handleStart = nil
-                    }
-            )
-            .padding(.top, handleInset - 14 + fraction * track)
-            .padding(.trailing, 2)
-            .animation(.calm, value: held)
-            .sensoryFeedback(.selection, trigger: held)
-            .accessibilityElement()
-            .accessibilityLabel("Scroll page")
-            .accessibilityHint("Swipe up or down to move the page without drawing.")
-            .accessibilityAdjustableAction { direction in
-                let step: CGFloat = direction == .increment ? 160 : -160
-                withAnimation(.calm) { drawOffset = min(max(drawOffset + step, 0), maxDrawOffset) }
+    private var sitStep: some View {
+        SitView(lightness: $lightness, isSet: lightnessSet) { lightnessSet = true }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomBar(lightnessSet ? "Next" : "Skip", action: next)
             }
     }
+
+    // MARK: - Step 4: which loop, then save
+
+    private var loopStep: some View {
+        ScrollView {
+            LoopChips(loop: $loop)
+                .padding(.top, 40)
+        }
+        .scrollIndicators(.hidden)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomBar("Save entry", action: save)
+        }
+    }
+
+    // MARK: Drawing
 
     /// A small floating capsule on the canvas: color, eraser, undo, and the rest of the tools.
     private var drawingTools: some View {
@@ -460,58 +514,6 @@ struct TodayView: View {
         }
     }
 
-    private var captureContent: some View {
-        VStack(spacing: 20) {
-            switch kind {
-            case .write:
-                PaperHeading(title: "What's on your mind?",
-                             subtitle: "Something hard, something good, or both. Messy is fine.")
-                SituationPrompts(text: $text)
-                JournalEditor(text: $text, placeholder: "Start anywhere…")
-            case .speak:
-                PaperHeading(title: "Say it out loud",
-                             subtitle: "Transcribed on your phone. Fix any words after you stop.")
-                // The orb listens: it grows gently with your voice while recording.
-                OrbView(palette: orbPalette, state: recorder.isRecording ? .listening : .resting, level: recorder.level,
-                        exercise: true)
-                    .frame(width: 130, height: 130)
-                    .padding(.vertical, 8)
-                SpeakControls(recorder: recorder, onStart: { textBeforeRecording = text })
-                    .paperCard()
-                JournalEditor(text: $text, placeholder: "Your words will appear here…")
-                    .disabled(recorder.isRecording)
-            case .draw:
-                // The canvas gets the room; the tools float on it in one small capsule.
-                DrawingCanvas(drawing: $drawing, tool: tool, background: canvasBackground)
-                    .frame(height: canvasHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous))
-                    .shadow(color: .black.opacity(0.06), radius: 14, y: 6)
-                    .overlay(alignment: .topLeading) { drawingTools.padding(10) }
-                    .overlay(alignment: .topTrailing) {
-                        if maxDrawOffset > 1 { pageHandle }
-                    }
-            case .words:
-                WordScramble(text: $text) { lean in
-                    // Start the slider where your words leaned, unless you've set it yourself.
-                    guard !lightnessTouched else { return }
-                    withAnimation(.calm) {
-                        lightness = (lean + 1) / 2
-                        lightnessSet = true
-                    }
-                }
-            }
-
-            // Both optional, so they never stand between you and saving:
-            // how heavy or light this sits, and which loop it belongs to.
-            LightnessDial(lightness: $lightness, isSet: lightnessSet) {
-                lightnessSet = true
-                lightnessTouched = true
-            }
-            LoopChips(loop: $loop)
-                .padding(.bottom, 12)
-        }
-    }
-
     // MARK: - Actions
 
     private func openValues() {
@@ -556,7 +558,6 @@ struct TodayView: View {
         loop = nil
         lightness = 0.5
         lightnessSet = false
-        lightnessTouched = false
         step = .home
         // A light moment gets a warm "kept"; a heavier one is offered a reframe.
         if entry.isGood {
@@ -638,26 +639,42 @@ struct StepDots: View {
     }
 }
 
-/// A TextEditor on a paper card, with placeholder text.
-private struct JournalEditor: View {
+/// The whole page is paper to write on: larger serif words, one soft
+/// placeholder, and a faint lightbulb for a starting point if you want one.
+private struct WriteSurface: View {
     @Binding var text: String
-    let placeholder: String
+    let onPrompts: () -> Void
+    @FocusState private var focused: Bool
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             if text.isEmpty {
-                Text(placeholder)
+                Text("What's on your mind?")
                     .foregroundStyle(.tertiary)
                     .padding(.top, 8)
                     .padding(.leading, 5)
+                    .allowsHitTesting(false)
             }
             TextEditor(text: $text)
                 .scrollContentBackground(.hidden)
-                .lineSpacing(5)
+                .lineSpacing(6)
+                .focused($focused)
         }
-        .font(.system(.body, design: .serif))
-        .frame(minHeight: 260)
-        .paperCard(padding: 14)
+        .font(.system(.title3, design: .serif))
+        .frame(maxHeight: .infinity)
+        .paperCard(padding: 18)
+        .overlay(alignment: .bottomTrailing) {
+            if text.isEmpty {
+                Button("A starting point", systemImage: "lightbulb", action: onPrompts)
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 44, height: 44)
+                    .padding(6)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.calm, value: text.isEmpty)
+        .onAppear { focused = true }
     }
 }
 
@@ -676,9 +693,10 @@ private struct LoopChips: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !compact {
-                Text("Which loop is this? (optional)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Text("Part of a loop?")
+                    .font(.system(.title2, design: .serif).weight(.semibold))
+                    .softCase()
+                    .padding(.bottom, 8)
             }
 
             if compact {
@@ -761,46 +779,6 @@ private struct LoopChips: View {
         }
         newLoop = ""
         naming = false
-    }
-}
-
-/// The big record button plus status and errors.
-private struct SpeakControls: View {
-    let recorder: VoiceRecorder
-    let onStart: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Button {
-                if recorder.isRecording {
-                    recorder.stop()
-                } else {
-                    onStart()
-                    Task { await recorder.start() }
-                }
-            } label: {
-                Image(systemName: recorder.isRecording ? "stop.fill" : "mic.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(.white)
-                    .frame(width: 80, height: 80)
-                    .background(Circle().fill(recorder.isRecording ? AnyShapeStyle(.tint.opacity(0.6)) : AnyShapeStyle(.tint)))
-                    .symbolEffect(.pulse, isActive: recorder.isRecording)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(recorder.isRecording ? "Stop recording" : "Start recording")
-
-            Text(recorder.isRecording ? "Listening… tap to stop" : "Tap to start talking")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            if let message = recorder.errorMessage {
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 
@@ -950,10 +928,10 @@ struct WinReminderView: View {
     }
 }
 
-/// "How does this sit?": one slider from heavy to light, with a small orb that
-/// warms and opens as you slide toward light. Optional, and it starts untouched,
+/// "How does this sit?": the orb, one slider from heavy to light, and nothing else.
+/// The orb warms and opens as you slide toward light. Skipping is fine,
 /// because a check-in doesn't have to be sorted into good or bad.
-private struct LightnessDial: View {
+private struct SitView: View {
     @Binding var lightness: Double
     let isSet: Bool
     let onTouch: () -> Void
@@ -962,20 +940,20 @@ private struct LightnessDial: View {
     private var isLight: Bool { isSet && lightness >= Entry.lightThreshold }
 
     var body: some View {
-        HStack(spacing: 14) {
-            OrbView(palette: orbPalette, speed: 0.35, state: isLight ? .glowing : .resting, warm: isLight)
+        VStack(spacing: 28) {
+            Spacer(minLength: 0)
+            Text("How does this sit?")
+                .font(.system(.title2, design: .serif).weight(.semibold))
+                .softCase()
+            OrbView(palette: orbPalette, speed: 0.5, state: isLight ? .glowing : .resting, warm: isLight)
                 .saturation(isSet ? 0.55 + 0.45 * lightness : 0.7)
                 .brightness(isSet ? 0.06 * (lightness - 0.5) : 0)
-                .scaleEffect(isSet ? 0.9 + 0.18 * lightness : 0.95)
-                .frame(width: 52, height: 52)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("How does this sit? (optional)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                .scaleEffect(isSet ? 0.85 + 0.25 * lightness : 0.95)
+                .frame(width: 170, height: 170)
+            VStack(spacing: 6) {
                 Slider(value: $lightness, in: 0...1, onEditingChanged: { editing in
                     if editing { onTouch() }
                 })
-                .opacity(isSet ? 1 : 0.55)
                 .accessibilityLabel("How does this sit")
                 .accessibilityValue(isSet ? description : "Not set")
                 HStack {
@@ -983,11 +961,13 @@ private struct LightnessDial: View {
                     Spacer()
                     Text("light")
                 }
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 8)
+            Spacer(minLength: 0)
+            Spacer(minLength: 0)
         }
-        .paperCard(padding: 14)
         .onChange(of: lightness) { _, _ in if !isSet { onTouch() } }
         .animation(.calm, value: isLight)
     }

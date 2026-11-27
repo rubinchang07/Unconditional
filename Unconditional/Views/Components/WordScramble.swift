@@ -74,6 +74,20 @@ enum FeelingWords {
         words.map { "\($0.word) (\(describe($0.lean)))" }.joined(separator: " · ")
     }
 
+    /// Reads `compose` back, so going back to Words finds what you kept.
+    /// Leans come back as the middle of their description ("quite" is 0.6).
+    static func parse(_ text: String) -> [KeptWord] {
+        text.components(separatedBy: " · ").compactMap { piece in
+            guard piece.hasSuffix(")"), let open = piece.range(of: " (", options: .backwards) else { return nil }
+            let word = String(piece[..<open.lowerBound])
+            let description = piece[open.upperBound...].dropLast()
+            guard !word.isEmpty else { return nil }
+            let sign: Double = description.hasPrefix("heavier") ? -1 : description.hasPrefix("lighter") ? 1 : 0
+            let size = description.hasSuffix("a lot") ? 0.9 : description.hasSuffix("quite") ? 0.6 : 0.3
+            return KeptWord(word: word, lean: sign * size)
+        }
+    }
+
     /// Where the kept words sit on average, -1 to 1. Zero when there are none.
     static func averageLean(_ words: [KeptWord]) -> Double {
         guard !words.isEmpty else { return 0 }
@@ -88,6 +102,11 @@ enum FeelingWords {
         return (word?.isEmpty ?? true) ? nil : word
     }
 
+    /// Words sit on the orb in white, except on Pearl, which is too pale for it.
+    static func ink(on palette: OrbPalette) -> Color {
+        palette == .pearl ? Color(hex: 0x3F3A52) : .white
+    }
+
     /// Slate blue for heavier, warm gold for lighter, the orb's own soft green in between.
     static func color(for lean: Double, palette: OrbPalette) -> Color {
         let middleColor = palette.colors[0]
@@ -96,152 +115,126 @@ enum FeelingWords {
     }
 }
 
-/// "Words": type one word, then slide its little orb toward heavier or lighter.
-/// How far you slide is how much. Related feeling words then bubble out of it;
-/// tap one to slide it too, or type your own. What you keep becomes the entry.
+/// "Words", one quiet screen at a time:
+/// 1. just an orb with a place for one word
+/// 2. the word in its orb: slide it left for heavier, right for lighter (how far is how much)
+/// 3. related feeling words bubble out around what you've kept; tap one to slide it too
+/// What you keep becomes the entry.
 struct WordScramble: View {
     @Binding var text: String
-    /// The average lean of the kept words, -1 to 1, so the "how does this sit?" slider can start there.
+    /// The average lean of the kept words, -1 to 1.
     var onLean: (Double) -> Void = { _ in }
+
+    private enum Phase: Equatable { case typing, sliding(String), more }
 
     @AppStorage(OrbPalette.storageKey) private var palette: OrbPalette = .emberSage
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: Phase = .typing
     @State private var kept: [KeptWord] = []
-    /// The word in the middle, waiting to be slid.
-    @State private var current: String?
     @State private var draft = ""
     @State private var drag: CGFloat = 0
     @State private var bubbles: [String] = []
     @State private var bubblesOut = false
     @State private var shuffle = 0
-    /// The last word you slid, and which way, so "show others" stays on the same side.
+    /// The last word you slid, and which way, so "other words" stays on the same side.
     @State private var lastWord = ""
     @State private var lastLean = 0.0
     @State private var keptCount = 0
     @FocusState private var typing: Bool
 
-    private let arenaHeight: CGFloat = 300
-
     var body: some View {
-        VStack(spacing: 16) {
-            PaperHeading(title: "One word at a time",
-                         subtitle: "Type a word for how you feel, then slide it. Left is heavier, right is lighter. How far is how much.")
-
-            arena
-
-            if current == nil {
-                HStack {
-                    TextField(kept.isEmpty ? "One word…" : "Another word…", text: $draft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.done)
-                        .focused($typing)
-                        .onSubmit(useDraft)
-                    if FeelingWords.firstWord(of: draft) != nil {
-                        Button("Use", action: useDraft)
-                            .font(.subheadline.weight(.semibold))
-                    }
+        GeometryReader { proxy in
+            ZStack {
+                switch phase {
+                case .typing: typingView
+                case .sliding(let word): slidingView(word, width: proxy.size.width)
+                case .more: moreView(size: proxy.size)
                 }
-                .paperCard(padding: 14)
             }
-
-            if !kept.isEmpty { keptCluster }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
+        .animation(reduceMotion ? nil : .calm, value: phase)
         .onChange(of: kept) { _, words in
             text = FeelingWords.compose(words)
             if !words.isEmpty { onLean(FeelingWords.averageLean(words)) }
         }
-        .onAppear { if kept.isEmpty { text = "" } }
+        .onAppear {
+            // Coming back from the next step: pick up where you were.
+            guard kept.isEmpty else { return }
+            let earlier = FeelingWords.parse(text)
+            guard let last = earlier.last else { return }
+            kept = earlier
+            lastWord = last.word
+            lastLean = last.lean
+            phase = .more
+            offerBubbles()
+        }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.6), trigger: keptCount)
     }
 
-    // MARK: The space you slide words across
+    // MARK: 1. One word
 
-    private var arena: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            let reach = max(80, width * 0.38)
-            let lean = Double(max(-1, min(1, drag / reach)))
-            ZStack {
-                // A faint wash from heavy to light, so the direction is felt before it's read.
-                RoundedRectangle(cornerRadius: Paper.cornerRadius, style: .continuous)
-                    .fill(LinearGradient(colors: [FeelingWords.color(for: -1, palette: palette).opacity(0.18),
-                                                  Paper.card,
-                                                  FeelingWords.color(for: 1, palette: palette).opacity(0.22)],
-                                         startPoint: .leading, endPoint: .trailing))
-                HStack {
-                    Label("heavier", systemImage: "chevron.left")
-                    Spacer()
-                    Label { Text("lighter") } icon: { Image(systemName: "chevron.right") }
-                        .labelStyle(TrailingIconLabel())
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, 12)
-
-                if let current {
-                    WordOrb(word: current, color: FeelingWords.color(for: lean, palette: palette), size: orbSize(current))
-                        .scaleEffect(1 + 0.12 * abs(lean))
-                        .offset(x: drag)
-                        .gesture(slide(reach: reach))
-                        .transition(.scale(scale: 0.4).combined(with: .opacity))
-                        .accessibilityElement()
-                        .accessibilityLabel(current)
-                        .accessibilityHint("Slide left for heavier, right for lighter")
-                        .accessibilityAction(named: "A little heavier") { keep(current, lean: -0.3) }
-                        .accessibilityAction(named: "A lot heavier") { keep(current, lean: -0.9) }
-                        .accessibilityAction(named: "A little lighter") { keep(current, lean: 0.3) }
-                        .accessibilityAction(named: "A lot lighter") { keep(current, lean: 0.9) }
-                    Text(FeelingWords.describe(lean))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .opacity(abs(drag) > 4 ? 1 : 0)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                        .padding(.bottom, 14)
-                } else if !bubbles.isEmpty {
-                    ForEach(Array(bubbles.enumerated()), id: \.element) { index, word in
-                        let angle = CGFloat(index) / CGFloat(bubbles.count) * 2 * .pi - .pi / 2
-                        let radius = min(width * 0.33, arenaHeight * 0.34)
-                        Button {
-                            pick(word)
-                        } label: {
-                            WordOrb(word: word, color: FeelingWords.color(for: lastLean * 0.6, palette: palette), size: 74, small: true)
-                        }
-                        .buttonStyle(.plain)
-                        .offset(x: bubblesOut ? cos(angle) * radius : 0,
-                                y: bubblesOut ? sin(angle) * radius + 10 : 10)
-                        .opacity(bubblesOut ? 1 : 0)
-                        .scaleEffect(bubblesOut ? 1 : 0.3)
-                    }
-                    Button("show others", systemImage: "shuffle", action: showOthers)
-                        .font(.footnote.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44)
-                        .background(.background.opacity(0.6), in: Capsule())
-                        .offset(y: 10)
-                } else {
-                    // Waiting for a first word: a resting orb holds the space.
-                    OrbView(palette: palette, speed: 0.35)
-                        .frame(width: 70, height: 70)
-                        .opacity(0.7)
-                        .onTapGesture { typing = true }
-                }
-            }
-            .frame(width: width, height: arenaHeight)
+    /// An orb with a place to type inside it. Nothing else.
+    private var typingView: some View {
+        ZStack {
+            OrbView(palette: palette, speed: 0.4)
+                .frame(width: 230, height: 230)
+                .opacity(0.85)
+            TextField("", text: $draft, prompt: Text(kept.isEmpty ? "one word" : "another word").foregroundStyle(FeelingWords.ink(on: palette).opacity(0.7)))
+                .font(.system(.title, design: .serif))
+                .foregroundStyle(FeelingWords.ink(on: palette))
+                .multilineTextAlignment(.center)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.next)
+                .focused($typing)
+                .onSubmit(useDraft)
+                .frame(width: 180)
+                .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
         }
-        .frame(height: arenaHeight)
-        .animation(reduceMotion ? nil : .calm, value: current)
+        .offset(y: -40)
+        .transition(.opacity)
+        .onAppear { typing = true }
     }
 
-    private func slide(reach: CGFloat) -> some Gesture {
+    // MARK: 2. Slide it
+
+    private func slidingView(_ word: String, width: CGFloat) -> some View {
+        let reach = max(80, width * 0.38)
+        let lean = Double(max(-1, min(1, drag / reach)))
+        return ZStack {
+            HStack {
+                Text("heavier")
+                Spacer()
+                Text("lighter")
+            }
+            .font(.footnote)
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 4)
+
+            WordOrb(word: word, color: FeelingWords.color(for: lean, palette: palette), size: orbSize(word), ink: FeelingWords.ink(on: palette))
+                .scaleEffect(1 + 0.12 * abs(lean))
+                .offset(x: drag)
+                .gesture(slide(word, reach: reach))
+                .accessibilityElement()
+                .accessibilityLabel(word)
+                .accessibilityHint("Slide left for heavier, right for lighter")
+                .accessibilityAction(named: "A little heavier") { keep(word, lean: -0.3) }
+                .accessibilityAction(named: "A lot heavier") { keep(word, lean: -0.9) }
+                .accessibilityAction(named: "A little lighter") { keep(word, lean: 0.3) }
+                .accessibilityAction(named: "A lot lighter") { keep(word, lean: 0.9) }
+        }
+        .offset(y: -40)
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
+    }
+
+    private func slide(_ word: String, reach: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { value in drag = value.translation.width }
             .onEnded { value in
                 let lean = Double(max(-1, min(1, value.translation.width / reach)))
-                if abs(lean) >= 0.1, let current {
-                    keep(current, lean: lean)
+                if abs(lean) >= 0.1 {
+                    keep(word, lean: lean)
                 } else {
                     withAnimation(.spring(duration: 0.5, bounce: 0.35)) { drag = 0 }
                 }
@@ -249,43 +242,53 @@ struct WordScramble: View {
     }
 
     private func orbSize(_ word: String) -> CGFloat {
-        min(150, max(100, CGFloat(word.count) * 12 + 44))
+        min(170, max(120, CGFloat(word.count) * 13 + 50))
     }
 
-    // MARK: What you've kept
+    // MARK: 3. More words bubble out
 
-    private var keptCluster: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("What you've kept")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            ChipFlow {
+    /// What you've kept sits quietly in the middle; new words float around it.
+    private func moreView(size: CGSize) -> some View {
+        let radius = min(size.width * 0.36, size.height * 0.3)
+        return ZStack {
+            VStack(spacing: 4) {
                 ForEach(kept) { item in
-                    Button {
-                        withAnimation(.calm) { kept.removeAll { $0.id == item.id } }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(FeelingWords.color(for: item.lean, palette: palette))
-                                .frame(width: 10, height: 10)
-                            Text(item.word)
-                            Image(systemName: "xmark")
-                                .imageScale(.small)
-                                .foregroundStyle(.tertiary)
+                    Text(item.word)
+                        .font(.system(.callout, design: .serif))
+                        .foregroundStyle(FeelingWords.color(for: item.lean, palette: palette))
+                        .contextMenu {
+                            Button("Remove", systemImage: "minus.circle") {
+                                withAnimation(.calm) { kept.removeAll { $0.id == item.id } }
+                                if kept.isEmpty { phase = .typing }
+                            }
                         }
-                        .font(.subheadline)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(FeelingWords.color(for: item.lean, palette: palette).opacity(0.18), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .frame(minHeight: 44)
-                    .accessibilityLabel("\(item.word), \(FeelingWords.describe(item.lean))")
-                    .accessibilityHint("Removes it")
+                        .accessibilityLabel("\(item.word), \(FeelingWords.describe(item.lean))")
                 }
             }
+            .frame(maxWidth: radius * 1.2)
+
+            ForEach(Array(bubbles.enumerated()), id: \.element) { index, word in
+                let angle = CGFloat(index) / CGFloat(bubbles.count) * 2 * .pi - .pi / 2
+                Button { pick(word) } label: {
+                    WordOrb(word: word, color: FeelingWords.color(for: lastLean * 0.6, palette: palette), size: 76, ink: FeelingWords.ink(on: palette), small: true)
+                }
+                .buttonStyle(.plain)
+                .offset(x: bubblesOut ? cos(angle) * radius : 0, y: bubblesOut ? sin(angle) * radius : 0)
+                .opacity(bubblesOut ? 1 : 0)
+                .scaleEffect(bubblesOut ? 1 : 0.3)
+            }
+
+            HStack(spacing: 28) {
+                Button("other words", systemImage: "shuffle", action: showOthers)
+                Button("type one", systemImage: "character.cursor.ibeam") { phase = .typing }
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, 8)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .offset(y: -20)
+        .transition(.opacity)
     }
 
     // MARK: Actions
@@ -293,30 +296,26 @@ struct WordScramble: View {
     private func useDraft() {
         guard let word = FeelingWords.firstWord(of: draft) else { return }
         draft = ""
-        typing = false
         pick(word)
     }
 
     private func pick(_ word: String) {
         drag = 0
         bubblesOut = false
-        withAnimation(.calm) {
-            bubbles = []
-            current = word
-        }
+        bubbles = []
+        typing = false
+        phase = .sliding(word)
     }
 
     private func keep(_ word: String, lean: Double) {
-        withAnimation(.calm) {
-            kept.removeAll { $0.word == word }
-            kept.append(KeptWord(word: word, lean: lean))
-            current = nil
-            drag = 0
-        }
+        kept.removeAll { $0.word == word }
+        kept.append(KeptWord(word: word, lean: lean))
+        drag = 0
         keptCount += 1
         lastWord = word
         lastLean = lean
         shuffle = 0
+        phase = .more
         offerBubbles()
     }
 
@@ -329,10 +328,10 @@ struct WordScramble: View {
     /// Related words bubble out of the middle, as if the orb let them go.
     private func offerBubbles() {
         let used = Set(kept.map(\.word))
-        bubbles = FeelingWords.related(to: lastWord, leaning: lastLean, excluding: used, shuffle: shuffle)
+        bubbles = FeelingWords.related(to: lastWord, leaning: lastLean, excluding: used, count: 5, shuffle: shuffle)
         Task {
-            try? await Task.sleep(for: .milliseconds(60))
-            withAnimation(reduceMotion ? nil : .spring(duration: 0.7, bounce: 0.3)) { bubblesOut = true }
+            try? await Task.sleep(for: .milliseconds(120))
+            withAnimation(reduceMotion ? nil : .spring(duration: 0.8, bounce: 0.3)) { bubblesOut = true }
         }
     }
 }
@@ -342,6 +341,7 @@ private struct WordOrb: View {
     let word: String
     let color: Color
     let size: CGFloat
+    var ink: Color = .white
     var small = false
 
     var body: some View {
@@ -349,7 +349,7 @@ private struct WordOrb: View {
             MiniOrb(color: color, seed: Double(word.count))
             Text(word)
                 .font(small ? .caption.weight(.semibold) : .system(.headline, design: .serif))
-                .foregroundStyle(.white)
+                .foregroundStyle(ink)
                 .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -357,15 +357,5 @@ private struct WordOrb: View {
         }
         .frame(width: size, height: size)
         .contentShape(Circle())
-    }
-}
-
-/// Text first, then the icon, for "lighter ›".
-private struct TrailingIconLabel: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 4) {
-            configuration.title
-            configuration.icon
-        }
     }
 }
