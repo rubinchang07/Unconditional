@@ -132,6 +132,17 @@ struct PathView: View {
     @FocusState private var learnedFocused: Bool
     /// Where the water is drawn on screen, so each print knows when it's under it.
     @State private var waterFrame: CGRect = .zero
+    // The next print
+    private enum NextSheet: Identifiable { case write, smaller; var id: Self { self } }
+    @State private var nextSheet: NextSheet?
+    @State private var nextText = ""
+    @State private var nextMenu = false
+    // Shells
+    @State private var askingShell: Footstep?
+    @State private var shellText = ""
+    @FocusState private var shellFocused: Bool
+    // Seeing it from above
+    @State private var fromAbove = false
 
     /// Vertical room for each print.
     private let rowHeight: CGFloat = 86
@@ -144,6 +155,7 @@ struct PathView: View {
                 VStack(spacing: 0) {
                     horizon
                         .id("top")
+                    nextRow(index: steps.count)
                     // Newest first, so the trail runs from the bottom of the screen upward.
                     ForEach(Array(path.everything.reversed())) { item in
                         if item.isTide {
@@ -151,12 +163,6 @@ struct PathView: View {
                         } else {
                             printRow(item, index: printIndex[item.persistentModelID] ?? 0)
                         }
-                    }
-                    if steps.isEmpty {
-                        Text("Your first footprint will appear here.")
-                            .font(.callout)
-                            .foregroundStyle(Sand.ink.opacity(0.7))
-                            .padding(.top, 40)
                     }
                     Text("started \(path.createdAt.formatted(.dateTime.month(.wide).day()))")
                         .font(.caption)
@@ -167,6 +173,8 @@ struct PathView: View {
                 .padding(.bottom, 120)
             }
             .defaultScrollAnchor(.bottom)
+            // Pinching in rises up to see the whole path from above.
+            .simultaneousGesture(MagnifyGesture().onEnded { if $0.magnification < 0.8 { fromAbove = true } })
             .background {
                 SandBackground(reduceMotion: reduceMotion, surgeAt: surgeAt, surgeReach: surgeReach)
                     .ignoresSafeArea()
@@ -176,6 +184,8 @@ struct PathView: View {
                 Group {
                     if let tide = askingLearned {
                         learnedCard(tide)
+                    } else if let step = askingShell {
+                        shellCard(step)
                     } else {
                         VStack(spacing: 6) {
                             Button("Take a step") { takingStep = true }
@@ -192,9 +202,21 @@ struct PathView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 4)
                 .animation(.calm, value: askingLearned == nil)
+                .animation(.calm, value: askingShell == nil)
             }
             .navigationTitle(path.title.lowercased())
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("See it from above", systemImage: "binoculars") { fromAbove = true }
+                        .disabled(path.everything.isEmpty)
+                }
+            }
+            .fullScreenCover(isPresented: $fromAbove) { TrailOverview(path: path) }
+            .sheet(item: $nextSheet) { kind in
+                nextSheetView(kind)
+                    .presentationDetents([.medium])
+            }
             .sensoryFeedback(.impact(weight: .light, intensity: 0.7), trigger: pressCount)
             .sheet(isPresented: $takingStep) {
                 stepSheet(onSave: {
@@ -251,14 +273,27 @@ struct PathView: View {
                 }
                 .offset(x: sway)
 
-            // What you did, on the side with more room.
-            Text(step.text)
-                .font(.system(.footnote, design: .serif))
-                .foregroundStyle(Sand.ink)
-                .lineLimit(3)
-                .frame(width: 130, alignment: sway < 0 ? .leading : .trailing)
-                .multilineTextAlignment(sway < 0 ? .leading : .trailing)
-                .offset(x: sway < 0 ? sway + 100 : sway - 100)
+            // What you did, on the side with more room, and the shell you left, if any.
+            VStack(alignment: sway < 0 ? .leading : .trailing, spacing: 4) {
+                Text(step.text)
+                    .font(.system(.footnote, design: .serif))
+                    .foregroundStyle(Sand.ink)
+                    .lineLimit(3)
+                if !step.shell.isEmpty {
+                    HStack(spacing: 5) {
+                        ShellMark()
+                        Text(step.shell)
+                            .font(.caption)
+                            .italic()
+                            .foregroundStyle(Sand.ink.opacity(0.75))
+                            .lineLimit(2)
+                    }
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                }
+            }
+            .frame(width: 130, alignment: sway < 0 ? .leading : .trailing)
+            .multilineTextAlignment(sway < 0 ? .leading : .trailing)
+            .offset(x: sway < 0 ? sway + 100 : sway - 100)
         }
         .frame(minHeight: rowHeight)
         .frame(maxWidth: .infinity)
@@ -266,8 +301,12 @@ struct PathView: View {
         // A new print presses in: a touch bigger at first, then settling into the sand.
         .transition(.scale(scale: 1.3).combined(with: .opacity))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Step: \(step.text), \(step.createdAt.formatted(date: .abbreviated, time: .omitted))")
+        .accessibilityLabel("Step: \(step.text), \(step.createdAt.formatted(date: .abbreviated, time: .omitted))\(step.shell.isEmpty ? "" : ". What helped: \(step.shell)")")
         .contextMenu {
+            Button(step.shell.isEmpty ? "Leave a shell" : "Change the shell", systemImage: "seal") {
+                shellText = step.shell
+                withAnimation(.calm) { askingShell = step }
+            }
             Button("Remove this step", systemImage: "trash") {
                 withAnimation(.calm) { context.delete(step) }
             }
@@ -372,6 +411,133 @@ struct PathView: View {
         withAnimation(.calm) { askingLearned = nil }
     }
 
+    /// After a print presses in: one small optional question, in place of the buttons.
+    private func shellCard(_ step: Footstep) -> some View {
+        HStack(spacing: 10) {
+            ShellMark()
+            TextField("what helped? (a shell)", text: $shellText, axis: .vertical)
+                .lineLimit(1...3)
+                .focused($shellFocused)
+                .submitLabel(.done)
+                .onSubmit { closeShell(step) }
+            Button(shellText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "not now" : "leave it") {
+                closeShell(step)
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(minHeight: 44)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(.background.opacity(0.85), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func closeShell(_ step: Footstep) {
+        let text = shellText.trimmingCharacters(in: .whitespacesAndNewlines)
+        shellText = ""
+        shellFocused = false
+        withAnimation(.spring(duration: 0.6, bounce: 0.35)) {
+            if !text.isEmpty || !step.shell.isEmpty { step.shell = text }
+            askingShell = nil
+        }
+    }
+
+    /// The faint print just ahead of the trail. Tap it to write the one next step;
+    /// once it's written, tap it to take it, make it smaller, or change it.
+    /// If it waits a few days, it asks, quietly, whether it's too big.
+    private func nextRow(index: Int) -> some View {
+        let isLeft = index.isMultiple(of: 2)
+        let sway = CGFloat(sin(Double(index) * 0.7)) * 46 + (isLeft ? -16 : 16)
+        let tilt = cos(Double(index) * 0.7) * 14
+        let hasNext = !path.nextStep.isEmpty
+        return ZStack {
+            NextPrint(isLeft: isLeft, tilt: tilt, reduceMotion: reduceMotion)
+                .offset(x: sway)
+            VStack(alignment: sway < 0 ? .leading : .trailing, spacing: 6) {
+                Text(hasNext ? path.nextStep : (path.walked.isEmpty ? "your first step?" : "next?"))
+                    .font(.system(.footnote, design: .serif))
+                    .italic()
+                    .foregroundStyle(Sand.ink.opacity(hasNext ? 0.65 : 0.45))
+                    .lineLimit(3)
+                if path.nextFeelsBig() {
+                    Button("too big?") { startNext(.smaller) }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Sand.ink.opacity(0.8))
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 30)
+                        .background(Sand.rim.opacity(0.8), in: Capsule())
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: 130, alignment: sway < 0 ? .leading : .trailing)
+            .multilineTextAlignment(sway < 0 ? .leading : .trailing)
+            .offset(x: sway < 0 ? sway + 100 : sway - 100)
+        }
+        .frame(minHeight: rowHeight)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { if hasNext { nextMenu = true } else { startNext(.write) } }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .confirmationDialog(path.nextStep, isPresented: $nextMenu, titleVisibility: .visible) {
+            Button("I took it") { takeNext() }
+            Button("Make it smaller") { startNext(.smaller) }
+            Button("Change it") { startNext(.write) }
+            Button("Let it go") { withAnimation(.calm) { path.setNext("") } }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(hasNext ? "Next step: \(path.nextStep)" : "Write a next step")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { if hasNext { nextMenu = true } else { startNext(.write) } }
+    }
+
+    private func startNext(_ kind: NextSheet) {
+        nextText = kind == .write ? path.nextStep : ""
+        nextSheet = kind
+    }
+
+    /// Write the next step, or a smaller piece of it. One field, one button.
+    private func nextSheetView(_ kind: NextSheet) -> some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(kind == .write ? "What's one small next step?" : "What's a smaller piece of it?")
+                    .font(.system(.title3, design: .serif).weight(.semibold))
+                if kind == .smaller {
+                    Text(path.nextStep)
+                        .font(.system(.callout, design: .serif))
+                        .italic()
+                        .foregroundStyle(.secondary)
+                }
+                TextField(kind == .write ? "For example: open the document" : "Even smaller is still a step",
+                          text: $nextText, axis: .vertical)
+                    .lineLimit(2...4)
+                    .padding(12)
+                    .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+                Spacer()
+                Button(kind == .write ? "Leave it ahead" : "Make it smaller") {
+                    let text = nextText
+                    nextText = ""
+                    nextSheet = nil
+                    withAnimation(.calm) { path.setNext(text) }
+                }
+                .buttonStyle(.paper)
+                .disabled(nextText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(20)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { nextSheet = nil }
+                }
+            }
+        }
+    }
+
+    /// The faint print fills in: it becomes a real footprint, with its sand spray.
+    private func takeNext() {
+        let text = path.nextStep
+        withAnimation(.calm) { path.setNext("") }
+        pressPrint(text, delay: 150)
+    }
+
     private func markTide() {
         let text = tideText.trimmingCharacters(in: .whitespacesAndNewlines)
         let heaviness = tideHeaviness
@@ -433,17 +599,29 @@ struct PathView: View {
         stepText = ""
         takingStep = false
         guard !text.isEmpty else { return }
+        // If this was the step you'd left ahead, the faint print has been walked.
+        if text.caseInsensitiveCompare(path.nextStep) == .orderedSame { path.setNext("") }
         // Let the sheet slide away first, then press the print into the sand.
+        pressPrint(text, delay: 450)
+    }
+
+    private func pressPrint(_ text: String, delay: Int) {
         Task {
-            try? await Task.sleep(for: .milliseconds(450))
+            try? await Task.sleep(for: .milliseconds(delay))
+            let step = Footstep(text: text)
             withAnimation(reduceMotion ? .easeOut(duration: 0.3) : .spring(duration: 0.6, bounce: 0.45)) {
-                let step = Footstep(text: text)
                 context.insert(step)
                 step.path = path
                 if path.isResting { path.isResting = false }
                 freshID = step.persistentModelID
             }
             pressCount += 1
+            // Once the sand settles, a small optional question: what helped?
+            try? await Task.sleep(for: .seconds(1.2))
+            if askingLearned == nil {
+                shellText = ""
+                withAnimation(.calm) { askingShell = step }
+            }
         }
     }
 }

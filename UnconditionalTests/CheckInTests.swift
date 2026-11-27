@@ -112,6 +112,38 @@ struct CheckInTests {
     }
 }
 
+/// One step at a time: the faint next print, and the whole path from above.
+@MainActor
+struct NextStepTests {
+    @Test("A next step asks if it's too big only after a few untouched days")
+    func feelsBig() {
+        let path = StepPath(title: "Finding a job")
+        let day = Date(timeIntervalSince1970: 1_795_910_400)
+        #expect(!path.nextFeelsBig(now: day))
+        path.setNext("  Write the whole cover letter ", now: day)
+        #expect(path.nextStep == "Write the whole cover letter")
+        #expect(!path.nextFeelsBig(now: day.addingTimeInterval(86_400)))
+        #expect(path.nextFeelsBig(now: day.addingTimeInterval(3 * 86_400)))
+        // Making it smaller starts the clock again.
+        path.setNext("Open the document", now: day.addingTimeInterval(3 * 86_400))
+        #expect(!path.nextFeelsBig(now: day.addingTimeInterval(4 * 86_400)))
+        path.setNext("")
+        #expect(path.nextSetAt == nil)
+    }
+
+    @Test("Seen from above, the whole trail fits on screen however long it is")
+    func trailFits() {
+        let size = CGSize(width: 390, height: 760)
+        for count in [1, 5, 40, 300] {
+            let points = TrailLayout.points(count: count, in: size)
+            #expect(points.count == count)
+            #expect(points.allSatisfy { $0.x > 0 && $0.x < size.width && $0.y > 0 && $0.y < size.height })
+            if count > 1 { #expect(points.first!.y > points.last!.y) }
+        }
+        #expect(TrailLayout.printHeight(count: 300, in: size) < TrailLayout.printHeight(count: 5, in: size))
+    }
+}
+
 /// A hard day on a path: the tide comes in and goes out.
 @MainActor
 struct TideTests {

@@ -169,6 +169,8 @@ struct DataTransferTests {
         tide.learned = "One no isn't the answer."
         old.insert(tide)
         tide.path = path
+        step.shell = "music on"
+        path.setNext("Open the job board", now: day)
 
         let entry = Entry(kind: .words, text: "tired (heavier, a lot)", createdAt: day)
         old.insert(entry)
@@ -185,6 +187,9 @@ struct DataTransferTests {
         #expect(restored.tides.count == 1)
         #expect(restored.tides.first?.heaviness == 0.8)
         #expect(restored.tides.first?.learned == "One no isn't the answer.")
+        #expect(restored.walked.first?.shell == "music on")
+        #expect(restored.nextStep == "Open the job board")
+        #expect(restored.nextSetAt == day)
         let entries = try new.fetch(FetchDescriptor<Entry>())
         #expect(entries.first?.kind == .words)
         #expect(entries.first?.lightness == 0.2)

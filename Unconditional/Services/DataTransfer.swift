@@ -46,6 +46,9 @@ enum DataTransfer {
         var createdAt: Date
         var isResting: Bool
         var steps: [StepRecord]
+        /// The faint next print. Optional, so older files still open.
+        var nextStep: String?
+        var nextSetAt: Date?
     }
 
     struct StepRecord: Codable {
@@ -55,6 +58,8 @@ enum DataTransfer {
         var isTide: Bool?
         var heaviness: Double?
         var learned: String?
+        /// What helped with this step. Optional for older files.
+        var shell: String?
     }
 
     struct PhotoRecord: Codable {
@@ -228,8 +233,11 @@ enum DataTransfer {
                            StepRecord(text: $0.text, createdAt: $0.createdAt,
                                       isTide: $0.isTide ? true : nil,
                                       heaviness: $0.isTide ? $0.heaviness : nil,
-                                      learned: $0.learned.isEmpty ? nil : $0.learned)
-                       })
+                                      learned: $0.learned.isEmpty ? nil : $0.learned,
+                                      shell: $0.shell.isEmpty ? nil : $0.shell)
+                       },
+                       nextStep: path.nextStep.isEmpty ? nil : path.nextStep,
+                       nextSetAt: path.nextSetAt)
         }
         s.laughs = all(Laugh.self).map { LaughRecord(text: $0.text, imageData: $0.imageData, createdAt: $0.createdAt) }
         return s
@@ -396,6 +404,8 @@ enum DataTransfer {
                 path = StepPath(title: r.title, createdAt: r.createdAt)
                 context.insert(path)
                 path.isResting = r.isResting
+                path.nextStep = r.nextStep ?? ""
+                path.nextSetAt = r.nextSetAt
                 pathsByKey[key(r.createdAt, r.title)] = path
                 summary.added += 1
             }
@@ -405,6 +415,7 @@ enum DataTransfer {
                 footstep.isTide = step.isTide ?? false
                 footstep.heaviness = step.heaviness ?? 0
                 footstep.learned = step.learned ?? ""
+                footstep.shell = step.shell ?? ""
                 context.insert(footstep)
                 footstep.path = path
             }

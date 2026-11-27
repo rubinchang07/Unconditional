@@ -12,6 +12,11 @@ final class StepPath {
     var createdAt: Date = Date.now
     /// Set aside for now. Not given up on, not failed: just resting.
     var isResting: Bool = false
+    /// The one small step you mean to take next, drawn as a faint print just ahead.
+    /// Only ever one, never a list or a plan. Empty when there isn't one.
+    var nextStep: String = ""
+    /// When the next step was written (or last made smaller).
+    var nextSetAt: Date?
     @Relationship(deleteRule: .cascade, inverse: \Footstep.path)
     var steps: [Footstep] = []
 
@@ -28,6 +33,22 @@ final class StepPath {
 
     /// Prints and tides together, oldest first, as they happened.
     var everything: [Footstep] { steps.sorted { $0.createdAt < $1.createdAt } }
+
+    /// After this many days untouched, the next print gently asks if it's too big.
+    static let smallerAfterDays = 3.0
+
+    /// True when a next step has waited a few days. Usually that means the step
+    /// is too big, not that you are falling short, so the app offers to shrink it.
+    func nextFeelsBig(now: Date = .now) -> Bool {
+        guard !nextStep.isEmpty, let nextSetAt else { return false }
+        return now.timeIntervalSince(nextSetAt) >= Self.smallerAfterDays * 86_400
+    }
+
+    /// Write (or rewrite, or clear) the next step.
+    func setNext(_ text: String, now: Date = .now) {
+        nextStep = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        nextSetAt = nextStep.isEmpty ? nil : now
+    }
 }
 
 /// One step you took. Only what you did, never whether it worked.
@@ -46,6 +67,9 @@ final class Footstep {
     var heaviness: Double = 0
     /// "Anything you learned?" after the tide went out. Optional.
     var learned: String = ""
+    /// A shell left beside the print: what helped with this step ("music on",
+    /// "did it with a friend"). Optional; a small record of what works for you.
+    var shell: String = ""
 
     init(text: String, createdAt: Date = .now) {
         self.text = text
